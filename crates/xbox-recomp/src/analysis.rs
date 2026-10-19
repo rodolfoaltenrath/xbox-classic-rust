@@ -1,0 +1,384 @@
+//! Descoberta conservadora por fluxo alcançável, com rejeição de código ambíguo.
+
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+use iced_x86::{
+    Code, ConditionCode, Decoder, DecoderOptions, Instruction, Mnemonic, OpKind, Register,
+};
+use xbox_formats::{Xbe, xbe::SectionFlags};
+
+pub use crate::ir::{Binary, Condition, Operand, Operation, Unary, Width};
+use crate::{Error, Result};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Insn {
+    pub pc: u32,
+    pub next: u32,
+    pub operation: Operation,
+}
+
+#[derive(Debug)]
+pub struct Program {
+    pub entry: u32,
+    pub instructions: BTreeMap<u32, Insn>,
+    pub blocks: BTreeMap<u32, Vec<Insn>>,
+}
+
+fn fail(pc: u32, detail: impl Into<String>) -> Error {
+    Error::Analysis {
+        pc,
+        detail: detail.into(),
+    }
+}
+
+/// Analisa somente caminhos alcançáveis pelo entry point e por calls diretas.
+pub fn analyze(bytes: &[u8]) -> Result<Program> {
+    let xbe = Xbe::parse(bytes)?;
+    validate_layout(&xbe)?;
+    let mut instructions: BTreeMap<u32, Insn> = BTreeMap::new();
+    let mut pending = VecDeque::from([xbe.entry_point]);
+    let mut owners = BTreeMap::new();
+    let mut leaders = BTreeSet::from([xbe.entry_point]);
+    while let Some(pc) = pending.pop_front() {
+        if instructions.contains_key(&pc) {
+            continue;
+        }
+        if instructions.len() >= 65_536 {
+            return Err(fail(pc, "limite de 65536 instruções alcançáveis"));
+        }
+        if owners.contains_key(&pc) {
+            return Err(fail(pc, "alvo no meio de outra instrução"));
+        }
+        let section = xbe
+            .sections
+            .iter()
+            .enumerate()
+            .find(|(_, s)| {
+                s.flags.tem(SectionFlags::EXECUTABLE)
+                    && pc >= s.virtual_address
+                    && u64::from(pc)
+                        < u64::from(s.virtual_address) + u64::from(s.raw_size.min(s.virtual_size))
+            })
+            .ok_or_else(|| fail(pc, "fluxo fora dos bytes de uma seção executável"))?;
+        if section.1.flags.tem(SectionFlags::WRITABLE) {
+            return Err(fail(
+                pc,
+                "código gravável exige invalidação AOT ainda não implementada",
+            ));
+        }
+        let data = xbe.section_data(section.0)?;
+        let offset = (pc - section.1.virtual_address) as usize;
+        let mut decoder =
+            Decoder::with_ip(32, &data[offset..], u64::from(pc), DecoderOptions::NONE);
+        let i = decoder.decode();
+        if i.is_invalid() {
+            return Err(fail(pc, "instrução inválida ou truncada"));
+        }
+        let next = pc
+            .checked_add(i.len() as u32)
+            .ok_or_else(|| fail(pc, "instrução transborda o espaço x86"))?;
+        for address in pc..next {
+            if owners.insert(address, pc).is_some() {
+                return Err(fail(pc, "instruções sobrepostas"));
+            }
+        }
+        let operation = lower(&i)?;
+        match operation {
+            Operation::Jump(target) => {
+                leaders.insert(target);
+                pending.push_back(target);
+            }
+            Operation::Branch { target, .. } | Operation::Call(target) => {
+                leaders.extend([target, next]);
+                pending.extend([target, next]);
+            }
+            Operation::Ret(_) => {}
+            _ => pending.push_back(next),
+        }
+        instructions.insert(
+            pc,
+            Insn {
+                pc,
+                next,
+                operation,
+            },
+        );
+    }
+    let mut blocks = BTreeMap::new();
+    for start in &leaders {
+        let mut block = Vec::new();
+        let mut pc = *start;
+        loop {
+            let i = instructions
+                .get(&pc)
+                .ok_or_else(|| fail(pc, "bloco sem instrução"))?;
+            block.push(i.clone());
+            pc = i.next;
+            if matches!(
+                i.operation,
+                Operation::Jump(_)
+                    | Operation::Branch { .. }
+                    | Operation::Call(_)
+                    | Operation::Ret(_)
+            ) || leaders.contains(&pc)
+            {
+                break;
+            }
+        }
+        blocks.insert(*start, block);
+    }
+    Ok(Program {
+        entry: xbe.entry_point,
+        instructions,
+        blocks,
+    })
+}
+
+fn lower(i: &Instruction) -> Result<Operation> {
+    let pc = i.ip32();
+    if i.has_lock_prefix()
+        || i.has_rep_prefix()
+        || i.has_repne_prefix()
+        || i.segment_prefix() != Register::None
+    {
+        return Err(fail(pc, "prefixo LOCK/REP/segmento ainda não suportado"));
+    }
+    let binary = match i.mnemonic() {
+        Mnemonic::Mov => Some(Binary::Mov),
+        Mnemonic::Add => Some(Binary::Add),
+        Mnemonic::Sub => Some(Binary::Sub),
+        Mnemonic::Xor => Some(Binary::Xor),
+        Mnemonic::And => Some(Binary::And),
+        Mnemonic::Or => Some(Binary::Or),
+        Mnemonic::Cmp => Some(Binary::Cmp),
+        Mnemonic::Test => Some(Binary::Test),
+        _ => None,
+    };
+    if let Some(op) = binary {
+        let dst = operand(i, 0)?;
+        let src = operand(i, 1)?;
+        let width = dst
+            .width()
+            .ok_or_else(|| fail(pc, "destino imediato inválido"))?;
+        if src.width().is_some_and(|w| w != width) {
+            return Err(fail(pc, "larguras de operandos incompatíveis"));
+        }
+        return Ok(Operation::Binary(op, dst, src));
+    }
+    let unary = match i.mnemonic() {
+        Mnemonic::Inc => Some(Unary::Inc),
+        Mnemonic::Dec => Some(Unary::Dec),
+        Mnemonic::Neg => Some(Unary::Neg),
+        Mnemonic::Not => Some(Unary::Not),
+        _ => None,
+    };
+    if let Some(op) = unary {
+        return Ok(Operation::Unary(op, operand(i, 0)?));
+    }
+    if matches!(i.mnemonic(), Mnemonic::Movsx | Mnemonic::Movzx) {
+        let dst = operand(i, 0)?;
+        let src = operand(i, 1)?;
+        if dst
+            .width()
+            .zip(src.width())
+            .is_none_or(|(d, s)| d.bits() <= s.bits())
+        {
+            return Err(fail(pc, "larguras de extensão incompatíveis"));
+        }
+        return Ok(Operation::Extend {
+            signed: i.mnemonic() == Mnemonic::Movsx,
+            dst,
+            src,
+        });
+    }
+    if i.mnemonic() == Mnemonic::Lea {
+        return Ok(Operation::Lea {
+            dst: operand(i, 0)?,
+            address: memory(i, Width::Dword)?,
+        });
+    }
+    if i.is_jcc_short_or_near() && i.op0_kind() == OpKind::NearBranch32 {
+        return Ok(Operation::Branch {
+            condition: lower_condition(i)?,
+            target: i.near_branch32(),
+        });
+    }
+    Ok(match i.code() {
+        Code::Nopd | Code::Nopw => Operation::Nop,
+        Code::Push_r16 | Code::Push_rm16 | Code::Push_imm16 | Code::Pushw_imm8 => {
+            Operation::Push(operand(i, 0)?, Width::Word)
+        }
+        Code::Push_r32 | Code::Push_rm32 | Code::Pushd_imm32 | Code::Pushd_imm8 => {
+            Operation::Push(operand(i, 0)?, Width::Dword)
+        }
+        Code::Pop_r16 | Code::Pop_rm16 => Operation::Pop(operand(i, 0)?, Width::Word),
+        Code::Pop_r32 | Code::Pop_rm32 => Operation::Pop(operand(i, 0)?, Width::Dword),
+        Code::Leaved => Operation::Leave,
+        Code::Jmp_rel8_32 | Code::Jmp_rel32_32 => Operation::Jump(i.near_branch32()),
+        Code::Call_rel32_32 => Operation::Call(i.near_branch32()),
+        Code::Retnd => Operation::Ret(0),
+        Code::Retnd_imm16 => Operation::Ret(i.immediate16()),
+        _ => {
+            return Err(fail(
+                pc,
+                format!("instrução ainda não suportada: {:?}", i.code()),
+            ));
+        }
+    })
+}
+
+fn lower_condition(i: &Instruction) -> Result<Condition> {
+    Ok(match i.condition_code() {
+        ConditionCode::o => Condition::Overflow,
+        ConditionCode::no => Condition::NotOverflow,
+        ConditionCode::b => Condition::Below,
+        ConditionCode::ae => Condition::AboveEqual,
+        ConditionCode::e => Condition::Equal,
+        ConditionCode::ne => Condition::NotEqual,
+        ConditionCode::be => Condition::BelowEqual,
+        ConditionCode::a => Condition::Above,
+        ConditionCode::s => Condition::Sign,
+        ConditionCode::ns => Condition::NotSign,
+        ConditionCode::p => Condition::Parity,
+        ConditionCode::np => Condition::NotParity,
+        ConditionCode::l => Condition::Less,
+        ConditionCode::ge => Condition::GreaterEqual,
+        ConditionCode::le => Condition::LessEqual,
+        ConditionCode::g => Condition::Greater,
+        ConditionCode::None => return Err(fail(i.ip32(), "condição inválida")),
+    })
+}
+
+fn register(r: Register, pc: u32) -> Result<usize> {
+    match r {
+        Register::EAX => Ok(0),
+        Register::ECX => Ok(1),
+        Register::EDX => Ok(2),
+        Register::EBX => Ok(3),
+        Register::ESP => Ok(4),
+        Register::EBP => Ok(5),
+        Register::ESI => Ok(6),
+        Register::EDI => Ok(7),
+        _ => Err(fail(pc, format!("registrador não suportado: {r:?}"))),
+    }
+}
+
+fn operand(i: &Instruction, n: u32) -> Result<Operand> {
+    let pc = i.ip32();
+    Ok(match i.op_kind(n) {
+        OpKind::Register => {
+            let r = i.op_register(n);
+            if let Ok(index) = register(r, pc) {
+                Operand::Reg(index)
+            } else {
+                let (index, shift, width) = match r {
+                    Register::AL => (0, 0, Width::Byte),
+                    Register::CL => (1, 0, Width::Byte),
+                    Register::DL => (2, 0, Width::Byte),
+                    Register::BL => (3, 0, Width::Byte),
+                    Register::AH => (0, 8, Width::Byte),
+                    Register::CH => (1, 8, Width::Byte),
+                    Register::DH => (2, 8, Width::Byte),
+                    Register::BH => (3, 8, Width::Byte),
+                    Register::AX => (0, 0, Width::Word),
+                    Register::CX => (1, 0, Width::Word),
+                    Register::DX => (2, 0, Width::Word),
+                    Register::BX => (3, 0, Width::Word),
+                    Register::SP => (4, 0, Width::Word),
+                    Register::BP => (5, 0, Width::Word),
+                    Register::SI => (6, 0, Width::Word),
+                    Register::DI => (7, 0, Width::Word),
+                    _ => return Err(fail(pc, format!("registrador não suportado: {r:?}"))),
+                };
+                Operand::Part {
+                    index,
+                    shift,
+                    width,
+                }
+            }
+        }
+        OpKind::Immediate8 => Operand::Imm(u32::from(i.immediate8())),
+        OpKind::Immediate16 => Operand::Imm(u32::from(i.immediate16())),
+        OpKind::Immediate32 => Operand::Imm(i.immediate32()),
+        OpKind::Immediate8to16 => Operand::Imm(u32::from(i.immediate8to16().cast_unsigned())),
+        OpKind::Immediate8to32 => Operand::Imm(i.immediate8to32().cast_unsigned()),
+        OpKind::Memory => {
+            let width = match i.memory_size().size() {
+                1 => Width::Byte,
+                2 => Width::Word,
+                4 => Width::Dword,
+                _ => return Err(fail(pc, "largura de memória não suportada")),
+            };
+            memory(i, width)?
+        }
+        kind => return Err(fail(pc, format!("operando não suportado: {kind:?}"))),
+    })
+}
+
+fn memory(i: &Instruction, width: Width) -> Result<Operand> {
+    let pc = i.ip32();
+    if i.memory_displ_size() == 2 {
+        return Err(fail(pc, "endereçamento de 16 bits não suportado"));
+    }
+    let reg = |r| {
+        if r == Register::None {
+            Ok(None)
+        } else {
+            register(r, pc).map(Some)
+        }
+    };
+    Ok(Operand::Mem {
+        base: reg(i.memory_base())?,
+        index: reg(i.memory_index())?,
+        scale: i.memory_index_scale(),
+        displacement: i.memory_displacement32(),
+        width,
+    })
+}
+
+/// O mesmo layout deve ser usado na análise e no carregamento. Seções sobrepostas
+/// poderiam fazer o código compilado divergir dos bytes efetivamente carregados.
+pub(crate) fn validate_layout(xbe: &Xbe<'_>) -> Result<()> {
+    let base = xbe.header.base_address;
+    let end = base
+        .checked_add(xbe.header.size_of_image)
+        .ok_or_else(|| fail(base, "imagem transborda o espaço x86"))?;
+    let headers_end = base
+        .checked_add(xbe.header.size_of_headers)
+        .filter(|&v| v <= end)
+        .ok_or_else(|| fail(base, "headers fora da imagem"))?;
+    let mut ranges = vec![(base, headers_end)];
+    for s in &xbe.sections {
+        if s.virtual_size == 0 {
+            continue;
+        }
+        let section_end = s
+            .virtual_address
+            .checked_add(s.virtual_size)
+            .filter(|&v| v <= end && s.virtual_address >= base)
+            .ok_or_else(|| fail(s.virtual_address, "seção fora da imagem declarada"))?;
+        if s.raw_size > s.virtual_size {
+            return Err(fail(
+                s.virtual_address,
+                "raw_size maior que virtual_size não suportado",
+            ));
+        }
+        ranges.push((s.virtual_address, section_end));
+    }
+    ranges.sort_unstable();
+    for pair in ranges.windows(2) {
+        if pair[0].1 > pair[1].0 {
+            return Err(fail(pair[1].0, "seções/headers sobrepostos"));
+        }
+    }
+    if ranges
+        .iter()
+        .any(|&(start, finish)| start < 0x7001_0000 && finish > 0x7000_0000)
+    {
+        return Err(fail(
+            0x7000_0000,
+            "imagem ocupa a pilha reservada ao teste AOT",
+        ));
+    }
+    Ok(())
+}

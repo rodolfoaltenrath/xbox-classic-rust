@@ -1,0 +1,18 @@
+[package]
+name = "xbox-recomp"
+description = "Recompilação estática experimental de XBE para Rust nativo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+xbox-core = { workspace = true }
+xbox-formats = { workspace = true }
+xbox-mem = { workspace = true }
+iced-x86 = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

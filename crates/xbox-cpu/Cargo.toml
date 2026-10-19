@@ -1,0 +1,20 @@
+[package]
+name = "xbox-cpu"
+description = "CPU x86-32: decoder + backends interpretador, JIT e hypervisor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+default = []
+# Somente para comparar a ISA com a CPU x86_64 real, sem executar código guest.
+isa-oracle = []
+
+[dependencies]
+xbox-core = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

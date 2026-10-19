@@ -1,0 +1,16 @@
+[package]
+name = "isotool"
+description = "Lista e extrai imagens XISO/XDVDFS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+xbox-core = { workspace = true }
+xbox-formats = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true

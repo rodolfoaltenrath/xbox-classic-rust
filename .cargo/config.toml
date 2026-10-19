@@ -1,0 +1,7 @@
+[alias]
+# Mesmo conjunto que o CI roda (ROADMAP §9).
+#
+# Sem --all-features de propósito: a feature `bench` puxa criterion -> windows-sys,
+# que não linka com o MinGW reduzido que o rustup empacota (ADR-0008).
+lint = "clippy --workspace --all-targets -- -D warnings"
+ci   = "test --workspace --all-targets"

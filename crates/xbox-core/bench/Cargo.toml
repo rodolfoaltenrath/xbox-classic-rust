@@ -1,0 +1,30 @@
+# Pacote de benchmarks do xbox-core, FORA do workspace principal.
+#
+# Motivo (ADR-0008): criterion puxa `windows-sys`, que não linka com o MinGW reduzido
+# que o rustup empacota. Dev-dependencies são compiladas em todo `cargo test`, então
+# manter criterion no workspace quebraria o teste no host de desenvolvimento. Como
+# pacote separado, os benchmarks só são compilados quando explicitamente pedidos:
+#
+#     cd crates/xbox-core/bench && cargo bench
+[package]
+name = "xbox-core-bench"
+description = "Benchmarks do xbox-core"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+xbox-core = { path = ".." }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "core"
+harness = false
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1

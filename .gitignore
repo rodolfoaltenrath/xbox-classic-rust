@@ -1,0 +1,15 @@
+/target
+**/target
+*.pdb
+# Artefatos locais do usuário — nunca versionar (ROADMAP §14)
+/games/
+/roms/
+*.xbe
+*.iso
+*.xiso
+*.bin
+eeprom.bin
+/saves/
+/shadercache/
+obsidian.toml
+/dados/

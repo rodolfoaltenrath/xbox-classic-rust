@@ -1,0 +1,132 @@
+//! Teste real do compilador: executa a CLI, compila o Rust emitido com Cargo/rustc
+//! e roda verificações no binário gerado. Sem interpretador do próprio tradutor.
+
+use std::path::Path;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use xbox_formats::fixtures::xbe_com_codigo;
+use xbox_recomp::{analysis, emit};
+
+mod support;
+
+fn check(command: &mut Command) -> String {
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "status={}\nstdout={}\nstderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let output = root.join(format!("target/recomp-tests/{}-{id}", std::process::id()));
+    let cli = env!("CARGO_BIN_EXE_xberecomp");
+    check(Command::new(cli).arg("demo").arg("--out").arg(&output));
+
+    // Testa também a rota de tradução de um arquivo XBE já existente.
+    let translated = output.join("translated");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/image.xbe"))
+            .arg("--out")
+            .arg(&translated),
+    );
+    assert!(translated.join("src/generated.rs").is_file());
+
+    // Uma segunda geração jamais sobrescreve silenciosamente o projeto anterior.
+    assert!(
+        !Command::new(cli)
+            .arg("demo")
+            .arg("--out")
+            .arg(&output)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+
+    for (name, code) in [
+        (
+            "overflow",
+            &[0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0x05, 1, 0, 0, 0, 0xC3][..],
+        ),
+        ("signed", &[0xB8, 0, 0, 0, 0, 0x83, 0xC0, 0xFF, 0xC3][..]),
+        (
+            "sib",
+            &[
+                0xBB, 0x20, 0x20, 1, 0, // mov ebx,0x12020
+                0xB9, 1, 0, 0, 0, // mov ecx,1
+                0xB8, 0x34, 0x12, 0, 0, // mov eax,0x1234
+                0x89, 0x44, 0x8B, 0xFC, // mov [ebx+ecx*4-4],eax
+                0x8B, 0x13, // mov edx,[ebx]
+                0xC3,
+            ][..],
+        ),
+        (
+            "branch",
+            &[
+                0x31, 0xC0, 0x85, 0xC0, 0x74, 5, 0xB8, 99, 0, 0, 0, 0xB8, 7, 0, 0, 0, 0xC3,
+            ][..],
+        ),
+        ("fault", &[0xA1, 0, 0, 0, 0x50, 0xC3][..]),
+        (
+            "write_code",
+            &[0xB8, 0, 0, 0, 0, 0xA3, 0, 0x10, 1, 0, 0xC3][..],
+        ),
+        ("forever", &[0xEB, 0xFE][..]),
+        ("ret_cleanup", &[0xC2, 8, 0][..]),
+    ] {
+        let image = xbe_com_codigo(code).unwrap();
+        let program = analysis::analyze(&image).unwrap();
+        std::fs::write(
+            output.join(format!("src/{name}.rs")),
+            emit::rust_source(&program),
+        )
+        .unwrap();
+        std::fs::write(output.join(format!("src/{name}.xbe")), image).unwrap();
+    }
+
+    let mut main = std::fs::read_to_string(output.join("src/main.rs")).unwrap();
+    main.push_str(include_str!("verification.inc"));
+    support::extend_project(&output, &root, &mut main);
+    std::fs::write(output.join("src/main.rs"), main).unwrap();
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let target = root.join("target/recomp-native-check");
+    let tests = check(
+        Command::new(&cargo)
+            .arg("test")
+            .arg("--offline")
+            .arg("--manifest-path")
+            .arg(output.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(&target),
+    );
+    let expected = if cfg!(target_arch = "x86_64") {
+        "13 passed"
+    } else {
+        "11 passed"
+    };
+    assert!(tests.contains(expected), "{tests}");
+    std::fs::write(output.join("native-test-results.txt"), &tests).unwrap();
+    let run = check(
+        Command::new(cargo)
+            .arg("run")
+            .arg("--offline")
+            .arg("--manifest-path")
+            .arg(output.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(&target),
+    );
+    assert!(run.contains("EAX=62, instruções=37"), "{run}");
+}

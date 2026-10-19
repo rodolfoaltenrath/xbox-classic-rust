@@ -1,0 +1,6 @@
+[toolchain]
+channel    = "1.98.1"
+components = ["rustfmt", "clippy"]
+# Targets não são declarados aqui de propósito: o CI instala o target de cada runner
+# e o musl entra só na Fase 10 (appliance). Declarar aqui forçaria download em toda
+# máquina de dev.

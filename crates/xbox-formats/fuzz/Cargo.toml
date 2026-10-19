@@ -1,0 +1,50 @@
+# Alvos de fuzzing dos parsers. Pacote separado e EXCLUÍDO do workspace: depende de
+# `libfuzzer-sys`, que exige toolchain nightly e sanitizer.
+#
+#   cargo install cargo-fuzz
+#   cargo +nightly fuzz run xbe
+#   cargo +nightly fuzz run xdvdfs
+#
+# O CI não roda isto (ROADMAP §9: fuzz é tarefa agendada, não de todo push). A cobertura
+# equivalente que roda em toda máquina está em `../tests/robustez.rs`.
+[package]
+name = "xbox-formats-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+xbox-formats = { path = ".." }
+
+[[bin]]
+name = "xbe"
+path = "fuzz_targets/xbe.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xdvdfs"
+path = "fuzz_targets/xdvdfs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fatx"
+path = "fuzz_targets/fatx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "eeprom"
+path = "fuzz_targets/eeprom.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,43 @@
+[package]
+name = "obsidian"
+description = "Emulador de Xbox classico com interface Big Picture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+xbox-core = { workspace = true }
+xbox-formats = { workspace = true }
+xbox-mem = { workspace = true }
+xbox-cpu = { workspace = true }
+xbox-kernel = { workspace = true }
+xbox-gpu = { workspace = true }
+xbox-audio = { workspace = true }
+xbox-input = { workspace = true }
+xbox-platform = { workspace = true }
+xbox-ui = { workspace = true }
+xbox-dbg = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = ["jit"]
+## Recompilador dinamico (Fase 3b) — caminho de producao.
+jit = []
+## Virtualizacao KVM/WHPX (Fase 3c) — experimental.
+hv = []
+## RAM de 128 MB (dev kit).
+ram128 = ["xbox-core/ram128"]
+## Backend DRM/KMS para o appliance Linux (Fase 10).
+kms = []
+## Backend Vulkan direto via ash, em vez de wgpu (Fase 10).
+vk-direct = []
+## Tracing de alta granularidade.
+trace-verbose = ["xbox-core/trace-verbose"]
+## GDB stub para depurar o guest (Fase 9).
+dbg-gdb = []
+
+[lints]
+workspace = true
