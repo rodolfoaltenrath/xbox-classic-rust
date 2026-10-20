@@ -80,6 +80,45 @@ fn snapshot_de_cpu_e_deterministico_e_rejeita_truncamento() {
 }
 
 #[test]
+fn snapshot_v2_preserva_rep_e_migra_v1_sem_continuacao() {
+    use xbox_recomp::runtime::RepeatState;
+    let mut state = State::new(ENTRY_POINT);
+    state.repeat = Some(RepeatState {
+        pc: ENTRY_POINT,
+        eflags: 0xAD7,
+    });
+    let mut writer = SnapshotWriter::new();
+    state.save(&mut writer);
+    let bytes = writer.finish();
+    let mut restored = State::new(0);
+    restored
+        .load(&mut SnapshotReader::new(&bytes).unwrap())
+        .unwrap();
+    assert_eq!(restored, state);
+    for end in 0..bytes.len() {
+        if let Ok(mut reader) = SnapshotReader::new(&bytes[..end]) {
+            assert!(State::new(0).load(&mut reader).is_err());
+        }
+    }
+    // Construção do payload v1 independente da serialização atual.
+    let mut writer = SnapshotWriter::new();
+    writer.section("AOTC", 1);
+    for r in state.regs {
+        writer.u32(r);
+    }
+    writer.u32(state.eip);
+    writer.u32(state.eflags);
+    writer.u64(state.retired);
+    writer.bool(state.returned);
+    let old = writer.finish();
+    restored
+        .load(&mut SnapshotReader::new(&old).unwrap())
+        .unwrap();
+    state.repeat = None;
+    assert_eq!(restored, state);
+}
+
+#[test]
 fn tls_imports_e_codigo_gravavel_sao_recusados() {
     assert!(Session::load(&xbox_formats::fixtures::xbe_minimo()).is_err());
     let mut bytes = xbe_com_codigo(&[0xC3]).unwrap();

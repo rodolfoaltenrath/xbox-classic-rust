@@ -7,6 +7,7 @@ use core::arch::asm;
 mod double;
 pub use double::{DoubleShift, DoubleWidth, execute_double_shift};
 pub mod muldiv;
+pub mod strings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alu {

@@ -3,16 +3,21 @@
 use std::fmt::Write;
 
 use crate::analysis::Program;
-use crate::ir::{Binary, DoubleShift, Operand, Operation, Rotate, Shift, Unary, Width};
+use crate::ir::{
+    Binary, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift, StringOp, Unary,
+    Width,
+};
+
+mod strings;
 
 /// Gera módulo Rust com `run(state, bus, orçamento_de_blocos)`.
-/// Saídas de orçamento acontecem somente em fronteiras de blocos.
+/// Cada elemento REP é uma passagem limitada de seu próprio bloco.
 pub fn rust_source(program: &Program) -> String {
     let mut out = String::from(
         "// Gerado por xbox-recomp. Artefato local.\n\
 use xbox_recomp::{Error, Result};\n\
 #[allow(unused_imports)]\n\
-use xbox_recomp::runtime::{State, Exit, RETURN_SENTINEL, arithmetic_flags_width, arithmetic_carry_flags_width, logic_flags_width, shift_flags, rotate_flags, double_shift_flags, multiply_values, divide_values, sign_extend, condition_met};\n\
+use xbox_recomp::runtime::{State, RepeatState, Exit, RETURN_SENTINEL, arithmetic_flags_width, arithmetic_carry_flags_width, logic_flags_width, shift_flags, rotate_flags, double_shift_flags, multiply_values, divide_values, sign_extend, condition_met};\n\
 #[allow(unused_imports)]\n\
 use xbox_recomp::ir::{Width, Condition, Shift, Rotate, DoubleShift};\n\
 use xbox_mem::{Bus, GuestVirt, Contexto};\n\
@@ -31,7 +36,17 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
                 "bus.definir_contexto(Contexto { pc: Some(GuestVirt(s.eip)), thread: None });",
             );
             emit_operation(&mut out, &i.operation, i.next);
-            line(&mut out, "s.retired = s.retired.wrapping_add(1);");
+            if matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None) {
+                line(
+                    &mut out,
+                    &format!(
+                        "if s.eip != 0x{:08X} {{ s.retired = s.retired.wrapping_add(1); }}",
+                        i.pc
+                    ),
+                );
+            } else {
+                line(&mut out, "s.retired = s.retired.wrapping_add(1);");
+            }
         }
         line(&mut out, "if s.returned { return Ok(Exit::Returned); }");
         line(&mut out, "}");
@@ -62,6 +77,104 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             );
             write_operand(out, dst, "value");
         }
+        Operation::Push(..) | Operation::Pop(..) | Operation::Leave => emit_stack(out, operation),
+        Operation::Jump(target) => {
+            line(out, &format!("s.eip = 0x{target:08X};"));
+            return;
+        }
+        Operation::Branch { condition, target } => {
+            line(
+                out,
+                &format!(
+                    "s.eip = if condition_met(Condition::{condition:?}, s.eflags) {{ 0x{target:08X} }} else {{ 0x{next:08X} }};"
+                ),
+            );
+            return;
+        }
+        Operation::CountBranch {
+            kind,
+            counter,
+            target,
+        } => {
+            emit_count_branch(out, *kind, *counter, *target, next);
+            return;
+        }
+        Operation::String {
+            kind,
+            width,
+            address,
+            repeat,
+        } => {
+            strings::emit(out, *kind, *width, *address, *repeat, next);
+            return;
+        }
+        Operation::Direction(set) => {
+            line(
+                out,
+                if *set {
+                    "s.eflags |= 0x400;"
+                } else {
+                    "s.eflags &= !0x400;"
+                },
+            );
+        }
+        Operation::Call(target) => {
+            line(out, "let esp = s.regs[4].wrapping_sub(4);");
+            line(
+                out,
+                &format!("bus.escrever_u32(GuestVirt(esp), 0x{next:08X})?;"),
+            );
+            line(out, "s.regs[4] = esp;");
+            line(out, &format!("s.eip = 0x{target:08X};"));
+            return;
+        }
+        Operation::Ret(bytes) => {
+            line(out, "let target = bus.ler_u32(GuestVirt(s.regs[4]))?;");
+            line(
+                out,
+                &format!(
+                    "s.regs[4] = s.regs[4].wrapping_add({});",
+                    u32::from(*bytes) + 4
+                ),
+            );
+            line(out, "s.eip = target;");
+            line(out, "s.returned = target == RETURN_SENTINEL;");
+            return;
+        }
+        Operation::Nop => {}
+    }
+    line(out, &format!("s.eip = 0x{next:08X};"));
+}
+
+fn emit_count_branch(out: &mut String, kind: CountBranch, counter: Width, target: u32, next: u32) {
+    let operand = accumulator(1, counter);
+    if kind == CountBranch::Zero {
+        line(out, &format!("let count = {};", read(&operand)));
+    } else {
+        line(
+            out,
+            &format!(
+                "let count = ({}).wrapping_sub(1) & 0x{:08X}u32;",
+                read(&operand),
+                counter.mask()
+            ),
+        );
+        write_operand(out, &operand, "count");
+    }
+    let condition = match kind {
+        CountBranch::Zero => "count == 0",
+        CountBranch::Loop => "count != 0",
+        CountBranch::LoopEqual => "count != 0 && s.eflags & 0x40 != 0",
+        CountBranch::LoopNotEqual => "count != 0 && s.eflags & 0x40 == 0",
+    };
+    line(
+        out,
+        &format!("s.eip = if {condition} {{ 0x{target:08X} }} else {{ 0x{next:08X} }};"),
+    );
+}
+
+fn emit_stack(out: &mut String, operation: &Operation) {
+    match operation {
         Operation::Push(src, width) => {
             // PUSH ESP armazena o valor antes do decremento (Intel SDM, PUSH).
             line(out, &format!("let value = {};", read(src)));
@@ -97,45 +210,8 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             line(out, "s.regs[4] = s.regs[5].wrapping_add(4);");
             line(out, "s.regs[5] = value;");
         }
-        Operation::Jump(target) => {
-            line(out, &format!("s.eip = 0x{target:08X};"));
-            return;
-        }
-        Operation::Branch { condition, target } => {
-            line(
-                out,
-                &format!(
-                    "s.eip = if condition_met(Condition::{condition:?}, s.eflags) {{ 0x{target:08X} }} else {{ 0x{next:08X} }};"
-                ),
-            );
-            return;
-        }
-        Operation::Call(target) => {
-            line(out, "let esp = s.regs[4].wrapping_sub(4);");
-            line(
-                out,
-                &format!("bus.escrever_u32(GuestVirt(esp), 0x{next:08X})?;"),
-            );
-            line(out, "s.regs[4] = esp;");
-            line(out, &format!("s.eip = 0x{target:08X};"));
-            return;
-        }
-        Operation::Ret(bytes) => {
-            line(out, "let target = bus.ler_u32(GuestVirt(s.regs[4]))?;");
-            line(
-                out,
-                &format!(
-                    "s.regs[4] = s.regs[4].wrapping_add({});",
-                    u32::from(*bytes) + 4
-                ),
-            );
-            line(out, "s.eip = target;");
-            line(out, "s.returned = target == RETURN_SENTINEL;");
-            return;
-        }
-        Operation::Nop => {}
+        _ => unreachable!("operação de pilha"),
     }
-    line(out, &format!("s.eip = 0x{next:08X};"));
 }
 
 fn emit_extend(out: &mut String, signed: bool, dst: &Operand, src: &Operand) {

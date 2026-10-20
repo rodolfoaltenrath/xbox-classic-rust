@@ -19,7 +19,8 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
   INC, DEC, NEG e NOT; NOP de 16/32 bits.
 - Registradores completos e partes AL/CL/DL/BL, AH/CH/DH/BH, AX/CX/DX/BX/SP/BP/SI/DI.
   Escrever uma parte preserva os demais bits. `ir::Width` determina leitura,
-  escrita, máscara e flags; endereços continuam com 32 bits.
+  escrita, máscara e flags; endereços gerais continuam com 32 bits, com address16
+  disponível especificamente nas strings e branches por contador.
 - Memória de 8/16/32 bits com base, índice, escala e deslocamento. MOVZX/MOVSX
   estendem bytes/words; LEA calcula o endereço sem acessar memória ou mudar flags.
 - JMP e as 16 condições Jcc curtas/near, CALL/RET de 32 bits, RET com limpeza.
@@ -58,8 +59,14 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
   divisor zero de quociente fora da faixa. Não entregam #DE via IDT/kernel; a CPU
   permanece na instrução, sem contabilizá-la como concluída (ADR-0017).
 
-LOCK/REP, overrides de segmento, endereçamento de 16 bits, JECXZ/LOOP, CALL/RET de
-16 bits, chamadas indiretas, x87/MMX/SSE e
+- JCXZ/JECXZ, LOOP/LOOPE/LOOPNE com contador CX/ECX, sem alterar flags.
+- MOVS/STOS/LODS/CMPS/SCAS de 8/16/32 bits; CLD/STD e DF. REP para cópia,
+  preenchimento e carga; REPE/REPNE para comparações. Endereços de 16/32 bits
+  determinam índices e contador, preservando metades altas no modo de 16 bits.
+  Cada elemento repetido é uma passagem limitada de um bloco próprio (ADR-0018).
+
+LOCK, overrides de segmento, endereçamento geral de 16 bits, CALL/RET de
+16 bits, chamadas indiretas, INS/OUTS, REPNE fora de CMPS/SCAS, x87/MMX/SSE e
 outras instruções são recusados com PC e diagnóstico.
 Jumps para o meio de uma instrução, sobreposição de instruções/seções, alvos fora
 de bytes executáveis, código truncado e código gravável também são erros. A análise
@@ -70,17 +77,23 @@ um título comercial.
 
 Cada bloco gerado contém operações Rust explícitas. Um `match` de EIP escolhe o bloco
 compilado; não há dispatcher de opcodes nem leitura do XBE para decodificar durante
-a execução. O ponto de suspensão é uma fronteira de bloco.
+a execução. O ponto de suspensão é uma fronteira de bloco, incluindo cada elemento
+de uma instrução REP, isolada de seu setup e de sua continuação.
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
-e indicador de retorno. Não tem ponteiros ou handles do host. O CALL escreve o
+e indicador de retorno. Durante comparação REP, guarda também PC e flags originais
+para restaurá-las em caso de falta. Não tem ponteiros ou handles do host. O CALL escreve o
 endereço de retorno na pilha do guest; o RET o lê. A sentença Rust de chamada não
 representa a pilha do jogo, permitindo salvar a continuação com uma call pendente.
 
 `run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned` ou erro recuperável.
 Orçamento zero preserva o estado. Falhas de memória deixam EIP na instrução que
-falhou; a retomada após erro no meio de bloco ainda não é suportada, e a sessão deve
-ser descartada. Pausa/retomada com orçamento acontece só em fronteiras de bloco.
+falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
+não há entrega automática ao kernel. Nas outras instruções, a retomada após erro
+no meio de bloco ainda não é suportada, e a sessão deve ser descartada.
+Cada elemento REP consome uma unidade de orçamento; `retired` conta a instrução
+apenas na conclusão. Zero repetições não acessa memória. O bus valida todas as
+páginas de uma escrita antes de alterar RAM, evitando store parcial na falta.
 
 O runtime não consulta relógio de parede. O contador `retired` não alimenta o relógio
 virtual como se fosse contagem de ciclos: essa integração precisa de um modelo de
@@ -105,7 +118,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 45 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 55 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 
@@ -130,8 +143,13 @@ só então executa a divisão estreita exata; não provoca #DE no host. IMUL tru
 é comparado com o produto físico implícito equivalente. Os testes verificam
 separadamente flags indefinidas, fontes read-only, aliases, erros e snapshot.
 
-O snapshot mantém o formato anterior: partes de registrador usam os mesmos oito
-registradores de 32 bits. Helpers de flags de 32 bits continuam disponíveis para os
+Strings acrescentam 3456 comparações físicas e testes de address16, faltas,
+sobreposição e snapshots parciais (ADR-0018). O oráculo usa buffers host com limites
+validados; o assembly limpa DF antes de devolver o controle ao Rust.
+
+O snapshot `AOTC` v2 acrescenta a continuação de comparação REP e lê v1 com esse
+campo vazio. Partes de registrador usam os mesmos oito registradores de 32 bits.
+Helpers de flags de 32 bits continuam disponíveis para os
 fontes gerados pela primeira demonstração; o emissor atual chama helpers por largura.
 
 Essa prova não mede FPS ou ganho de performance, não testa BIOS ou jogos comerciais,

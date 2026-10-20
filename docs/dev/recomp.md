@@ -72,7 +72,7 @@ as dependências desse target e pode demorar mais.
 O snapshot da prova inclui CPU e bus. Não equivale a save state de um jogo completo:
 kernel, GPU, áudio e input ainda não participam.
 
-Em x86_64, a integração executa 45 testes dentro do projeto gerado: inclui 9438
+Em x86_64, a integração executa 55 testes dentro do projeto gerado: inclui 9438
 comparações de ALU com a CPU física, 262144 casos exaustivos de ADC/SBB de byte,
 445686 comparações de shifts e 791764 de rotações/shifts duplos. Outros 3872 casos
 verificam Jcc por relações independentes. Produtos/divisões acrescentam 483916
@@ -223,3 +223,31 @@ Logs: `target/muldiv-workspace-tests.log`, `target/muldiv-native-release-tests.l
 `target/muldiv-doctests.log` e o `native-test-results.txt` da execução. A integração
 agora usa `--nocapture` no projeto gerado para registrar separadamente resultados
 físicos e diagnósticos de divisão.
+
+## Loops e strings REP — validação Windows de 2026-10-20
+
+Host x86_64-pc-windows-gnu com o toolchain fixado Rust 1.98.1.
+Regras e limites: [ADR-0018](../adr/0018-strings-rep-retomaveis.md).
+
+- `RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --offline --features xbox-cpu/isa-oracle`:
+  183 testes passaram. O projeto gerado passou em 55 testes nativos em debug e
+  release, também com warnings como erros. Dois doctests passaram.
+- 3456 comparações de strings com a CPU física verificam memória, EAX, índices,
+  contador e flags em 8/16/32 bits, com DF nas duas direções e diferentes prefixos.
+  As 72 variantes geradas incluem address16, verificado por testes semânticos.
+- Oito variantes de JCXZ/JECXZ/LOOP/LOOPE/LOOPNE cobrem wrap, CX alto preservado,
+  flags e caminhos tomados/não tomados. ECX inicial zero em LOOP faz wrap;
+  orçamento interrompe esse laço e REP com ECX máximo sem depender do relógio.
+- Snapshots no meio de REP preservam a continuação, incluindo flags originais de
+  comparações. Há retomada após falta/remapeamento, sobreposição de MOVS, zero sem
+  acesso à memória, CLD/STD e falha de escrita sem alteração parcial da RAM.
+- `AOTC` v2 guarda a comparação em andamento; v1 migra com continuação vazia.
+  Não há mudança nos bytes de RAM nem no formato do snapshot do bus.
+- Formatação, diff e Clippy dos pacotes `xbox-recomp`, `xberecomp` e `xbox-cpu`
+  passaram com `--no-deps --all-targets --features xbox-cpu/isa-oracle -- -D warnings`.
+  `xbox-mem` mantém os 19 avisos globais anteriores; nenhum novo nesta etapa.
+  Isso não declara Miri, CI remoto, validação Linux desta alteração ou jogos comerciais.
+
+Logs: `target/strings-workspace-tests.log`, `target/strings-native-release-tests.log`,
+`target/strings-doctests.log` e `target/strings-memory-clippy.log`. O caminho do
+projeto gerado validado está em `target/strings-native-project.txt`.

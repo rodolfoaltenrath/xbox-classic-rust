@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: JCXZ/JECXZ e LOOP/LOOPE/LOOPNE com CX/ECX; CLD/STD e
+  MOVS/STOS/LODS/CMPS/SCAS de 8/16/32 bits, com endereços de 16/32 bits.
+  REP/REPE/REPNE usam um elemento por passagem de bloco, respeitando orçamento
+  e snapshot parcial. Comparações restauram flags originais em faltas; `AOTC` v2
+  preserva a continuação e migra v1. 3456 comparações com strings na CPU física,
+  mais testes de faults, wrap, DF, sobreposição e snapshots (ADR-0018).
+- Fase 2: o bus valida a faixa inteira antes de escrever; uma página inválida,
+  read-only ou região física inválida não deixa metade de um store na RAM.
+
 **Fase 3-AOT — MUL/IMUL, DIV/IDIV e diagnóstico de #DE (ADR-0017)**
 - Produtos e divisões de 8/16/32 bits com registradores implícitos; IMUL de dois e
   três operandos em 16/32 bits, com memória e imediatos com sinal.

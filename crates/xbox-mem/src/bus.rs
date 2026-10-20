@@ -175,6 +175,9 @@ impl Bus {
 
     /// Escreve bytes em um endereço virtual.
     pub fn escrever_bytes(&mut self, va: GuestVirt, origem: &[u8]) -> Result<(), Falta> {
+        // Validar todas as páginas antes de tocar RAM ou dispositivos. Um store
+        // desalinhado não pode deixar metade do elemento REP escrita numa falta.
+        self.validar_escrita(va, origem)?;
         let mut restante = origem;
         let mut atual = va;
         while !restante.is_empty() {
@@ -195,6 +198,37 @@ impl Bus {
                 acesso: Acesso::Escrita,
                 motivo: MotivoDeFalta::Transbordo,
             })?;
+        }
+        Ok(())
+    }
+
+    fn validar_escrita(&mut self, va: GuestVirt, origem: &[u8]) -> Result<(), Falta> {
+        let mut atual = va;
+        let mut restante = origem;
+        while !restante.is_empty() {
+            let pa = self.mmu.traduzir(atual, Acesso::Escrita)?;
+            let n = restante.len().min(bytes_ate_fim_da_pagina(atual));
+            if matches!(
+                self.mapa.classificar(pa),
+                Regiao::Tiled { .. } | Regiao::Buraco
+            ) {
+                // Estas regiões só registram o diagnóstico e devolvem erro;
+                // nenhuma escrita de RAM/MMIO é executada nesta passagem.
+                self.escrever_regiao(pa, &restante[..n])
+                    .map_err(|motivo| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo,
+                    })?;
+            }
+            restante = &restante[n..];
+            if !restante.is_empty() {
+                atual = atual.checked_add(n as u32).ok_or(Falta {
+                    endereco: atual,
+                    acesso: Acesso::Escrita,
+                    motivo: MotivoDeFalta::Transbordo,
+                })?;
+            }
         }
         Ok(())
     }

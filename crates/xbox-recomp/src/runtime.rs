@@ -23,7 +23,15 @@ pub const ESP: usize = 4;
 const STACK_BASE: u32 = 0x7000_0000;
 const STACK_SIZE: u32 = 16 * 4096;
 
-/// CPU inteira mínima. Não representa ainda x87, SSE ou o sistema de threads.
+/// Flags de entrada da instrução de comparação REP em andamento.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RepeatState {
+    pub pc: u32,
+    /// REPE/REPNE CMPS/SCAS restauram estas flags se houver falta (Intel SDM).
+    pub eflags: u32,
+}
+
+/// CPU inteira mínima, com continuação serializável de comparação REP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct State {
     /// EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI.
@@ -33,6 +41,7 @@ pub struct State {
     /// Instruções concluídas, sem pretensão de representar ciclos do Pentium III.
     pub retired: u64,
     pub returned: bool,
+    pub repeat: Option<RepeatState>,
 }
 
 impl State {
@@ -43,13 +52,14 @@ impl State {
             eflags: 2,
             retired: 0,
             returned: false,
+            repeat: None,
         }
     }
 }
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 1);
+        out.section("AOTC", 2);
         for r in self.regs {
             out.u32(r);
         }
@@ -57,10 +67,15 @@ impl Snapshot for State {
         out.u32(self.eflags);
         out.u64(self.retired);
         out.bool(self.returned);
+        out.bool(self.repeat.is_some());
+        if let Some(repeat) = self.repeat {
+            out.u32(repeat.pc);
+            out.u32(repeat.eflags);
+        }
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        inp.section("AOTC", 1)?;
+        let version = inp.section("AOTC", 2)?;
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -68,11 +83,19 @@ impl Snapshot for State {
         self.eflags = inp.u32()?;
         self.retired = inp.u64()?;
         self.returned = inp.bool()?;
+        self.repeat = if version >= 2 && inp.bool()? {
+            Some(RepeatState {
+                pc: inp.u32()?,
+                eflags: inp.u32()?,
+            })
+        } else {
+            None
+        };
         Ok(())
     }
 }
 
-/// Saída em fronteira de bloco: nenhuma continuação fica na pilha do host.
+/// Saída em fronteira de bloco ou entre elementos REP; sem continuação no host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
     Returned,

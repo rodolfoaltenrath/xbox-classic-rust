@@ -4,7 +4,7 @@
 > **Linguagem:** Rust (100% nativo, sem dependências de runtime externo)
 > **Plataformas na v1:** Windows 10/11 (x86_64) e Linux (x86_64, desktop)
 > **Plataforma-alvo final:** Linux minimalista rodando direto no KMS/DRM, sem X11/Wayland, como *appliance* (mini console)
-> **Última atualização:** 2026-10-19
+> **Última atualização:** 2026-10-20
 > **Status global:** Fases 0 e 1 concluídas; código de memória presente, com aceite da Fase 2 ainda pendente. **Fase 3-AOT iniciada:** primeira fixture traduzida para Rust, compilada e executada nativamente (ADR-0013). Jogos comerciais ainda não executam.
 
 ---
@@ -612,7 +612,8 @@ devem ser conferidas no GitHub Actions; testes locais estão registrados em `doc
 - [x] *(2026-10-19)* SHL/SHR/SAR de 8/16/32 bits por CL/imediato/um implícito; flags definidas verificadas em 445686 comparações físicas e política determinística para flags indefinidas (ADR-0015)
 - [x] *(2026-10-19)* ROL/ROR/RCL/RCR de 8/16/32 bits e SHLD/SHRD de 16/32 bits; 791764 comparações físicas; contagens de resultado indefinido recusadas com PC (ADR-0016)
 - [x] *(2026-10-19)* MUL/IMUL e DIV/IDIV de 8/16/32 bits, IMUL truncado 16/32, CBW/CWDE/CWD/CDQ; 483916 comparações físicas e 1000580 diagnósticos de #DE classificados, sem entrega por IDT/kernel (ADR-0017)
-- [ ] Completar ISA inteira: strings, JECXZ/LOOP e chamadas indiretas
+- [x] *(2026-10-20)* JCXZ/JECXZ, LOOP/LOOPE/LOOPNE e CLD/STD; strings de 8/16/32 bits com endereços de 16/32 bits, REP limitado por elemento e snapshot parcial (ADR-0018); 3456 comparações físicas
+- [ ] Completar controle indireto: CALL/JMP com descoberta conservadora de alvos
 - [ ] x87/MMX/SSE e validação diferencial independente
 - [ ] Loader real: TLS, ordinais e ambiente XAPI (Fase 4)
 - [ ] Perfis por revisão de XBE, identificação por hash e cache versionado
@@ -1099,6 +1100,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-19 | 3-AOT | SHL/SHR/SAR e política de flags (ADR-0015) | — | Contagens mascaradas, CL capturado antes da escrita, flags indefinidas normalizadas; 445686 comparações físicas de shifts; 177 testes de workspace e 24 nativos |
 | 2026-10-19 | 3-AOT | Rotações e shifts duplos (ADR-0016) | — | Anel com carry, aliases de CL/fonte, memória e contagens indefinidas com diagnóstico; 791764 comparações físicas adicionais; 179 testes de workspace e 35 nativos |
 | 2026-10-19 | 3-AOT | MUL/IMUL e DIV/IDIV com diagnóstico de #DE (ADR-0017) | — | 483916 comparações físicas e 1000580 diagnósticos classificados; extensões de sinal, memória, aliases e snapshot; 180 testes de workspace e 45 nativos |
+| 2026-10-20 | 3-AOT | Loops por contador e strings REP retomáveis (ADR-0018) | — | 3456 comparações físicas, address16, DF, faltas e snapshots parciais; bus evita escrita parcial; 183 testes de workspace e 55 nativos em debug/release |
 
 ---
 
@@ -1106,9 +1108,8 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Fase 3-AOT:** depois de produtos/divisões, implementar JECXZ/LOOP e operações
-   de strings com REP, mantendo orçamento de execução, estado capturável e erros
-   explícitos; depois, chamadas indiretas com descoberta conservadora de alvos.
+1. **Fase 3-AOT:** chamadas e saltos indiretos com descoberta conservadora de alvos,
+   mantendo diagnóstico de alvos desconhecidos, orçamento e estado capturável.
    Guia: `docs/dev/recomp.md`.
 2. **Fase 2:** fechar seu aceite pendente, incluindo loader/T14, Miri e documentação;
    a prova AOT usa o bus existente e não declara a fase concluída.

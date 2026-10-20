@@ -8,7 +8,8 @@ use iced_x86::{
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
 pub use crate::ir::{
-    Binary, Condition, DoubleShift, Operand, Operation, Rotate, Shift, Unary, Width,
+    Binary, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift,
+    StringOp, Unary, Width,
 };
 use crate::{Error, Result};
 
@@ -90,11 +91,17 @@ pub fn analyze(bytes: &[u8]) -> Result<Program> {
                 leaders.insert(target);
                 pending.push_back(target);
             }
-            Operation::Branch { target, .. } | Operation::Call(target) => {
+            Operation::Branch { target, .. }
+            | Operation::CountBranch { target, .. }
+            | Operation::Call(target) => {
                 leaders.extend([target, next]);
                 pending.extend([target, next]);
             }
             Operation::Ret(_) => {}
+            Operation::String { repeat, .. } if repeat != Repeat::None => {
+                leaders.extend([pc, next]);
+                pending.push_back(next);
+            }
             _ => pending.push_back(next),
         }
         instructions.insert(
@@ -106,8 +113,20 @@ pub fn analyze(bytes: &[u8]) -> Result<Program> {
             },
         );
     }
+    let blocks = build_blocks(&instructions, &leaders)?;
+    Ok(Program {
+        entry: xbe.entry_point,
+        instructions,
+        blocks,
+    })
+}
+
+fn build_blocks(
+    instructions: &BTreeMap<u32, Insn>,
+    leaders: &BTreeSet<u32>,
+) -> Result<BTreeMap<u32, Vec<Insn>>> {
     let mut blocks = BTreeMap::new();
-    for start in &leaders {
+    for start in leaders {
         let mut block = Vec::new();
         let mut pc = *start;
         loop {
@@ -120,30 +139,30 @@ pub fn analyze(bytes: &[u8]) -> Result<Program> {
                 i.operation,
                 Operation::Jump(_)
                     | Operation::Branch { .. }
+                    | Operation::CountBranch { .. }
                     | Operation::Call(_)
                     | Operation::Ret(_)
-            ) || leaders.contains(&pc)
+            ) || matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None)
+                || leaders.contains(&pc)
             {
                 break;
             }
         }
         blocks.insert(*start, block);
     }
-    Ok(Program {
-        entry: xbe.entry_point,
-        instructions,
-        blocks,
-    })
+    Ok(blocks)
 }
 
 fn lower(i: &Instruction) -> Result<Operation> {
     let pc = i.ip32();
-    if i.has_lock_prefix()
-        || i.has_rep_prefix()
-        || i.has_repne_prefix()
-        || i.segment_prefix() != Register::None
-    {
-        return Err(fail(pc, "prefixo LOCK/REP/segmento ainda não suportado"));
+    if i.has_lock_prefix() || i.segment_prefix() != Register::None {
+        return Err(fail(pc, "prefixo LOCK/segmento ainda não suportado"));
+    }
+    if let Some(op) = lower_string(i)? {
+        return Ok(op);
+    }
+    if i.has_rep_prefix() || i.has_repne_prefix() {
+        return Err(fail(pc, "REP exige operação de string suportada"));
     }
     let binary = match i.mnemonic() {
         Mnemonic::Mov => Some(Binary::Mov),
@@ -214,6 +233,56 @@ fn lower(i: &Instruction) -> Result<Operation> {
         });
     }
     lower_stack_and_flow(i)
+}
+
+fn lower_string(i: &Instruction) -> Result<Option<Operation>> {
+    let (kind, width) = match i.code() {
+        Code::Movsb_m8_m8 => (StringOp::Movs, Width::Byte),
+        Code::Movsw_m16_m16 => (StringOp::Movs, Width::Word),
+        Code::Movsd_m32_m32 => (StringOp::Movs, Width::Dword),
+        Code::Stosb_m8_AL => (StringOp::Stos, Width::Byte),
+        Code::Stosw_m16_AX => (StringOp::Stos, Width::Word),
+        Code::Stosd_m32_EAX => (StringOp::Stos, Width::Dword),
+        Code::Lodsb_AL_m8 => (StringOp::Lods, Width::Byte),
+        Code::Lodsw_AX_m16 => (StringOp::Lods, Width::Word),
+        Code::Lodsd_EAX_m32 => (StringOp::Lods, Width::Dword),
+        Code::Cmpsb_m8_m8 => (StringOp::Cmps, Width::Byte),
+        Code::Cmpsw_m16_m16 => (StringOp::Cmps, Width::Word),
+        Code::Cmpsd_m32_m32 => (StringOp::Cmps, Width::Dword),
+        Code::Scasb_AL_m8 => (StringOp::Scas, Width::Byte),
+        Code::Scasw_AX_m16 => (StringOp::Scas, Width::Word),
+        Code::Scasd_EAX_m32 => (StringOp::Scas, Width::Dword),
+        _ => return Ok(None),
+    };
+    let address = if i
+        .op_kinds()
+        .any(|k| matches!(k, OpKind::MemorySegSI | OpKind::MemoryESDI))
+    {
+        Width::Word
+    } else {
+        Width::Dword
+    };
+    let compare = matches!(kind, StringOp::Cmps | StringOp::Scas);
+    let repeat = if i.has_repne_prefix() {
+        if !compare {
+            return Err(fail(i.ip32(), "REPNE somente em CMPS/SCAS"));
+        }
+        Repeat::NotEqual
+    } else if i.has_rep_prefix() {
+        if compare {
+            Repeat::Equal
+        } else {
+            Repeat::Always
+        }
+    } else {
+        Repeat::None
+    };
+    Ok(Some(Operation::String {
+        kind,
+        width,
+        address,
+        repeat,
+    }))
 }
 
 fn lower_multiply_divide(i: &Instruction) -> Result<Option<Operation>> {
@@ -301,7 +370,27 @@ fn lower_bit_motion(i: &Instruction) -> Result<Option<Operation>> {
 
 fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
     let pc = i.ip32();
+    let count_branch = match i.code() {
+        Code::Jcxz_rel8_32 => Some((CountBranch::Zero, Width::Word)),
+        Code::Jecxz_rel8_32 => Some((CountBranch::Zero, Width::Dword)),
+        Code::Loop_rel8_32_CX => Some((CountBranch::Loop, Width::Word)),
+        Code::Loop_rel8_32_ECX => Some((CountBranch::Loop, Width::Dword)),
+        Code::Loope_rel8_32_CX => Some((CountBranch::LoopEqual, Width::Word)),
+        Code::Loope_rel8_32_ECX => Some((CountBranch::LoopEqual, Width::Dword)),
+        Code::Loopne_rel8_32_CX => Some((CountBranch::LoopNotEqual, Width::Word)),
+        Code::Loopne_rel8_32_ECX => Some((CountBranch::LoopNotEqual, Width::Dword)),
+        _ => None,
+    };
+    if let Some((kind, counter)) = count_branch {
+        return Ok(Operation::CountBranch {
+            kind,
+            counter,
+            target: i.near_branch32(),
+        });
+    }
     Ok(match i.code() {
+        Code::Cld => Operation::Direction(false),
+        Code::Std => Operation::Direction(true),
         Code::Nopd | Code::Nopw => Operation::Nop,
         Code::Push_r16 | Code::Push_rm16 | Code::Push_imm16 | Code::Pushw_imm8 => {
             Operation::Push(operand(i, 0)?, Width::Word)

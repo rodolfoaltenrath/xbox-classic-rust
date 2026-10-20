@@ -1,9 +1,15 @@
 # Revisão arquitetural — memória, MMU, MMIO e fastmem
 
-> **Status:** revisão concluída, implementação **não iniciada**.
+> **Status:** revisão concluída; caminho seguro implementado, aceite da Fase 2 pendente.
 > **Data:** 2026-10-19
 > **Escopo:** Fase 2 do [ROADMAP](../../ROADMAP.md).
 > **Gatilho:** revisão externa pedindo validação independente antes de escrever código.
+
+> **Implementação posterior (2026-10-20):** o bus seguro está em uso pelo AOT;
+> o aceite completo da Fase 2 permanece pendente. `Bus::escrever_bytes` agora valida
+> todas as páginas/regiões antes de executar a escrita, para evitar alteração parcial
+> de RAM quando a segunda página falha. Leituras e telemetria mantêm os limites
+> anteriores. A motivação e os testes estão no [ADR-0018](../adr/0018-strings-rep-retomaveis.md).
 
 Este documento é o portão da Fase 2. Ele revisa o que o ROADMAP planejava, **corrige
 duas decisões com base em medição** e fixa a API que CPU, GPU e kernel vão usar.

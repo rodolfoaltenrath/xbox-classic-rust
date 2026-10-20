@@ -103,7 +103,7 @@ pub mod janelas {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Acesso, Bus, GuestVirt, Perm, janelas};
+    use crate::{Acesso, Bus, GuestPhys, GuestVirt, MotivoDeFalta, Perm, janelas};
 
     #[test]
     fn fase_declarada() {
@@ -142,5 +142,32 @@ mod tests {
             bus.traduzir(GuestVirt(janelas::CONTIGUA.0 + fisico.0), Acesso::Execucao)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn escrita_cruzando_pagina_valida_toda_faixa_antes_de_alterar_ram() {
+        let mut bus = Bus::novo().unwrap();
+        let frame = bus.frames_mut().alocar().unwrap();
+        bus.mapear(GuestVirt(0x1000), frame, 1, Perm::RW).unwrap();
+        bus.escrever_u16(GuestVirt(0x1FFE), 0x1234).unwrap();
+        for second in [
+            None,
+            Some((frame, Perm::RO)),
+            Some((GuestPhys(0x40000000), Perm::RW)),
+        ] {
+            if let Some((pa, perm)) = second {
+                bus.mapear(GuestVirt(0x2000), pa, 1, perm).unwrap();
+            }
+            let fault = bus.escrever_u32(GuestVirt(0x1FFE), u32::MAX).unwrap_err();
+            assert_eq!(fault.endereco, GuestVirt(0x2000));
+            assert_eq!(fault.acesso, Acesso::Escrita);
+            assert_eq!(bus.ler_u16(GuestVirt(0x1FFE)).unwrap(), 0x1234);
+        }
+        // Fim do espaço virtual: transbordo também falha antes da escrita.
+        bus.mapear(GuestVirt(0xFFFFF000), frame, 1, Perm::RW)
+            .unwrap();
+        let fault = bus.escrever_u32(GuestVirt(0xFFFFFFFE), 0).unwrap_err();
+        assert_eq!(fault.motivo, MotivoDeFalta::Transbordo);
+        assert_eq!(bus.ler_u16(GuestVirt(0xFFFFFFFE)).unwrap(), 0x1234);
     }
 }

@@ -102,6 +102,31 @@ pub enum DoubleShift {
     Shrd,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CountBranch {
+    Zero,
+    Loop,
+    LoopEqual,
+    LoopNotEqual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StringOp {
+    Movs,
+    Stos,
+    Lods,
+    Cmps,
+    Scas,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Repeat {
+    None,
+    Always,
+    Equal,
+    NotEqual,
+}
+
 /// As 16 condições de Jcc, em ordem de encoding Intel (0x70..0x7F).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Condition {
@@ -165,6 +190,18 @@ pub enum Operation {
         condition: Condition,
         target: u32,
     },
+    CountBranch {
+        kind: CountBranch,
+        counter: Width,
+        target: u32,
+    },
+    String {
+        kind: StringOp,
+        width: Width,
+        address: Width,
+        repeat: Repeat,
+    },
+    Direction(bool),
     Call(u32),
     Ret(u16),
     Nop,

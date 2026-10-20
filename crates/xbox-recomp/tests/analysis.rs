@@ -41,6 +41,43 @@ fn rejeita_branch_no_meio_de_instrucao() {
 }
 
 #[test]
+fn strings_rep_criam_blocos_retomaveis_e_prefixos_invalidos_falham() {
+    use xbox_recomp::ir::{Repeat, StringOp, Width};
+    let bytes = xbe_com_codigo(&[0x90, 0x67, 0x66, 0xF3, 0xA5, 0x90, 0xC3]).unwrap();
+    let program = analyze(&bytes).unwrap();
+    assert_eq!(program.blocks.len(), 3);
+    assert_eq!(program.blocks[&0x11000].len(), 1);
+    assert_eq!(program.blocks[&0x11001].len(), 1);
+    assert_eq!(
+        program.instructions[&0x11001].operation,
+        Operation::String {
+            kind: StringOp::Movs,
+            width: Width::Word,
+            address: Width::Word,
+            repeat: Repeat::Always,
+        }
+    );
+    for code in [
+        &[0xF2, 0xA4, 0xC3][..],       // REPNE MOVS não documentado.
+        &[0x64, 0xF3, 0xA4, 0xC3][..], // FS exige segmentação/TLS.
+        &[0xF0, 0xA4, 0xC3][..],
+        &[0xF3, 0xE2, 0, 0xC3][..],
+        &[0x66, 0xE2, 0, 0xC3][..], // branch16 ainda não suportado.
+        &[0xF3, 0x6C, 0xC3][..],    // INS exige portas de I/O.
+    ] {
+        assert!(matches!(
+            analyze(&xbe_com_codigo(code).unwrap()),
+            Err(Error::Analysis { pc: 0x11000, .. })
+        ));
+    }
+    for opcode in [0xE0, 0xE1, 0xE2, 0xE3] {
+        // Alvo no interior do MOV deve falhar também nas novas branches.
+        let code = [0xB8, 0, 0, 0, 0, opcode, 0xFA, 0xC3];
+        assert!(analyze(&xbe_com_codigo(&code).unwrap()).is_err());
+    }
+}
+
+#[test]
 fn imediato_de_oito_bits_e_estendido_com_sinal_para_32() {
     let bytes = xbe_com_codigo(&[0x83, 0xC0, 0xFF, 0xC3]).unwrap();
     let p = analyze(&bytes).unwrap();
@@ -180,7 +217,6 @@ fn extensao_da_isa_nao_aceita_segmentos_address16_ou_calls16() {
         &[0x66, 0xE8, 0, 0, 0xC3][..], // call rel16
         &[0x66, 0xC3][..],             // ret de 16 bits
         &[0x0F, 0xA3, 0xC8, 0xC3][..], // bt eax,ecx
-        &[0xE3, 0, 0xC3][..],          // jecxz (não é Jcc baseado em FLAGS)
     ] {
         assert!(matches!(
             analyze(&xbe_com_codigo(code).unwrap()),
