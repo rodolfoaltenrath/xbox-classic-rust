@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`445a6f7`** e nas alterações
-locais do **ADR-0032**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`e9446fb`** e nas alterações
+locais do **ADR-0033**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -34,7 +34,8 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
-e agora para em XcSHAInit (335), ainda não implementado.
+e por XcSHAInit (335). Agora para em ExQueryNonVolatileSetting (24), ainda não
+implementado, na consulta de EEPROM de `init_rand_s`.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
@@ -44,9 +45,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher e criação de mutexes; 2/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutexes e SHA-1; 5/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Execução inicial real até XcSHAInit; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Execução inicial real até ExQueryNonVolatileSetting; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há **duas entregas de implementação registradas em commits**, mas isso não
@@ -156,14 +157,14 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 8725 instruções/blocos; 8769 com `--entry 0x19110`; sem recusa de ISA nesse fluxo |
-| Bloqueio de execução atual | XcSHAInit (335), retorno reportado `0x19140`; argumento `0x28EF0`; NtCreateMutant já foi atendido |
+| Bloqueio de execução atual | ExQueryNonVolatileSetting (24), retorno reportado `0x19176`; índice `0xFFFF`, buffer de 256 bytes; mutex e SHAInit já atendidos |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
 e `XeImageFileName` (326). O CRT nxdk cria uma thread para executar `main`.
 Logo, TLS e transporte de chamadas, isoladamente, não bastam para rodar o alvo.
 As 69 funções são **importações estáticas**; só a execução prova quais são chamadas
-em um caminho. O fluxo já exerceu NtCreateMutant e chegou a XcSHAInit; isso não
+em um caminho. O fluxo já exerceu NtCreateMutant e XcSHAInit, chegando à EEPROM; isso não
 fornece um inventário completo das chamadas futuras.
 
 ### Evidência e arquivos
@@ -269,11 +270,39 @@ argumento `0x28EF0`, no caminho de `init_rand_s` do nxdk. O fonte público usa u
 contexto de 116 bytes e depois chama EEPROM/SHAUpdate/contador; implementar o
 contrato e estado corretos de SHA antes de avançar, sem zerar contexto como stub.
 
-Registro atual: **2/69 serviços** (variantes limitadas), 3/3 dados. Foram validados
+Registro nessa entrega: **2/69 serviços** (variantes limitadas), 3/3 dados. Foram validados
 **271 testes de workspace/doctests** e **115 casos gerados em debug/release**
 (99 em outros hosts), Clippy global, fmt, loader do hello e diff. Esse avanço
 não fecha kernel mínimo, threads, execução integrada nem framebuffer.
 Detalhes e logs: [ADR-0032](docs/adr/0032-mutants-guest-snapshot-sessao.md).
+
+### Avanço — SHA-1 em contexto opaco guest (ADR-0033)
+
+`XcSHAInit`/`XcSHAUpdate`/`XcSHAFinal` (335/336/337) implementam SHA-1 com estado
+inteiramente nos 116 bytes da RAM guest. Copiar o contexto cria um fluxo independente;
+snapshot parcial funciona sem mapa host. O formato interno é **HLE v1**, com marcador
+`XSH1`, não um layout comprovado do kernel físico. Atende código que trata o buffer
+como opaco. Final preserva a origem por política local, salvo sobreposição da saída;
+não prometer preservação byte a byte pelo hardware. Layout e limites estão no ADR.
+
+Ponteiros/faltas/RO/MMIO/overflow são recusados antes de publicar mudanças.
+VOID usa EAX zero por convenção local, não NTSTATUS inventado. Não houve novo
+unsafe, dependência ou estado extra a serializar; versões de snapshot permanecem.
+Há vetores públicos de SHA-1, referências .NET para padding/páginas, testes de
+fragmentação, cópia, sobreposição e três casos no Rust gerado.
+
+O hello real passou por SHAInit e parou em **ExQueryNonVolatileSetting (24)**,
+retorno `0x19176`, argumentos `0xFFFF, 0x7000FD78, 0x7000FD80, 0x100, 0x7000FD7C`.
+O próximo trabalho é modelar o contrato dessa consulta e o conteúdo/estado da
+EEPROM, com origem e política explícitas, sem retornar sucesso com um buffer fictício
+ou buscar dados na BIOS. SHAUpdate/Final estão validados em testes; ainda não foram
+exercidos pelo hello, que parou antes deles.
+
+Registro atual: **5/69 serviços com variantes limitadas**, 3/3 dados; **288 testes
+de workspace/doctests** e **118 casos gerados em debug/release** (102 em outros
+hosts), Clippy global e fmt. Logs e detalhes:
+[ADR-0033](docs/adr/0033-sha1-contexto-guest.md). Kernel mínimo, threads, orçamento/
+interrupção integrada e framebuffer continuam com aceite aberto.
 
 Trabalho restante:
 
@@ -468,7 +497,8 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Na referência atual, `check-memory` e `translate` passam. Com a entrada explícita,
-o binário nativo passa por NtCreateMutant e para em **XcSHAInit (335)**, sem framebuffer. Sem ela,
+o binário nativo passa por mutex/SHAInit e para em **ExQueryNonVolatileSetting (24)**,
+sem framebuffer. Sem ela,
 para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
 completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
@@ -492,7 +522,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 115 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 118 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -516,7 +546,9 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > atual do Git e leia os arquivos indicados antes de alterar código. A entrega 1
 > tem aceite local; a entrega 2 possui infraestrutura TLS/ABI testada, mas seu
 > aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
-> RtlInitAnsiString e NtCreateMutant sem nome já existem (2/69 serviços).
+> RtlInitAnsiString, NtCreateMutant sem nome e SHA-1 Init/Update/Final já existem
+> (5/69 serviços). SHA usa contexto opaco de 116 bytes na RAM, com formato HLE v1,
+> não layout comprovado do hardware. Final preserva a origem por política local.
 > Session possui o dispatcher; atender_kernel() não recebe argumento. Snapshot
 > integral AOTS v1 inclui CPU, bus e objetos KRNL/KMUT; CPU/bus isolados não bastam.
 > CMPXCHG/LOCK em RAM e SETcc passaram nos testes;
@@ -524,14 +556,16 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
 > snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
 > termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é XcSHAInit (335), retorno 0x19140, argumento 0x28EF0, em init_rand_s.
+> atual é ExQueryNonVolatileSetting (24), retorno 0x19176, índice 0xFFFF,
+> buffer 0x7000FD80, tamanho 256, em init_rand_s. SHAInit já foi atendido no hello;
+> SHAUpdate/Final estão validados em testes, mas ainda não observados no alvo.
 > O hello real traduz/compila/inicia com --entry 0x19110 (callback observado em
 > 0x209D2). Funções de bloco limitadas corrigiram a pilha host; são 8769 blocos.
 > SFENCE chama a barreira do bus síncrono exclusivo,
 > sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
 > CMOVcc já cobre as 16 condições em 16/32 bits e lê a origem mesmo se falsa.
 > BSF/BSR também estão implementados, com ZF e política determinística para zero.
-> Implemente o contrato/estado de SHA guest exigido por XcSHAInit e
+> Implemente contrato e estado/origem explícita da EEPROM para essa consulta e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

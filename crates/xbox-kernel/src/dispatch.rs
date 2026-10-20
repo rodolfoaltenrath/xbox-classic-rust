@@ -23,8 +23,10 @@ use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod mutants;
+mod sha;
 use mutants::Mutants;
 pub use mutants::{INITIAL_THREAD, MAX_MUTANTS, Mutant};
+pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 
 use crate::imports::{Abi, Call, Kind};
 use crate::loader::Result as LoaderResult;
@@ -33,6 +35,9 @@ use crate::loader::Result as LoaderResult;
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
+pub const ORDINAL_XC_SHA_INIT: u32 = 335;
+pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
+pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
 pub const STATUS_SUCCESS: u32 = 0;
 pub const STATUS_ACCESS_VIOLATION: u32 = 0xC000_0005;
 pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
@@ -42,7 +47,13 @@ pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
 /// Fonte única de verdade: [`crate::imports::servico_implementado`] e o relatório de
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
-pub const IMPLEMENTADOS: &[u32] = &[ORDINAL_NT_CREATE_MUTANT, ORDINAL_RTL_INIT_ANSI_STRING];
+pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_NT_CREATE_MUTANT,
+    ORDINAL_RTL_INIT_ANSI_STRING,
+    ORDINAL_XC_SHA_INIT,
+    ORDINAL_XC_SHA_UPDATE,
+    ORDINAL_XC_SHA_FINAL,
+];
 
 /// `Length`/`MaximumLength` de `ANSI_STRING` são `u16`: uma string sem NUL dentro desse
 /// limite é erro, não truncamento silencioso.
@@ -158,6 +169,9 @@ impl Dispatcher {
         let resultado = match export.ordinal {
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
+            ORDINAL_XC_SHA_INIT => sha::init(bus, &call),
+            ORDINAL_XC_SHA_UPDATE => sha::update(bus, &call),
+            ORDINAL_XC_SHA_FINAL => sha::finish(bus, &call),
             _ => {
                 self.recusadas = self.recusadas.saturating_add(1);
                 return Err(Erro::NaoImplementado {

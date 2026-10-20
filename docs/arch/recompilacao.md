@@ -176,6 +176,13 @@ objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
 Detalhes e limites: [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
 
+SHA-1 Init/Update/Final usa um contexto **opaco HLE v1** de 116 bytes na RAM,
+com marcador e estado explícito. Cópia de bytes funciona sem registro host, e
+o snapshot da memória preserva hashes parciais. O formato não pretende reproduzir
+campos privados de um kernel físico; Final preserva a origem por política local.
+Versões de snapshot continuam as mesmas. Limites, fontes e testes independentes:
+[ADR-0033](../adr/0033-sha1-contexto-guest.md).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que

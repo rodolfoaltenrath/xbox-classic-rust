@@ -32,8 +32,9 @@ memória/loader verificados com mídia real, contratos sob Miri e benchmark segu
 O [homebrew nxdk hello](docs/dev/homebrew.md) já tem build local reproduzida e
 inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. Com `--entry 0x19110`,
-o hello inicia nativamente, cria mutex guest e para em `XcSHAInit` (335).
-Há 2/69 serviços com variantes limitadas; threads e framebuffer seguem pendentes.
+o hello inicia nativamente, cria mutex guest, inicializa SHA-1 e para em
+`ExQueryNonVolatileSetting` (24), na consulta de EEPROM.
+Há 5/69 serviços com variantes limitadas; threads e framebuffer seguem pendentes.
 
 ## Demonstração de recompilação
 

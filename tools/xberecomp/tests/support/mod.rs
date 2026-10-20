@@ -16,6 +16,7 @@ mod muldiv;
 mod ordering;
 mod rotations;
 mod scan;
+mod sha;
 mod shifts;
 mod strings;
 mod timing;
@@ -56,6 +57,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&strings::sources(output));
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
+    main.push_str(&sha::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
     main.push_str(&control::sources(output));

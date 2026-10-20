@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | dados, dispatcher e criação de mutexes (ADR-0032); 2/69 serviços com variantes limitadas | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | dados, dispatcher, mutexes e SHA-1 (ADR-0033); 5/69 serviços com variantes limitadas | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | fluxo descoberto traduz; 8769 instruções com callback explícito; novas entradas podem exigir mais ISA | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | hello inicia nativamente e para em XcSHAInit (335); aceite aberto | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | hello inicia nativamente e para em ExQueryNonVolatileSetting (24); aceite aberto | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -33,7 +33,7 @@ repetidos após normalização de metadata. A inspeção verificou 4 seções, 2
 e 72 imports: 69 funções e 3 dados. A infraestrutura de uma thread inicial já
 inicializa TLS nxdk, aplica FS e transporta chamadas stdcall/cdecl/fastcall até
 uma saída explícita do Rust gerado. O dispatcher atende `RtlInitAnsiString`
-e criação de mutex sem nome por `NtCreateMutant`;
+e criação de mutex sem nome por `NtCreateMutant`, além de SHA-1 Init/Update/Final;
 os demais serviços permanecem pendentes.
 
 Os três dados que o homebrew exige — `LaunchDataPage`, `PsThreadObjectType` e
@@ -57,17 +57,22 @@ Com a entrada explícita `0x19110` para um callback observado, o hello traduz
 retorno reportado `0x18CFA`, argumentos `0x28EEC, 0, 0`
 ([ADR-0031](../adr/0031-blocos-aot-pilha-host.md)). Esse serviço foi implementado
 para mutexes sem nome, com handles guest e estado no snapshot integral da sessão
-([ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md)). O hello real passou
-pela criação e agora para em **XcSHAInit (335)**, retorno `0x19140`, argumento
-`0x28EF0`, no caminho de `init_rand_s`. Esse é o próximo serviço a modelar;
+([ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md)). Nessa entrega o hello
+passou pela criação e parou em **XcSHAInit (335)**, retorno `0x19140`, argumento
+`0x28EF0`, no caminho de `init_rand_s`. SHA-1 agora está
+implementado com contexto opaco HLE na RAM e testes de hash/cópia/snapshot
+([ADR-0033](../adr/0033-sha1-contexto-guest.md)). A execução real passou por
+SHAInit e parou em **ExQueryNonVolatileSetting (24)**, retorno `0x19176`, consulta
+de 256 bytes da EEPROM com índice `0xFFFF`. Esse é o próximo serviço a modelar;
 outras raízes de callbacks/threads ainda podem revelar novos bloqueios.
 
-O aceite da entrega 2 permanece aberto: há dois serviços com variantes limitadas
-(`2/69` no relatório de ordinais) e o CRT cria uma thread para `main`. Build,
+O aceite da entrega 2 permanece aberto: há cinco serviços com variantes limitadas
+(`5/69` no relatório de ordinais) e o CRT cria uma thread para `main`. Build,
 inventário, hashes e limites em [`homebrew.md`](homebrew.md) e
 [ADR-0021](../adr/0021-tls-imports-aot.md).
 
 A primeira entrega foi validada com mídia comercial apenas como dado do loader.
 Ainda não há execução completa até o framebuffer. A primeira execução do
-hello parou na inicialização SHA após criar mutex, sem respostas genéricas de sucesso.
+hello chegou à consulta de EEPROM após criar mutex e inicializar SHA, sem respostas
+genéricas de sucesso. SHAUpdate/Final ainda só foram exercidos nos testes.
 A BIOS não foi usada.

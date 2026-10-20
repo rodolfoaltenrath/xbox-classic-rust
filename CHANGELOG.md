@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: SHA-1 `XcSHAInit`/`Update`/`Final` em Rust, com contexto opaco
+  de 116 bytes na RAM guest, cópia/snapshot parcial e validação de buffers sem
+  stores parciais. Formato interno HLE v1, Final preserva origem por política
+  local; sem novo unsafe ou dependência. 288 testes workspace/doctests e 118
+  casos gerados em debug/release. O hello passa por SHAInit e para na consulta
+  de EEPROM `ExQueryNonVolatileSetting` (24), retorno 0x19176. Update/Final
+  foram exercidos nos testes; registro atual 5/69 serviços (ADR-0033).
+
 - Fase 4/alpha: `NtCreateMutant` cria mutexes sem nome com handles guest,
   propriedade inicial e limite de recursos, sem sucesso genérico. `Session`
   passa a possuir o dispatcher; snapshot integral AOTS v1 inclui CPU/bus e

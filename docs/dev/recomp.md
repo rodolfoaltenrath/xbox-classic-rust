@@ -461,5 +461,28 @@ com doctests. O relatório registra **2/69 serviços**, com variantes limitadas.
 
 No hello real, usando a mesma raiz explícita, a execução passou por NtCreateMutant
 e chegou a **XcSHAInit (335)**, retorno `0x19140`, argumento `0x28EF0`.
-O próximo passo é o contrato SHA do caminho `init_rand_s`; ainda não há framebuffer.
+O próximo passo nessa entrega era o contrato SHA do caminho `init_rand_s`.
 Detalhes: [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
+
+## SHA-1 em contexto opaco guest — ADR-0033
+
+`XcSHAInit`, `XcSHAUpdate` e `XcSHAFinal` compartilham estado de 116 bytes na
+RAM guest, sem tabela host de contextos. Há inicialização real, compressão SHA-1,
+digest de 20 bytes e validação antes de stores. Cópia do contexto e snapshot
+parcial funcionam; não mudaram as versões de snapshot da sessão/CPU/kernel.
+
+O formato é **HLE v1**, não um layout privado comprovado do kernel físico.
+Final preserva a origem por política local; saída sobreposta a modifica por
+store normal. Casos que inspecionam campos privados exigirão nova evidência.
+Sem estado oculto, dependência nova ou unsafe.
+
+O conjunto gerado tem **118 testes em x86_64** (102 nos demais hosts), em debug
+e release. **288 testes de workspace/doctests** passaram. Os testes usam vetores
+públicos, referências .NET em bordas de padding/páginas e sete divisões de entrada,
+além de erros, cópia, proteção, MMIO, sobreposição e replay da sessão.
+
+O hello real passou por SHAInit e parou em **ExQueryNonVolatileSetting (24)**,
+retorno `0x19176`, índice `0xFFFF`, buffer de 256 bytes em `0x7000FD80`.
+Update/Final foram validados em testes, sem execução observada no hello ainda.
+O relatório registra **5/69 serviços**; a consulta de EEPROM é o próximo passo.
+Detalhes e logs: [ADR-0033](../adr/0033-sha1-contexto-guest.md).

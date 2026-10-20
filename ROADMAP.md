@@ -1129,6 +1129,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | BSF/BSR de 16/32 bits (ADR-0030) | — | ZF e política de indefinidos; 262144 comparações físicas; fluxo descoberto do hello traduz com 8725 instruções/blocos |
 | 2026-10-20 | 3-AOT / 4 | Pilha host limitada e primeira execução nativa do hello (ADR-0031) | — | Funções por bloco, limite de 32 instruções, regressão em 128 KiB; 111 casos nativos; com --entry 0x19110, 8769 blocos executam até NtCreateMutant (192), retorno 0x18CFA |
 | 2026-10-20 | 4 | NtCreateMutant e snapshot integral da sessão (ADR-0032) | — | Mutexes sem nome com handles/propriedade guest, NTSTATUS e limites; Session possui kernel, snapshot AOTS/KRNL/KMUT; 271 testes workspace/doctests e 115 nativos debug/release; hello passa por criação e para em XcSHAInit (335), retorno 0x19140; 2/69 serviços com variantes limitadas |
+| 2026-10-20 | 4 | SHA-1 em contexto opaco guest (ADR-0033) | — | Init/Update/Final em Rust; estado HLE v1 de 116 bytes na RAM, cópia/snapshot e validação sem stores parciais; 288 testes workspace/doctests e 118 nativos debug/release; hello passa por SHAInit e para em ExQueryNonVolatileSetting (24), retorno 0x19176; 5/69 serviços |
 
 ---
 
@@ -1137,14 +1138,15 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `2/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `5/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
-   de threads do nxdk hello. **O bloqueio atual é XcSHAInit (335), em execução**,
-   retorno reportado `0x19140`, argumento `0x28EF0`, no caminho de init_rand_s.
+   de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
+   (ADR-0033). **O bloqueio atual é ExQueryNonVolatileSetting (24), em execução**,
+   retorno reportado `0x19176`, índice `0xFFFF`, buffer de 256 bytes, em init_rand_s.
    BSF/BSR destravaram a tradução; separar blocos corrigiu a
    pilha host. Com `--entry 0x19110`, 8769 blocos compilam e iniciam nativamente
-   (ADRs 0030/0031). Modelar contrato/estado SHA guest; não
+   (ADRs 0030/0031). Modelar contrato e estado/origem explícita da EEPROM; não
    retornar sucesso genérico. Novas raízes de callbacks/threads podem revelar
    mais ISA. O framebuffer e o aceite integrado ainda estão pendentes.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,

@@ -59,8 +59,8 @@ ser ligado à mídia/VFS real.
 TLS do alvo: template `0x2A000..0x2A110` (272 bytes), zero-fill 0, índice
 em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
-O dispatcher atende `RtlInitAnsiString` (289) e `NtCreateMutant` (192) sem nome:
-**2/69 serviços implementados**, com variantes limitadas,
+O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome
+e SHA-1 Init/Update/Final (335/336/337): **5/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -77,8 +77,12 @@ Separar funções de bloco corrigiu a pilha host do primeiro executável real.
 Com `--entry 0x19110`, o hello traduz 8769 instruções/blocos e executa até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA`, argumentos `0x28EEC, 0, 0`
 (ADR-0031). O ADR-0032 implementou essa criação com objeto/handle guest e
-snapshot integral. A execução real agora passa por ela e para em
+snapshot integral. Nessa entrega a execução passou por ela e parou em
 **XcSHAInit (335)**, retorno `0x19140`, argumento `0x28EF0`, em `init_rand_s`.
+O ADR-0033 implementou a família SHA-1 com contexto opaco
+HLE de 116 bytes na RAM. SHAInit foi atendido no hello; Update/Final foram
+validados em testes. O bloqueio observado agora é **ExQueryNonVolatileSetting
+(24)**, retorno `0x19176`, consulta de EEPROM de 256 bytes com índice `0xFFFF`.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -154,11 +158,16 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Sem essa entrada explícita, a execução para em `UnknownTarget` no CALL de
-`0x209D2` para `0x19110`. Com ela, o erro é o serviço XcSHAInit ainda
+`0x209D2` para `0x19110`. Com ela, o erro é o serviço ExQueryNonVolatileSetting ainda
 não implementado. Isso demonstra execução inicial real, não o hello funcional
 com framebuffer. Contratos/evidências: [ADR-0030](../adr/0030-bsf-bsr.md) e
 [ADR-0031](../adr/0031-blocos-aot-pilha-host.md) e
 [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
+
+SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
+com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
+cópia e snapshot não dependem de registro host. Final preserva o contexto por
+política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 `Session` possui `kernel: Dispatcher`; a API atual é `session.atender_kernel()`.
 Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por
