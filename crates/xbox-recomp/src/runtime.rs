@@ -3,22 +3,21 @@
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::Xbe;
-use xbox_mem::{Bus, GuestVirt, Perm};
+use xbox_mem::{Acesso, Bus, GuestVirt};
 
 use crate::Result;
 use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 
 mod muldiv;
 pub use muldiv::{divide_values, multiply_values};
+pub use xbox_kernel::imports::entry as kernel_entry;
 
 /// Retorno do entry point ao chamador do host; nunca é executado como código.
-pub const RETURN_SENTINEL: u32 = 0xFFFF_FFF0;
+pub use xbox_kernel::loader::RETURN_SENTINEL;
 /// Índice de EAX na ordem x86 dos registradores.
 pub const EAX: usize = 0;
 /// Índice de ESP na ordem x86 dos registradores.
 pub const ESP: usize = 4;
-const STACK_BASE: u32 = 0x7000_0000;
-const STACK_SIZE: u32 = 16 * 4096;
 
 /// Flags de entrada da instrução de comparação REP em andamento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +38,8 @@ pub struct State {
     pub retired: u64,
     pub returned: bool,
     pub repeat: Option<RepeatState>,
+    /// Base do segmento FS no espaço de endereços guest, sem ponteiro host.
+    pub fs_base: u32,
 }
 
 impl State {
@@ -50,13 +51,14 @@ impl State {
             retired: 0,
             returned: false,
             repeat: None,
+            fs_base: 0,
         }
     }
 }
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 2);
+        out.section("AOTC", 3);
         for r in self.regs {
             out.u32(r);
         }
@@ -69,10 +71,11 @@ impl Snapshot for State {
             out.u32(repeat.pc);
             out.u32(repeat.eflags);
         }
+        out.u32(self.fs_base);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 2)?;
+        let version = inp.section("AOTC", 3)?;
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -88,6 +91,7 @@ impl Snapshot for State {
         } else {
             None
         };
+        self.fs_base = if version >= 3 { inp.u32()? } else { 0 };
         Ok(())
     }
 }
@@ -97,9 +101,13 @@ impl Snapshot for State {
 pub enum Exit {
     Returned,
     Budget,
+    /// Fronteira explícita; o serviço ainda precisa ser executado pelo host HLE.
+    KernelCall {
+        ordinal: u32,
+    },
 }
 
-/// Sessão de teste: loader de seções e pilha; kernel/TLS ainda não implementados.
+/// Sessão AOT com TLS inicial e fronteira ABI; serviços HLE são uma etapa separada.
 #[derive(Debug)]
 pub struct Session {
     pub state: State,
@@ -110,24 +118,38 @@ impl Session {
     pub fn load(bytes: &[u8]) -> Result<Self> {
         let xbe = Xbe::parse(bytes)?;
         crate::analysis::validate_layout(&xbe)?;
-        if xbe.tls.is_some() || !xbe.kernel_imports()?.is_empty() {
-            return Err(xbox_core::Error::not_implemented(
-                "TLS e importações do kernel no loader AOT",
-                "Fase 4",
-            )
-            .into());
-        }
-        let image = xbox_kernel::loader::Image::load(bytes, xbox_kernel::loader::Mode::Aot)?;
-        let mut bus = image.bus;
-        let stack = bus
-            .frames_mut()
-            .alocar_contiguo(STACK_SIZE / 4096)
-            .ok_or_else(|| xbox_core::Error::format("RAM insuficiente para a pilha AOT"))?;
-        bus.mapear(GuestVirt(STACK_BASE), stack, STACK_SIZE / 4096, Perm::RW)?;
+        let startup = xbox_kernel::loader::Image::prepare_aot(bytes)?;
+        let bus = startup.image.bus;
         let mut state = State::new(xbe.entry_point);
-        state.regs[ESP] = STACK_BASE + STACK_SIZE - 4;
-        bus.escrever_u32(GuestVirt(state.regs[ESP]), RETURN_SENTINEL)?;
+        state.fs_base = startup.fs_base;
+        state.regs[ESP] = startup.esp;
         Ok(Self { state, bus })
+    }
+
+    pub fn kernel_call(&self) -> Result<xbox_kernel::imports::Call> {
+        Ok(xbox_kernel::imports::Call::read(
+            &self.bus,
+            self.state.eip,
+            &self.state.regs,
+        )?)
+    }
+
+    /// O dispatcher chama isto somente após implementar o serviço correspondente.
+    /// Cdecl preserva argumentos; stdcall/fastcall removem só argumentos de pilha.
+    pub fn complete_kernel_call(&mut self, ordinal: u32, eax: u32) -> Result<()> {
+        let call = self.kernel_call()?;
+        if call.export.ordinal != ordinal {
+            return Err(xbox_core::Error::format("resposta de outro ordinal de kernel").into());
+        }
+        if call.return_pc != RETURN_SENTINEL {
+            self.bus
+                .traduzir(GuestVirt(call.return_pc), Acesso::Execucao)?;
+        }
+        self.state.regs[EAX] = eax;
+        self.state.regs[ESP] = call.return_esp;
+        self.state.eip = call.return_pc;
+        self.state.returned = call.return_pc == RETURN_SENTINEL;
+        Ok(())
     }
 }
 

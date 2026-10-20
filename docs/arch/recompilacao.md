@@ -124,9 +124,12 @@ copia headers e dados e aplica permissões RX/RO/RW. Páginas compartilhadas ent
 código e dados graváveis são recusadas. Pilha: 64 KiB em `0x70000000`, com um retorno
 sentinela inserido pelo chamador do entry point.
 
-O loader exige ausência de TLS e de imports do kernel. Não substitui o loader da
-Fase 4: faltam TLS, resolução de ordinais, seções sob demanda, ambiente XAPI, objetos
-e escalonamento. `raw_size > virtual_size` também é recusado nesta versão.
+O perfil inicial prepara TLS nxdk e resolve imports de funções para trampolins
+guest RX. FS tem base guest explícita, LEA usa só offset e chamadas HLE devolvem
+`Exit::KernelCall` com ABI stdcall/cdecl/fastcall. O dispatcher de serviços, dados
+exportados, seções sob demanda, ambiente XAPI, objetos e escalonamento continuam
+pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
+[ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 ## Evidência e limites
 

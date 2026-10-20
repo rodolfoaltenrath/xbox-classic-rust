@@ -93,6 +93,20 @@ pub fn xbe_com_codigo(code: &[u8]) -> xbox_core::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Fixture executável com uma tabela pequena de ordinais, terminada em zero.
+pub fn xbe_com_imports(code: &[u8], ordinals: &[u32]) -> xbox_core::Result<Vec<u8>> {
+    if ordinals.len() >= RDATA_LEN / 4 || ordinals.iter().any(|v| *v == 0 || *v > 65535) {
+        return Err(xbox_core::Error::format(
+            "imports não cabem na fixture ou ordinal inválido",
+        ));
+    }
+    let mut bytes = xbe_com_codigo(code)?;
+    for (index, ordinal) in ordinals.iter().enumerate() {
+        put_u32(&mut bytes, OFF_RDATA_DATA + index * 4, 0x80000000 | ordinal);
+    }
+    Ok(bytes)
+}
+
 /// Como [`xbe_minimo`], mas ofuscado com as chaves do tipo de build pedido.
 pub fn xbe_com_kind(kind: XbeKind) -> Vec<u8> {
     let (chave_entry, chave_thunk) = match kind {

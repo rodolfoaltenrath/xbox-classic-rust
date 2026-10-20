@@ -662,6 +662,7 @@ gráfica continua pendente de integração; a prova usa somente CPU e memória.
 
 - [x] Carregamento de headers/seções/BSS e permissões pelo loader compartilhado; inspeção e política AOT (ADR-0020)
 - [ ] TLS e resolução de thunks para trampolins; imports ainda não executam
+- [x] Perfil AOT inicial: TLS nxdk, FS, trampolins guest RX e fronteira stdcall/cdecl/fastcall; serviços/dados/threads pendentes (ADR-0021)
 - [ ] Mecanismo de trampolim (JIT/HV/interp) com ABI stdcall e logging de ordinal
 - [ ] Object manager: arena de objetos indexada, handles, `OBJECT_ATTRIBUTES`, parsing de caminhos `\Device\...`
 - [ ] **Scheduler de threads do guest** determinístico (prioridades, quantum, IRQL, APC, DPC)
@@ -1106,6 +1107,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | Loops por contador e strings REP retomáveis (ADR-0018) | — | 3456 comparações físicas, address16, DF, faltas e snapshots parciais; bus evita escrita parcial; 183 testes de workspace e 55 nativos em debug/release |
 | 2026-10-20 | 3-AOT | Controle indireto e entradas adicionais (ADR-0019) | — | CALL/JMP r/m32, inferência local/RO e `--entry`; destinos validados antes de commit, RET, callbacks e snapshot; 189 testes de workspace e 64 nativos em debug/release |
 | 2026-10-20 | 2 / 4 | Aceite local de memória e loader compartilhado (ADR-0020) | — | T14 NFSU2: 14 seções, 152 ordinais; Miri T1–T10, 20000 cenários, auditoria unsafe e Clippy global limpo; marco 1/6 do alpha |
+| 2026-10-20 | 3-AOT / 4 | Build nxdk real e infraestrutura TLS/ABI (ADR-0021) | — | Hello: 4 seções, 72 imports; TLS nxdk, FS e trampolins guest RX; 69 testes nativos; serviços/dados/threads e execução do homebrew pendentes |
 
 ---
 
@@ -1113,9 +1115,12 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Alpha, marco 2/6:** preparar build reproduzível do `nxdk samples/hello` na revisão
-   fixada em `docs/dev/alpha.md`; inventariar TLS/imports/ISA do XBE gerado e implementar TLS e trampolins.
-2. **Fase 4:** serviços mínimos do kernel efetivamente usados pelo homebrew.
+1. **Alpha, integração dos marcos 2 e 3/6:** implementar os dados exportados
+   `LaunchDataPage`, `PsThreadObjectType` e `XeImageFileName` e os serviços de
+   inicialização/threads do nxdk hello. Build real, inventário e infraestrutura
+   TLS/ABI já disponíveis; evidência e limites em `docs/dev/homebrew.md`.
+2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
+   sem respostas genéricas de sucesso para ordinais pendentes.
 3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de
    imagem/cache versionado; validar o homebrew com instruções reais emitidas pelo
    compilador. Guia: `docs/dev/recomp.md`.

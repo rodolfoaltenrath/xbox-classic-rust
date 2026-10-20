@@ -1,11 +1,15 @@
-//! Imagem XBE em memória, sem executar código nem resolver importações.
+//! Imagem XBE pelo bus; inspeção e preparação AOT de TLS/imports sem executar código.
 
 use std::collections::BTreeMap;
 use xbox_core::{Error as CoreError, PAGE_SIZE};
 use xbox_formats::{Xbe, xbe::SectionFlags};
 use xbox_mem::{Acesso, Bus, GuestPhys, GuestVirt, Perm};
 
+mod startup;
 mod verify;
+pub use startup::{
+    RETURN_SENTINEL, STACK_BASE, STACK_SIZE, Startup, TIB_BASE, validate_startup_layout,
+};
 pub use verify::Report;
 
 #[derive(Debug, thiserror::Error)]

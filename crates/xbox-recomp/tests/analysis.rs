@@ -20,7 +20,7 @@ fn rejeita_fluxo_invalido_e_instrucoes_sem_suporte_com_endereco() {
         &[0xEB, 0x7F][..],                   // alvo fora do código
         &[0x67, 0x8B, 0x00, 0xC3][..],       // endereço de 16 bits (BX+SI)
         &[0xF0, 0x01, 0x08, 0xC3][..],       // LOCK add [eax],ecx
-        &[0x64, 0xA1, 0, 0, 0, 0, 0xC3][..], // FS
+        &[0x65, 0xA1, 0, 0, 0, 0, 0xC3][..], // GS
     ] {
         assert!(matches!(
             analyze(&xbe_com_codigo(code).unwrap()),
@@ -58,7 +58,7 @@ fn strings_rep_criam_blocos_retomaveis_e_prefixos_invalidos_falham() {
     );
     for code in [
         &[0xF2, 0xA4, 0xC3][..],       // REPNE MOVS não documentado.
-        &[0x64, 0xF3, 0xA4, 0xC3][..], // FS exige segmentação/TLS.
+        &[0x64, 0xF3, 0xA4, 0xC3][..], // FS em string ainda não suportado.
         &[0xF0, 0xA4, 0xC3][..],
         &[0xF3, 0xE2, 0, 0xC3][..],
         &[0x66, 0xE2, 0, 0xC3][..], // branch16 ainda não suportado.
@@ -172,10 +172,10 @@ fn movimentos_de_bits_rejeitam_prefixos_e_endereco_de_16_bits() {
     for code in [
         &[0xF0, 0xD1, 0x20, 0xC3][..],       // lock shl [eax],1
         &[0xF3, 0xD1, 0xE0, 0xC3][..],       // rep shl eax,1
-        &[0x64, 0xD1, 0x20, 0xC3][..],       // shl fs:[eax],1
+        &[0x65, 0xD1, 0x20, 0xC3][..],       // shl gs:[eax],1
         &[0x67, 0xD1, 0x20, 0xC3][..],       // shl [bx+si],1
         &[0xF0, 0xD1, 0x10, 0xC3][..],       // lock rcl [eax],1
-        &[0x64, 0xD1, 0x00, 0xC3][..],       // rol fs:[eax],1
+        &[0x65, 0xD1, 0x00, 0xC3][..],       // rol gs:[eax],1
         &[0xF3, 0x0F, 0xA5, 0xC8, 0xC3][..], // rep shld eax,ecx,cl
         &[0x67, 0x0F, 0xAD, 0x08, 0xC3][..], // shrd [bx+si],ecx,cl
     ] {

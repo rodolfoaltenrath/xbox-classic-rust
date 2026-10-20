@@ -9,6 +9,9 @@ license.workspace = true
 
 [dependencies]
 xbox-core = { workspace = true }
+xbox-formats = { workspace = true }
+xbox-kernel = { workspace = true }
+xbox-recomp = { workspace = true }
 clap = { workspace = true }
 
 [lints]

@@ -166,6 +166,9 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "xbox-core",
+ "xbox-formats",
+ "xbox-kernel",
+ "xbox-recomp",
 ]
 
 [[package]]

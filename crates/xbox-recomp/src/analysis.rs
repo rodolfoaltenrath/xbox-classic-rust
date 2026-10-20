@@ -27,6 +27,7 @@ pub struct Program {
     pub entry: u32,
     pub instructions: BTreeMap<u32, Insn>,
     pub blocks: BTreeMap<u32, Vec<Insn>>,
+    pub kernel_imports: Vec<xbox_kernel::imports::Export>,
 }
 
 fn fail(pc: u32, detail: impl Into<String>) -> Error {
@@ -45,6 +46,12 @@ pub fn analyze(bytes: &[u8]) -> Result<Program> {
 pub fn analyze_with_entries(bytes: &[u8], entries: &[u32]) -> Result<Program> {
     let xbe = Xbe::parse(bytes)?;
     validate_layout(&xbe)?;
+    let kernel_imports = xbox_kernel::imports::plan(&xbe)?
+        .into_iter()
+        .map(|e| (e.ordinal, e))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect();
     if entries.len() > 65_536 {
         return Err(fail(xbe.entry_point, "limite de 65536 entradas adicionais"));
     }
@@ -88,6 +95,7 @@ pub fn analyze_with_entries(bytes: &[u8], entries: &[u32]) -> Result<Program> {
         entry: xbe.entry_point,
         instructions: graph.instructions,
         blocks,
+        kernel_imports,
     })
 }
 
@@ -220,7 +228,7 @@ fn build_blocks(
 
 fn lower(i: &Instruction) -> Result<Operation> {
     let pc = i.ip32();
-    if i.has_lock_prefix() || i.segment_prefix() != Register::None {
+    if i.has_lock_prefix() || !matches!(i.segment_prefix(), Register::None | Register::FS) {
         return Err(fail(pc, "prefixo LOCK/segmento ainda não suportado"));
     }
     if let Some(op) = lower_string(i)? {
@@ -319,6 +327,9 @@ fn lower_string(i: &Instruction) -> Result<Option<Operation>> {
         Code::Scasd_EAX_m32 => (StringOp::Scas, Width::Dword),
         _ => return Ok(None),
     };
+    if i.segment_prefix() != Register::None {
+        return Err(fail(i.ip32(), "segmento em string ainda não suportado"));
+    }
     let address = if i
         .op_kinds()
         .any(|k| matches!(k, OpKind::MemorySegSI | OpKind::MemoryESDI))
@@ -588,6 +599,7 @@ fn memory(i: &Instruction, width: Width) -> Result<Operand> {
         }
     };
     Ok(Operand::Mem {
+        fs: i.segment_prefix() == Register::FS,
         base: reg(i.memory_base())?,
         index: reg(i.memory_index())?,
         scale: i.memory_index_scale(),
@@ -599,23 +611,6 @@ fn memory(i: &Instruction, width: Width) -> Result<Operand> {
 /// O mesmo layout deve ser usado na análise e no carregamento. Seções sobrepostas
 /// poderiam fazer o código compilado divergir dos bytes efetivamente carregados.
 pub(crate) fn validate_layout(xbe: &Xbe<'_>) -> Result<()> {
-    xbox_kernel::loader::validate_layout(xbe)?;
-    let base = xbe.header.base_address;
-    let mut ranges = vec![(base, base + xbe.header.size_of_headers)];
-    ranges.extend(
-        xbe.sections
-            .iter()
-            .filter(|s| s.virtual_size != 0)
-            .map(|s| (s.virtual_address, s.virtual_address + s.virtual_size)),
-    );
-    if ranges
-        .iter()
-        .any(|&(start, finish)| start < 0x7001_0000 && finish > 0x7000_0000)
-    {
-        return Err(fail(
-            0x7000_0000,
-            "imagem ocupa a pilha reservada ao teste AOT",
-        ));
-    }
+    xbox_kernel::loader::validate_startup_layout(xbe)?;
     Ok(())
 }

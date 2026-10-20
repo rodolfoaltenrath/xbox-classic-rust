@@ -27,6 +27,16 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
     for _ in 0..blocks {\n\
         match s.eip {\n",
     );
+    for export in &program.kernel_imports {
+        let ordinal = export.ordinal;
+        let target = xbox_kernel::imports::trampoline(ordinal);
+        line(
+            &mut out,
+            &format!(
+                "0x{target:08X} => {{ xbox_recomp::runtime::kernel_entry(bus, s.eip)?; return Ok(Exit::KernelCall {{ ordinal: {ordinal} }}); }}"
+            ),
+        );
+    }
     for (start, instructions) in &program.blocks {
         line(&mut out, &format!("0x{start:08X} => {{"));
         for i in instructions {
@@ -64,13 +74,30 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
 
 fn emit_target_check(out: &mut String, program: &Program) {
     out.push_str("\nfn checked_target(s: &State, bus: &Bus, target: u32) -> Result<()> {\n    if !matches!(target, ");
-    for (index, pc) in program.blocks.keys().enumerate() {
+    let targets = program.blocks.keys().copied().chain(
+        program
+            .kernel_imports
+            .iter()
+            .map(|e| xbox_kernel::imports::trampoline(e.ordinal)),
+    );
+    for (index, pc) in targets.enumerate() {
         if index != 0 {
             out.push_str(" | ");
         }
         let _ = write!(out, "0x{pc:08X}");
     }
-    out.push_str(") { return Err(Error::UnknownTarget { pc: s.eip, target }); }\n    bus.traduzir(GuestVirt(target), xbox_mem::Acesso::Execucao)?;\n    Ok(())\n}\n");
+    out.push_str(") { return Err(Error::UnknownTarget { pc: s.eip, target }); }\n");
+    if !program.kernel_imports.is_empty() {
+        let base = xbox_kernel::imports::TRAMPOLINE_BASE;
+        let end = base + xbox_kernel::imports::TRAMPOLINE_SIZE;
+        let _ = writeln!(
+            out,
+            "    if (0x{base:08X}..0x{end:08X}).contains(&target) {{ xbox_recomp::runtime::kernel_entry(bus, target)?; }}"
+        );
+    }
+    out.push_str(
+        "    bus.traduzir(GuestVirt(target), xbox_mem::Acesso::Execucao)?;\n    Ok(())\n}\n",
+    );
 }
 
 fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
@@ -91,7 +118,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         } => {
             line(
                 out,
-                &format!("let value = {};", address(operand, "s.regs[4]")),
+                &format!("let value = {};", offset(operand, "s.regs[4]")),
             );
             write_operand(out, dst, "value");
         }
@@ -573,6 +600,15 @@ fn read_memory(width: Width, address: &str) -> String {
 }
 
 fn address(operand: &Operand, esp: &str) -> String {
+    let value = offset(operand, esp);
+    if matches!(operand, Operand::Mem { fs: true, .. }) {
+        format!("{value}.wrapping_add(s.fs_base)")
+    } else {
+        value
+    }
+}
+
+fn offset(operand: &Operand, esp: &str) -> String {
     let Operand::Mem {
         base,
         index,

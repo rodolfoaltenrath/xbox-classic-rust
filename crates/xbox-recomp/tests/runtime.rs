@@ -61,6 +61,7 @@ fn snapshot_de_cpu_e_deterministico_e_rejeita_truncamento() {
     let mut state = State::new(ENTRY_POINT);
     state.regs[0] = 0x1234_5678;
     state.retired = 9;
+    state.fs_base = 0x7FFD0000;
     let mut writer = SnapshotWriter::new();
     state.save(&mut writer);
     let bytes = writer.finish();
@@ -119,7 +120,39 @@ fn snapshot_v2_preserva_rep_e_migra_v1_sem_continuacao() {
 }
 
 #[test]
-fn tls_imports_e_codigo_gravavel_sao_recusados() {
+fn snapshot_v3_migra_v2_com_fs_zero_e_preserva_rep() {
+    use xbox_recomp::runtime::RepeatState;
+    let mut writer = SnapshotWriter::new();
+    writer.section("AOTC", 2);
+    for r in 0..8 {
+        writer.u32(r);
+    }
+    writer.u32(ENTRY_POINT);
+    writer.u32(0x202);
+    writer.u64(37);
+    writer.bool(false);
+    writer.bool(true);
+    writer.u32(ENTRY_POINT);
+    writer.u32(0xAD7);
+    let bytes = writer.finish();
+    let mut restored = State::new(0);
+    restored.fs_base = 0xDEAD0000;
+    restored
+        .load(&mut SnapshotReader::new(&bytes).unwrap())
+        .unwrap();
+    assert_eq!(restored.fs_base, 0);
+    assert_eq!(restored.retired, 37);
+    assert_eq!(
+        restored.repeat,
+        Some(RepeatState {
+            pc: ENTRY_POINT,
+            eflags: 0xAD7
+        })
+    );
+}
+
+#[test]
+fn tls_malformado_imports_invalidos_e_codigo_gravavel_sao_recusados() {
     assert!(Session::load(&xbox_formats::fixtures::xbe_minimo()).is_err());
     let mut bytes = xbe_com_codigo(&[0xC3]).unwrap();
     bytes[0x300..0x304].copy_from_slice(&7u32.to_le_bytes());

@@ -47,7 +47,8 @@ cargo run -p xberecomp -- translate caminho/teste.xbe --out target/meu-recomp --
 ```
 
 O conjunto inicial é propositalmente pequeno. Um jogo real será recusado por
-instrução sem suporte, TLS ou imports do kernel. O projeto gerado referencia os
+instrução sem suporte, perfil TLS não implementado ou dependências de kernel
+pendentes. O projeto gerado referencia os
 crates locais por caminho; ainda não é um pacote independente para distribuir.
 `obsidian run` continua sem executar jogos comerciais.
 
@@ -303,7 +304,9 @@ e `target/indirect-doctests.log`. O caminho do projeto gerado validado está em
 
 A sessão AOT agora usa `xbox-kernel::loader::Image` em modo Aot e reserva sua pilha
 separadamente. A inspeção de mídia real usa outro modo, com alias físico e sem
-execução. TLS/imports e páginas RWX continuam recusados na sessão AOT.
+execução. Páginas RWX continuam recusadas. O perfil TLS nxdk e imports de funções
+agora usam FS explícito e `Exit::KernelCall`; serviços e dados exportados ainda
+estão pendentes. Veja [homebrew.md](homebrew.md) para a build real e a fronteira ABI.
 
 Passaram 200 testes de workspace, 64 testes nativos em debug/release e dois
 doctests. Clippy global passou, corrigindo os 19 avisos de memória registrados

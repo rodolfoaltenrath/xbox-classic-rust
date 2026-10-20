@@ -41,6 +41,8 @@ pub enum Operand {
     },
     Imm(u32),
     Mem {
+        /// FS contém uma base guest explícita; LEA ignora esta base.
+        fs: bool,
         base: Option<usize>,
         index: Option<usize>,
         scale: u32,

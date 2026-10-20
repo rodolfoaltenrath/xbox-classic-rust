@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Alpha: build local do nxdk hello com revisão/submódulos fixados, manifesto e
+  hashes; normalização dos timestamps e padding de metadata do cxbe. Novo
+  `ordinal-report` inventaria TLS, ABI e pendências: 69 funções e 3 dados no alvo.
+- Perfil inicial TLS nxdk, base FS explícita, LEA sem segmento e snapshot AOTC v3
+  com migração v1/v2. Imports de funções recebem trampolins guest RX e saem por
+  `Exit::KernelCall`; stdcall/cdecl/fastcall e retorno validados em Rust gerado.
+  Serviços, dados exportados e threads continuam pendentes; o hello completo
+  ainda não executa (ADR-0021).
+
 - Marco 1/6 do alpha: loader compartilhado em `xbox-kernel`, com políticas de
   inspeção/AOT; `obsidian check-memory` valida XBE/pasta/ISO pelo bus sem executar
   código. T14 NFSU2 local confirma 14 seções, 152 ordinais e 4634697 bytes.

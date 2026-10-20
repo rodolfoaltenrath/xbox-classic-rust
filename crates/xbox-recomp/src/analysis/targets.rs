@@ -41,6 +41,7 @@ fn value(xbe: &Xbe<'_>, operand: &Operand, regs: &[Option<u32>; 8]) -> Option<u3
         Operand::Imm(value) => Some(*value),
         Operand::Reg(index) => regs[*index],
         Operand::Mem {
+            fs: false,
             width: Width::Dword,
             ..
         } => read_only_pointer(xbe, address(operand, regs)?),

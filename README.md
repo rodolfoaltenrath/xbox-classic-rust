@@ -29,6 +29,9 @@ cargo run -p obsidian -- check-memory caminho/do/jogo.iso
 
 O primeiro dos [seis marcos do alpha](docs/dev/alpha.md) foi concluído localmente:
 memória/loader verificados com mídia real, contratos sob Miri e benchmark seguro.
+O [homebrew nxdk hello](docs/dev/homebrew.md) já tem build local reproduzida e
+inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
+estão disponíveis; serviços, dados exportados e threads ainda impedem sua execução.
 
 ## Demonstração de recompilação
 

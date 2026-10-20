@@ -128,6 +128,10 @@ fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dy
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
     let exit = generated::run(&mut session.state, &mut session.bus, 1_000_000)?;
+    if let xbox_recomp::runtime::Exit::KernelCall { ordinal } = exit {
+        let call = session.kernel_call()?;
+        return Err(format!("serviço de kernel ainda não implementado: {} (ordinal {})", call.export.name, ordinal).into());
+    }
     if exit != xbox_recomp::runtime::Exit::Returned {
         return Err("limite de 1000000 blocos atingido; execução interrompida".into());
     }

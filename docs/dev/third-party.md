@@ -27,6 +27,13 @@ motivo. Antes de adicionar uma nova, verifique a licença e some uma linha.
 
 ## Fora do workspace
 
+O catálogo em `crates/xbox-kernel/src/imports/catalog.rs` contém nomes, ordinais e
+metadata de ABI gerados das declarações CC0-1.0 do nxdk, Stefan Schmidt (2017),
+revisão `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`. Não contém implementações de
+serviços. O SDK externo e o cxbe são usados somente para compilar um homebrew de
+teste e ficam fora do repositório; fontes/licenças e comandos em
+[`homebrew.md`](homebrew.md#referências-públicas).
+
 | Crate | Versão | Licença | Para quê |
 |---|---|---|---|
 | `criterion` | 0.5 | MIT OR Apache-2.0 | benchmarks em `crates/xbox-core/bench` |
