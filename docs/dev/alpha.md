@@ -1,5 +1,9 @@
 # Primeiro alpha: homebrew real
 
+Para retomar o projeto em outra sessão ou LLM, consulte
+[CONTINUIDADE_ALPHA.md](../../CONTINUIDADE_ALPHA.md), com as seis entregas,
+os dois commits de implementação, seus limites e os próximos passos.
+
 Meta inicial: executar um XBE homebrew compilado por um SDK real, produzir saída
 verificável e depois apresentar um framebuffer. Fixtures de bytes do projeto
 continuam sendo testes; não substituem esse marco.
@@ -8,8 +12,8 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | pendente | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | pendente | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 3. Kernel mínimo | dados e dispatcher concluídos (ADR-0022, ADR-0023); 1/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 4. ISA necessária | CMPXCHG/LOCK em RAM e SETcc implementados; bloqueio em RDTSC | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | pendente | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
@@ -28,15 +32,24 @@ O alvo já foi compilado pelo WSL/Fedora, com SDK/submódulos fixados e hashes
 repetidos após normalização de metadata. A inspeção verificou 4 seções, 27 páginas
 e 72 imports: 69 funções e 3 dados. A infraestrutura de uma thread inicial já
 inicializa TLS nxdk, aplica FS e transporta chamadas stdcall/cdecl/fastcall até
-uma saída explícita do Rust gerado. Os serviços ainda não foram implementados.
+uma saída explícita do Rust gerado. O dispatcher atende `RtlInitAnsiString`;
+os demais serviços permanecem pendentes.
 
-O aceite completo da entrega 2 permanece aberto: o homebrew exige
-`LaunchDataPage`, `PsThreadObjectType` e `XeImageFileName`, além de criar uma thread
-para `main`. O AOT recusa esses dados até que existam implementações adequadas.
-Também foram identificados LOCK CMPXCHG e SETE sem suporte na ISA. A próxima
-entrega deve tratar os dados e serviços de inicialização, com execução integrada
-ainda sujeita aos bloqueios de ISA. Build, inventário, hashes e limites em
-[`homebrew.md`](homebrew.md) e [ADR-0021](../adr/0021-tls-imports-aot.md).
+Os três dados que o homebrew exige — `LaunchDataPage`, `PsThreadObjectType` e
+`XeImageFileName` — já têm representação em memória guest, em duas páginas com
+permissões distintas ([ADR-0022](../adr/0022-dados-exportados-do-kernel.md)). Com
+isso, `translate` do `hello.xbe` deixou de parar no ordinal 164 e passou a parar em
+`LOCK CMPXCHG` em `0x209C3`. Essa instrução e as 16 condições SETcc agora estão
+implementadas ([ADR-0024](../adr/0024-cmpxchg-setcc.md)); o bloqueio atual é
+`RDTSC` em `0x2055B`, ainda em tempo de tradução. Sendo AOT, instrução faltante no fluxo descoberto bloqueia antes de
+qualquer execução — e as entradas de rotinas de thread também precisarão entrar entre
+os destinos recompilados.
+
+O aceite da entrega 2 permanece aberto: há apenas um serviço de kernel implementado
+(`1/69` no relatório de ordinais) e o CRT cria uma thread para `main`. Build,
+inventário, hashes e limites em [`homebrew.md`](homebrew.md) e
+[ADR-0021](../adr/0021-tls-imports-aot.md).
 
 A primeira entrega foi validada com mídia comercial apenas como dado do loader.
-Ainda não há execução de homebrew, GPU ou serviços de kernel. A BIOS não foi usada.
+Ainda não há execução do homebrew completo nem GPU; o serviço existente foi
+validado em fixtures. A BIOS não foi usada.

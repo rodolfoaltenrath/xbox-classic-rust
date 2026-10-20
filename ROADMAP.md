@@ -1108,6 +1108,9 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | Controle indireto e entradas adicionais (ADR-0019) | — | CALL/JMP r/m32, inferência local/RO e `--entry`; destinos validados antes de commit, RET, callbacks e snapshot; 189 testes de workspace e 64 nativos em debug/release |
 | 2026-10-20 | 2 / 4 | Aceite local de memória e loader compartilhado (ADR-0020) | — | T14 NFSU2: 14 seções, 152 ordinais; Miri T1–T10, 20000 cenários, auditoria unsafe e Clippy global limpo; marco 1/6 do alpha |
 | 2026-10-20 | 3-AOT / 4 | Build nxdk real e infraestrutura TLS/ABI (ADR-0021) | — | Hello: 4 seções, 72 imports; TLS nxdk, FS e trampolins guest RX; 69 testes nativos; serviços/dados/threads e execução do homebrew pendentes |
+| 2026-10-20 | 4 | Dados exportados do kernel (ADR-0022) | — | Três dados em duas páginas com permissões distintas; slot de dado recebe endereço do símbolo; procedimentos envenenados; 10 testes de layout/permissão/conteúdo; `translate` do hello avança do ordinal 164 para `LOCK CMPXCHG` em 0x209C3 |
+| 2026-10-20 | 4 | Dispatcher de serviços de kernel (ADR-0023) | — | Recusa com nome/ordinal/chamador/argumentos e CPU intacta; `RtlInitAnsiString` como primeiro serviço; laço de despacho no projeto gerado; 71 casos nativos; 1/69 serviços — bloqueio do alvo segue sendo ISA |
+| 2026-10-20 | 3-AOT | CMPXCHG/LOCK em RAM e SETcc (ADR-0024) | — | 147456 comparações físicas; 79 casos nativos; aliases, FS/SIB, proteção e snapshot; próximo bloqueio real: RDTSC em 0x2055B |
 
 ---
 
@@ -1115,10 +1118,13 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Alpha, integração dos marcos 2 e 3/6:** implementar os dados exportados
-   `LaunchDataPage`, `PsThreadObjectType` e `XeImageFileName` e os serviços de
-   inicialização/threads do nxdk hello. Build real, inventário e infraestrutura
-   TLS/ABI já disponíveis; evidência e limites em `docs/dev/homebrew.md`.
+1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
+   (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
+   de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
+   em tempo de tradução:** `RDTSC` em `0x2055B`, após implementar CMPXCHG/SETcc
+   no ADR-0024. Definir relógio guest determinístico, sem confundir contagem
+   de instruções ou timestamp host com ciclos do Xbox. Sendo AOT, instrução
+   faltante bloqueia antes de qualquer serviço ser exercitado.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.
 3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de

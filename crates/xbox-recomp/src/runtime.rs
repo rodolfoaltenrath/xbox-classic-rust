@@ -12,6 +12,26 @@ mod muldiv;
 pub use muldiv::{divide_values, multiply_values};
 pub use xbox_kernel::imports::entry as kernel_entry;
 
+/// RMW é indivisível sob a posse exclusiva de Bus; não há yield dentro da
+/// instrução. LOCK não autoriza compartilhar a arena entre threads host.
+/// MMIO exige protocolo próprio e é recusado antes de qualquer leitura.
+pub fn validate_cmpxchg_ram(bus: &Bus, address: u32, width: Width) -> Result<()> {
+    for offset in 0..width.bytes() {
+        let va = address
+            .checked_add(offset)
+            .ok_or_else(|| xbox_core::Error::format("CMPXCHG transborda o endereço guest"))?;
+        // CMPXCHG é uma operação de escrita inclusive no caso desigual. Uma
+        // página ausente deve reportar a intenção de escrita da operação RMW.
+        for access in [Acesso::Escrita, Acesso::Leitura] {
+            let physical = bus.traduzir(GuestVirt(va), access)?;
+            if physical.0 as usize >= bus.ram() {
+                return Err(xbox_core::Error::not_implemented("CMPXCHG em MMIO", "Fase 5").into());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Retorno do entry point ao chamador do host; nunca é executado como código.
 pub use xbox_kernel::loader::RETURN_SENTINEL;
 /// Índice de EAX na ordem x86 dos registradores.
@@ -132,6 +152,21 @@ impl Session {
             self.state.eip,
             &self.state.regs,
         )?)
+    }
+
+    /// Atende a chamada de kernel pendente e retoma a execução do guest.
+    ///
+    /// Em caso de erro a CPU fica **intacta**: `EIP` continua no trampolim e a chamada
+    /// pendente segue reconstruível por `EIP`, registradores e RAM — o mesmo contrato
+    /// que o snapshot `AOTC` já exige. Assim um serviço faltante pode ser implementado
+    /// e a execução retomada do snapshot, sem estado escondido no host.
+    pub fn atender_kernel(
+        &mut self,
+        dispatcher: &mut xbox_kernel::dispatch::Dispatcher,
+    ) -> Result<()> {
+        let ordinal = self.kernel_call()?.export.ordinal;
+        let atendimento = dispatcher.atender(&mut self.bus, self.state.eip, &self.state.regs)?;
+        self.complete_kernel_call(ordinal, atendimento.eax)
     }
 
     /// O dispatcher chama isto somente após implementar o serviço correspondente.

@@ -50,20 +50,23 @@ outro código. Os hashes identificam a build de referência, não qualquer build
 O loader verificou as 4 seções, 27 páginas e 104141 bytes; entry point `0x18C00`.
 Há 72 entradas: 69 funções e 3 dados, sem ordinal desconhecido no catálogo.
 Os dados são `LaunchDataPage` (164), `PsThreadObjectType` (259) e
-`XeImageFileName` (326). Hoje o AOT recusa esses dados por nome/ordinal; não cria
-objetos vazios para aparentar compatibilidade. Resolver um ordinal de função
-também não significa implementar seu serviço.
+`XeImageFileName` (326). Esses dados agora têm representação guest (ADR-0022),
+com ponteiros de procedimento não suportados envenenados; isso não implementa
+objetos, threads ou todos os serviços que os usam. Resolver um ordinal de função
+também não significa implementar seu serviço. O caminho NT declarado ainda precisa
+ser ligado à mídia/VFS real.
 
 TLS do alvo: template `0x2A000..0x2A110` (272 bytes), zero-fill 0, índice
 em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
-O status atual é explicitamente **zero serviços HLE implementados**.
+O dispatcher atende `RtlInitAnsiString` (289): **1/69 serviços implementados**
+e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
 e término de threads, objetos/sincronização e outros serviços além do transporte
-de chamadas. A build contém ainda `LOCK CMPXCHG` em `0x209C3` e `SETE` em
-`0x209C9`, hoje sem suporte; isso não é um inventário completo da ISA faltante.
-O primeiro bloqueio atual da análise é o dado importado de ordinal 164.
+de chamadas. A build contém `LOCK CMPXCHG` em `0x209C3` e `SETE` em `0x209C9`,
+agora implementados no ADR-0024. A tradução real avançou para **RDTSC em
+`0x2055B`**, ainda sem suporte; isso não é um inventário completo da ISA faltante.
 
 ## Infraestrutura implementada
 

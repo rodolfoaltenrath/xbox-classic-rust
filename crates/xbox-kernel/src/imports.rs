@@ -54,8 +54,12 @@ pub(crate) fn marker(ordinal: u32) -> [u8; 8] {
     bytes
 }
 
-/// Valida toda a tabela antes de modificar a imagem. Dados exportados precisam
-/// de implementação própria; não são convertidos em funções nem zerados.
+/// Valida toda a tabela antes de modificar a imagem.
+///
+/// Dado exportado precisa de representação própria em [`crate::loader::data`]: não é
+/// convertido em função, não é zerado e não recebe endereço arbitrário. Um dado que o
+/// catálogo conhece mas ninguém modelou recusa a imagem, com o nome e o ordinal na
+/// mensagem — conhecer a assinatura não é implementar o serviço.
 pub fn plan(xbe: &Xbe<'_>) -> Result<Vec<Export>> {
     if xbe.header.non_kernel_import_dir_address != 0 {
         return Err(CoreError::format("imports não-kernel ainda não implementados").into());
@@ -66,7 +70,7 @@ pub fn plan(xbe: &Xbe<'_>) -> Result<Vec<Export>> {
             let export = lookup(ordinal).ok_or_else(|| {
                 CoreError::format(format!("ordinal de kernel desconhecido: {ordinal}"))
             })?;
-            if export.kind == Kind::Data {
+            if export.kind == Kind::Data && crate::loader::data::address(ordinal).is_none() {
                 return Err(CoreError::format(format!(
                     "dado de kernel ainda não implementado: {} (ordinal {ordinal})",
                     export.name
@@ -76,6 +80,40 @@ pub fn plan(xbe: &Xbe<'_>) -> Result<Vec<Export>> {
             Ok(export)
         })
         .collect()
+}
+
+/// O dado exportado já tem representação em memória guest?
+///
+/// Fonte única de verdade para relatório e planejamento: ter nome e assinatura no
+/// catálogo **não** é ter representação.
+pub fn dado_implementado(ordinal: u32) -> bool {
+    crate::loader::data::address(ordinal).is_some()
+}
+
+/// O serviço desta função já está implementado?
+///
+/// Delega para [`crate::dispatch::implementado`], que é a fonte única consultada também
+/// pelo relatório de ordinais. O contador antigo era um literal e não media nada.
+pub fn servico_implementado(ordinal: u32) -> bool {
+    crate::dispatch::implementado(ordinal)
+}
+
+/// Endereço guest que o slot do thunk deve receber.
+///
+/// Função recebe o trampolim; dado recebe o endereço do próprio símbolo, porque o nxdk
+/// declara os exports com `__declspec(dllimport)` e o código compilado desreferencia a
+/// partir do valor carregado do slot.
+pub fn thunk_target(export: &Export) -> Result<u32> {
+    match export.kind {
+        Kind::Function(_) => Ok(trampoline(export.ordinal)),
+        Kind::Data => crate::loader::data::address(export.ordinal).ok_or_else(|| {
+            CoreError::format(format!(
+                "dado de kernel sem representação: {} (ordinal {})",
+                export.name, export.ordinal
+            ))
+            .into()
+        }),
+    }
 }
 
 /// Confirma que o endereço é um trampolim instalado e imutável neste bus.

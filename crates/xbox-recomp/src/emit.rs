@@ -103,6 +103,8 @@ fn emit_target_check(out: &mut String, program: &Program) {
 fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
     match operation {
         Operation::Binary(op, dst, src) => emit_binary(out, *op, dst, src),
+        Operation::CompareExchange { dst, src, .. } => emit_cmpxchg(out, dst, src),
+        Operation::SetCondition { condition, dst } => emit_set_condition(out, *condition, dst),
         Operation::Unary(op, dst) => emit_unary(out, *op, dst),
         Operation::Shift(op, dst, count) => emit_shift(out, *op, dst, count),
         Operation::Rotate(op, dst, count) => emit_rotate(out, *op, dst, count),
@@ -457,6 +459,49 @@ fn emit_unary(out: &mut String, op: Unary, dst: &Operand) {
         ),
         Unary::Not => {}
     }
+}
+
+fn emit_cmpxchg(out: &mut String, dst: &Operand, src: &Operand) {
+    let width = dst.width().unwrap_or(Width::Dword);
+    prepare_address(out, dst, "s.regs[4]");
+    // Todos os operandos são capturados antes de escrever: AL/AH/EAX e base
+    // do endereço podem compartilhar o mesmo registrador.
+    line(
+        out,
+        &format!("let a = s.regs[0] & 0x{:08X}u32;", width.mask()),
+    );
+    line(out, &format!("let source = {};", read(src)));
+    if matches!(dst, Operand::Mem { .. }) {
+        line(
+            out,
+            &format!(
+                "xbox_recomp::runtime::validate_cmpxchg_ram(bus, address, Width::{width:?})?;"
+            ),
+        );
+    }
+    line(out, &format!("let b = {};", read(dst)));
+    line(out, "let equal = a == b;");
+    line(out, "let result = if equal { source } else { b };");
+    // Intel SDM: há escrita de volta mesmo quando a comparação falha.
+    write_operand(out, dst, "result");
+    line(out, "if !equal {");
+    write_operand(out, &accumulator(0, width), "b");
+    line(out, "}");
+    line(
+        out,
+        &format!(
+            "s.eflags = arithmetic_flags_width(s.eflags, a, b, a.wrapping_sub(b), true, Width::{width:?});"
+        ),
+    );
+}
+
+fn emit_set_condition(out: &mut String, condition: crate::ir::Condition, dst: &Operand) {
+    prepare_address(out, dst, "s.regs[4]");
+    line(
+        out,
+        &format!("let value = u32::from(condition_met(Condition::{condition:?}, s.eflags));"),
+    );
+    write_operand(out, dst, "value");
 }
 
 fn emit_shift(out: &mut String, op: Shift, dst: &Operand, count: &Operand) {

@@ -132,9 +132,9 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "69 passed"
+        "79 passed"
     } else {
-        "56 passed"
+        "65 passed"
     }
 }
 

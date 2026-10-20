@@ -10,6 +10,40 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: CMPXCHG de 8/16/32 bits e LOCK em destino RAM, com escrita mesmo
+  na comparação desigual e sem commit parcial em faltas. SETcc implementa as
+  16 condições em byte baixo/alto/memória, preservando flags. Oráculo físico:
+  147456 comparações; projeto gerado com 79 testes em x86_64. A tradução do nxdk
+  hello avança para RDTSC em `0x2055B`, ainda sem execução completa (ADR-0024).
+
+- Alpha, item 1 da entrega 3: região de dados exportados do kernel em memória guest,
+  em duas páginas porque a permissão da MMU é por página e o título escreve um dos
+  dados. `PsThreadObjectType` e `XeImageFileName` em `0x7FFF0000` somente-leitura;
+  `LaunchDataPage` em `0x7FFF1000` gravável e nulo. O slot do thunk de um dado recebe o
+  endereço do símbolo, não um trampolim, porque o nxdk usa `__declspec(dllimport)`.
+  Procedimentos de `OBJECT_TYPE` recebem endereços **envenenados** em página não
+  mapeada, para que uso indevido falhe apontando o campo em vez de saltar para zero.
+  Dez testes de layout, ponteiros, permissões e conteúdo (ADR-0022).
+- `translate` do `hello.xbe` real avançou do bloqueio no ordinal 164 para
+  `LOCK CMPXCHG` em `0x209C3`: bloqueio de ISA **em tempo de tradução**. Resolver os
+  dados destravou a próxima investigação; nenhum serviço de kernel foi implementado.
+- Alpha, item 2 da entrega 3: `xbox_kernel::dispatch::Dispatcher` atende chamadas de
+  kernel em `(&mut Bus, pc, regs)`; `Session::atender_kernel` aplica o resultado. Recusa
+  carrega nome, ordinal, endereço do chamador e argumentos pela ABI, e **não altera a
+  CPU** — o estado pendente continua retomável. Sucesso genérico é proibido por
+  construção. Primeiro serviço: `RtlInitAnsiString` (289), função pura sobre a memória
+  guest, com destino nulo recusado e string sem NUL tratada como erro. O projeto gerado
+  ganhou laço de despacho e duas verificações no Rust emitido (69 → 71 casos);
+  `1/69 serviços implementados` no relatório (ADR-0023). `1/69` não aproxima a execução
+  do homebrew: o bloqueio segue sendo de ISA.
+
+### Corrigido
+
+- `ordinal-report` imprimia `0 serviços implementados` como texto literal, que não
+  media nada. Os contadores passam a derivar do estado real, consultando a mesma fonte
+  do planejamento de imports e separando **dado com representação** de **serviço
+  implementado** (`3/3` e `0/69` no alvo).
+
 - Alpha: build local do nxdk hello com revisão/submódulos fixados, manifesto e
   hashes; normalização dos timestamps e padding de metadata do cxbe. Novo
   `ordinal-report` inventaria TLS, ABI e pendências: 69 funções e 3 dados no alvo.

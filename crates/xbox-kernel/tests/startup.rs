@@ -106,8 +106,13 @@ fn fronteira_abi_distingue_pilha_registradores_e_limites_sem_mudar_cpu() {
 
 #[test]
 fn rejeita_dados_desconhecidos_patches_de_codigo_callbacks_e_tls_malformado() {
-    for ordinal in [164, 259, 326, 500] {
-        assert!(Image::prepare_aot(&xbe_com_imports(&[0xC3], &[ordinal]).unwrap()).is_err());
+    // 164/259/326 passaram a ter representação (ver `tests/data.rs`). A recusa continua
+    // valendo para dado conhecido e **não modelado** e para ordinal desconhecido.
+    for ordinal in [16, 102, 322, 500] {
+        assert!(
+            Image::prepare_aot(&xbe_com_imports(&[0xC3], &[ordinal]).unwrap()).is_err(),
+            "ordinal {ordinal} deveria ser recusado"
+        );
     }
     for (offset, value) in [
         (0x3C4, 0x12000),

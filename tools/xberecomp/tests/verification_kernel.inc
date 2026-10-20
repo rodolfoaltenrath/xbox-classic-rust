@@ -7,6 +7,7 @@ mod kernel_verification {
     mod abi { include!("kernel_abi.rs"); }
     mod tail { include!("kernel_tail.rs"); }
     mod fs_fault { include!("fs_fault.rs"); }
+    mod dispatch { include!("kernel_dispatch.rs"); }
 
     #[test]
     fn abi_tls_fs_e_snapshot_pendente_funcionam_em_rust_nativo() {
@@ -86,5 +87,51 @@ mod kernel_verification {
         let before = s.state.clone();
         assert!(fs_fault::run(&mut s.state, &mut s.bus, 100).is_err());
         assert_eq!(s.state, before);
+    }
+
+    /// Caminho completo no Rust **gerado**: sair na fronteira, o dispatcher executar o
+    /// serviço, o efeito aparecer na memória guest e a execução retomar até o fim.
+    #[test]
+    fn dispatcher_atende_servico_implementado_e_a_execucao_retoma() {
+        let mut s = Session::load(include_bytes!("kernel_dispatch.xbe")).unwrap();
+        let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
+        assert_eq!(
+            dispatch::run(&mut s.state, &mut s.bus, 100).unwrap(),
+            Exit::KernelCall { ordinal: 289 }
+        );
+        s.atender_kernel(&mut dispatcher).unwrap();
+        assert_eq!(dispatcher.atendidas(), 1);
+        assert_eq!(dispatcher.recusadas(), 0);
+
+        // Efeito do serviço: ANSI_STRING preenchida apontando para a origem.
+        assert_eq!(s.bus.ler_u16(GuestVirt(0x12010)).unwrap(), 14);
+        assert_eq!(s.bus.ler_u16(GuestVirt(0x12012)).unwrap(), 15);
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12014)).unwrap(), 0x12020);
+
+        // Stdcall limpa os 8 bytes de argumento e a execução segue até o RET.
+        assert_eq!(
+            dispatch::run(&mut s.state, &mut s.bus, 100).unwrap(),
+            Exit::Returned
+        );
+    }
+
+    /// Serviço faltante é relatado com nome, ordinal e chamador, e a CPU fica intacta:
+    /// é isso que permite implementar o serviço e retomar do mesmo ponto.
+    #[test]
+    fn dispatcher_recusa_servico_faltante_sem_tocar_a_cpu() {
+        let mut s = Session::load(include_bytes!("kernel_abi.xbe")).unwrap();
+        let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
+        assert_eq!(
+            abi::run(&mut s.state, &mut s.bus, 100).unwrap(),
+            Exit::KernelCall { ordinal: 165 }
+        );
+        let antes = s.state.clone();
+        let erro = s.atender_kernel(&mut dispatcher).unwrap_err().to_string();
+        assert!(erro.contains("MmAllocateContiguousMemory"), "{erro}");
+        assert!(erro.contains("165"), "{erro}");
+        assert!(erro.contains("0x00001122"), "argumento no relato: {erro}");
+        assert_eq!(s.state, antes, "CPU alterada por uma recusa");
+        assert_eq!(dispatcher.recusadas(), 1);
+        assert_eq!(dispatcher.atendidas(), 0);
     }
 }

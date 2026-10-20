@@ -228,14 +228,24 @@ fn build_blocks(
 
 fn lower(i: &Instruction) -> Result<Operation> {
     let pc = i.ip32();
-    if i.has_lock_prefix() || !matches!(i.segment_prefix(), Register::None | Register::FS) {
+    if !matches!(i.segment_prefix(), Register::None | Register::FS) {
         return Err(fail(pc, "prefixo LOCK/segmento ainda não suportado"));
+    }
+    if i.has_lock_prefix() && !(i.mnemonic() == Mnemonic::Cmpxchg && i.op0_kind() == OpKind::Memory)
+    {
+        return Err(fail(
+            pc,
+            "LOCK exige CMPXCHG com destino de memória neste perfil",
+        ));
     }
     if let Some(op) = lower_string(i)? {
         return Ok(op);
     }
     if i.has_rep_prefix() || i.has_repne_prefix() {
         return Err(fail(pc, "REP exige operação de string suportada"));
+    }
+    if let Some(op) = lower_exchange(i)? {
+        return Ok(op);
     }
     let binary = match i.mnemonic() {
         Mnemonic::Mov => Some(Binary::Mov),
@@ -306,6 +316,41 @@ fn lower(i: &Instruction) -> Result<Operation> {
         });
     }
     lower_stack_and_flow(i)
+}
+
+fn lower_exchange(i: &Instruction) -> Result<Option<Operation>> {
+    if i.mnemonic() == Mnemonic::Cmpxchg {
+        return Ok(Some(Operation::CompareExchange {
+            dst: operand(i, 0)?,
+            src: operand(i, 1)?,
+            locked: i.has_lock_prefix(),
+        }));
+    }
+    if matches!(
+        i.mnemonic(),
+        Mnemonic::Seto
+            | Mnemonic::Setno
+            | Mnemonic::Setb
+            | Mnemonic::Setae
+            | Mnemonic::Sete
+            | Mnemonic::Setne
+            | Mnemonic::Setbe
+            | Mnemonic::Seta
+            | Mnemonic::Sets
+            | Mnemonic::Setns
+            | Mnemonic::Setp
+            | Mnemonic::Setnp
+            | Mnemonic::Setl
+            | Mnemonic::Setge
+            | Mnemonic::Setle
+            | Mnemonic::Setg
+    ) {
+        return Ok(Some(Operation::SetCondition {
+            condition: lower_condition(i)?,
+            dst: operand(i, 0)?,
+        }));
+    }
+    Ok(None)
 }
 
 fn lower_string(i: &Instruction) -> Result<Option<Operation>> {

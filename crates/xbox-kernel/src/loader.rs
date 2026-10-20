@@ -5,6 +5,7 @@ use xbox_core::{Error as CoreError, PAGE_SIZE};
 use xbox_formats::{Xbe, xbe::SectionFlags};
 use xbox_mem::{Acesso, Bus, GuestPhys, GuestVirt, Perm};
 
+pub mod data;
 mod startup;
 mod verify;
 pub use startup::{

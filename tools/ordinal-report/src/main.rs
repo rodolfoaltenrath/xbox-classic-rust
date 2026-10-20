@@ -42,13 +42,23 @@ fn report(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let mut functions = 0;
     let mut data = 0;
     let mut unknown = 0;
+    // Contados a partir do estado real, consultando a mesma fonte que o planejamento de
+    // imports usa. O contador anterior era um literal e por isso não media nada.
+    let mut dados_resolvidos = 0;
+    let mut servicos_implementados = 0;
     out.push_str("\nOrdinal  Nome                                 ABI          Estado\n");
     for ordinal in &imports {
         if let Some(export) = lookup(*ordinal) {
             let (abi, state) = match export.kind {
                 Kind::Data => {
                     data += 1;
-                    ("data".to_owned(), "dado pendente")
+                    match xbox_kernel::loader::data::address(*ordinal) {
+                        Some(endereco) => {
+                            dados_resolvidos += 1;
+                            ("data".to_owned(), format!("dado em 0x{endereco:08X}"))
+                        }
+                        None => ("data".to_owned(), "dado pendente".to_owned()),
+                    }
                 }
                 Kind::Function(abi) => {
                     functions += 1;
@@ -57,7 +67,12 @@ fn report(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
                         Abi::Stdcall(bytes) => format!("stdcall/{bytes}"),
                         Abi::Fastcall(bytes) => format!("fastcall/{bytes}"),
                     };
-                    (abi, "trampolim disponível; serviço pendente")
+                    if xbox_kernel::imports::servico_implementado(*ordinal) {
+                        servicos_implementados += 1;
+                        (abi, "serviço implementado".to_owned())
+                    } else {
+                        (abi, "trampolim disponível; serviço pendente".to_owned())
+                    }
                 }
             };
             writeln!(out, "{ordinal:7}  {:36} {abi:12} {state}", export.name)?;
@@ -68,7 +83,9 @@ fn report(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     }
     writeln!(
         out,
-        "\nTotal: {} imports; {functions} funções; {data} dados; {unknown} desconhecidos; 0 serviços implementados",
+        "\nTotal: {} imports; {functions} funções; {data} dados; {unknown} desconhecidos; \
+         {dados_resolvidos}/{data} dados com representação; \
+         {servicos_implementados}/{functions} serviços implementados",
         imports.len()
     )?;
     match xbox_recomp::analysis::analyze(bytes) {
@@ -121,12 +138,35 @@ mod tests {
         assert!(text.contains("DbgPrint"));
         assert!(text.contains("stdcall/4"));
         assert!(text.contains("XboxHardwareInfo"));
-        assert!(
-            text.contains(
-                "4 imports; 2 funções; 1 dados; 1 desconhecidos; 0 serviços implementados"
-            )
-        );
+        // `XboxHardwareInfo` (322) é dado conhecido e **sem** representação: o relatório
+        // precisa dizer pendente, não contar como resolvido.
+        assert!(text.contains("dado pendente"));
+        assert!(text.contains(
+            "4 imports; 2 funções; 1 dados; 1 desconhecidos; \
+             0/1 dados com representação; 0/2 serviços implementados"
+        ));
         assert!(text.contains("Primeiro bloqueio AOT"));
         assert!(report(b"XBEH").is_err());
+    }
+
+    #[test]
+    fn report_conta_dado_com_representacao_sem_marcar_servico() {
+        // Os três dados do homebrew têm representação; nenhum serviço existe ainda. O
+        // contador antes era literal e não distinguia os dois casos.
+        let mut bytes = xbox_formats::fixtures::xbe_com_codigo(&[0xC3]).unwrap();
+        for (i, ordinal) in [164u32, 259, 326, 8].into_iter().enumerate() {
+            bytes[0x2000 + i * 4..0x2004 + i * 4]
+                .copy_from_slice(&(0x80000000 | ordinal).to_le_bytes());
+        }
+        let text = report(&bytes).unwrap();
+        assert!(
+            text.contains("dado em 0x7FFF"),
+            "endereço do dado não aparece"
+        );
+        assert!(!text.contains("dado pendente"));
+        assert!(text.contains(
+            "4 imports; 1 funções; 3 dados; 0 desconhecidos; \
+             3/3 dados com representação; 0/1 serviços implementados"
+        ));
     }
 }

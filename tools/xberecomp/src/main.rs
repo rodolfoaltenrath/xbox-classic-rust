@@ -112,11 +112,12 @@ fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dy
     let recomp = quoted(root.join("crates/xbox-recomp"));
     let memory = quoted(root.join("crates/xbox-mem"));
     let core = quoted(root.join("crates/xbox-core"));
+    let kernel = quoted(root.join("crates/xbox-kernel"));
     std::fs::create_dir_all(output.join("src"))?;
     std::fs::write(
         output.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"obsidian-native\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n\n[dependencies]\nxbox-recomp = {{ path = {recomp} }}\nxbox-mem = {{ path = {memory} }}\nxbox-core = {{ path = {core} }}\n"
+            "[package]\nname = \"obsidian-native\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n\n[dependencies]\nxbox-recomp = {{ path = {recomp} }}\nxbox-mem = {{ path = {memory} }}\nxbox-core = {{ path = {core} }}\nxbox-kernel = {{ path = {kernel} }}\n"
         ),
     )?;
     std::fs::write(output.join("src/image.xbe"), bytes)?;
@@ -125,18 +126,40 @@ fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dy
         output.join("src/main.rs"),
         r#"mod generated;
 
+use xbox_recomp::runtime::Exit;
+
+/// Orçamento por fatia e número máximo de fatias. O orçamento total e a interrupção
+/// pelo host são trabalho da entrega 5; aqui o limite existe para que um serviço
+/// faltante não vire laço infinito.
+const BLOCOS_POR_FATIA: u64 = 1_000_000;
+const FATIAS: u32 = 64;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
-    let exit = generated::run(&mut session.state, &mut session.bus, 1_000_000)?;
-    if let xbox_recomp::runtime::Exit::KernelCall { ordinal } = exit {
-        let call = session.kernel_call()?;
-        return Err(format!("serviço de kernel ainda não implementado: {} (ordinal {})", call.export.name, ordinal).into());
+    let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
+
+    for _ in 0..FATIAS {
+        match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
+            Exit::Returned => {
+                println!(
+                    "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
+                    session.state.regs[0], session.state.retired, dispatcher.atendidas()
+                );
+                return Ok(());
+            }
+            Exit::Budget => continue,
+            // O erro do dispatcher identifica nome, ordinal, chamador e argumentos.
+            // A CPU fica intacta: o estado pendente continua retomável.
+            Exit::KernelCall { .. } => session.atender_kernel(&mut dispatcher)?,
+        }
     }
-    if exit != xbox_recomp::runtime::Exit::Returned {
-        return Err("limite de 1000000 blocos atingido; execução interrompida".into());
-    }
-    println!("Execução nativa concluída: EAX={}, instruções={}", session.state.regs[0], session.state.retired);
-    Ok(())
+    Err(format!(
+        "execução interrompida após {} blocos; {} chamadas atendidas, {} recusadas",
+        BLOCOS_POR_FATIA * u64::from(FATIAS),
+        dispatcher.atendidas(),
+        dispatcher.recusadas()
+    )
+    .into())
 }
 "#,
     )?;

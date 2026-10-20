@@ -4,7 +4,7 @@ use xbox_core::Error as CoreError;
 use xbox_formats::Xbe;
 use xbox_mem::{Acesso, Bus, GuestVirt, Perm};
 
-use super::{Image, Mode, Result};
+use super::{Image, Mode, Result, data};
 use crate::imports::{self, TRAMPOLINE_BASE, TRAMPOLINE_SIZE};
 
 pub const STACK_BASE: u32 = 0x7000_0000;
@@ -81,15 +81,28 @@ impl Image {
         }
         bus.escrever_u32(GuestVirt(esp), RETURN_SENTINEL)?;
         if !exports.is_empty() {
-            map_fresh(bus, TRAMPOLINE_BASE, TRAMPOLINE_SIZE)?;
+            let funcoes = exports
+                .iter()
+                .any(|e| matches!(e.kind, imports::Kind::Function(_)));
+            let dados = exports.iter().any(|e| e.kind == imports::Kind::Data);
+            if funcoes {
+                map_fresh(bus, TRAMPOLINE_BASE, TRAMPOLINE_SIZE)?;
+            }
+            if dados {
+                data::install(bus, data::DEFAULT_IMAGE_PATH)?;
+            }
             // Slots não importados permanecem inválidos, mesmo com ordinal conhecido.
             for (index, export) in exports.iter().enumerate() {
-                let target = imports::trampoline(export.ordinal);
-                bus.escrever_bytes(GuestVirt(target), &imports::marker(export.ordinal))?;
+                let target = imports::thunk_target(export)?;
+                if matches!(export.kind, imports::Kind::Function(_)) {
+                    bus.escrever_bytes(GuestVirt(target), &imports::marker(export.ordinal))?;
+                }
                 patch_u32(bus, xbe.kernel_thunk + index as u32 * 4, target)?;
             }
-            let frame = bus.traduzir(GuestVirt(TRAMPOLINE_BASE), Acesso::Leitura)?;
-            bus.mapear(GuestVirt(TRAMPOLINE_BASE), frame, 1, Perm::RX)?;
+            if funcoes {
+                let frame = bus.traduzir(GuestVirt(TRAMPOLINE_BASE), Acesso::Leitura)?;
+                bus.mapear(GuestVirt(TRAMPOLINE_BASE), frame, 1, Perm::RX)?;
+            }
         }
         Ok(Startup {
             image,
@@ -109,10 +122,14 @@ pub fn validate_startup_layout(xbe: &Xbe<'_>) -> xbox_core::Result<()> {
             .map(|s| (s.virtual_address, s.virtual_size)),
     );
     for (base, size) in ranges.filter(|(_, size)| *size != 0) {
+        // Reservadas sempre, mesmo quando a imagem não usa a região: assim o resultado
+        // da validação de layout não depende de quais imports a imagem tem.
         for (reserved, length) in [
             (STACK_BASE, STACK_SIZE),
             (TIB_BASE, 4096),
             (TRAMPOLINE_BASE, TRAMPOLINE_SIZE),
+            (data::DATA_RO_BASE, data::DATA_SIZE),
+            (data::DATA_RW_BASE, data::DATA_SIZE),
         ] {
             if base < reserved + length && base + size > reserved {
                 return Err(CoreError::format(format!(
@@ -124,7 +141,7 @@ pub fn validate_startup_layout(xbe: &Xbe<'_>) -> xbox_core::Result<()> {
     Ok(())
 }
 
-fn map_fresh(bus: &mut Bus, base: u32, size: u32) -> Result<()> {
+pub(super) fn map_fresh(bus: &mut Bus, base: u32, size: u32) -> Result<()> {
     for va in (base..base + size).step_by(4096) {
         if bus.mmu().consultar(GuestVirt(va)).is_some() {
             return Err(

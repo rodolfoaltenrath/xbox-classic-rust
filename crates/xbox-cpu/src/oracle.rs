@@ -6,6 +6,7 @@ use core::arch::asm;
 
 mod double;
 pub use double::{DoubleShift, DoubleWidth, execute_double_shift};
+pub mod exchange;
 pub mod muldiv;
 pub mod strings;
 

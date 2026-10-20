@@ -154,6 +154,15 @@ pub enum Condition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
     Binary(Binary, Operand, Operand),
+    CompareExchange {
+        dst: Operand,
+        src: Operand,
+        locked: bool,
+    },
+    SetCondition {
+        condition: Condition,
+        dst: Operand,
+    },
     Unary(Unary, Operand),
     Shift(Shift, Operand, Operand),
     Rotate(Rotate, Operand, Operand),

@@ -312,3 +312,17 @@ Passaram 200 testes de workspace, 64 testes nativos em debug/release e dois
 doctests. Clippy global passou, corrigindo os 19 avisos de memória registrados
 nas entradas históricas acima. T14 real e contratos sob Miri estão detalhados em
 [memoria.md](memoria.md). O marco 1/6 do alpha está em [alpha.md](alpha.md).
+
+## CMPXCHG/LOCK em RAM e SETcc — ADR-0024
+
+CMPXCHG suporta 8/16/32 bits, registradores e RAM, incluindo LOCK em destino
+de memória. A escrita do destino acontece também quando a comparação falha;
+falhas de página/permissão não comprometem CPU ou parte da RAM. O acesso é
+indivisível no runtime com posse exclusiva do bus, sem yield durante a instrução.
+MMIO e CMPXCHG8B continuam recusados. SETcc suporta as 16 condições em byte
+baixo/alto/memória, sem alterar flags.
+
+O teste gerador passou a 79 casos em x86_64, com 147456 comparações adicionais
+de CMPXCHG contra a CPU física, mais aliases, FS/SIB, RO, página cruzada e
+snapshot/reexecução. O nxdk hello agora para em RDTSC (`0x2055B`) durante a
+tradução. Detalhes e contrato de LOCK: [ADR-0024](../adr/0024-cmpxchg-setcc.md).

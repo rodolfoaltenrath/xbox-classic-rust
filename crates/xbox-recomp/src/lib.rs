@@ -53,6 +53,12 @@ pub enum Error {
     UndefinedDoubleShift { pc: u32, count: u32, bits: u32 },
     #[error("#DE em 0x{pc:08X}: {reason}")]
     Divide { pc: u32, reason: DivideFault },
+    /// O dispatcher não conseguiu atender a chamada de kernel.
+    ///
+    /// Mantida como variante própria para que "serviço faltando" não se confunda com
+    /// erro de tradução nem com falta de memória no relato ao host.
+    #[error(transparent)]
+    Kernel(#[from] xbox_kernel::dispatch::Erro),
 }
 
 /// Resultado do subsistema AOT.

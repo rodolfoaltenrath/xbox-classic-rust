@@ -65,6 +65,7 @@ Isso ainda não comprova compatibilidade com jogos comerciais ou com toda a ISA.
 
 ## Documentação
 
+- [Guia de continuidade do alpha para outra LLM](CONTINUIDADE_ALPHA.md)
 - [Roadmap e progresso](ROADMAP.md)
 - [Arquitetura da recompilação](docs/arch/recompilacao.md)
 - [Uso do recompilador e validação](docs/dev/recomp.md)

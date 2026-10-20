@@ -32,6 +32,23 @@ pub(super) fn sources(output: &Path) -> String {
         "kernel_tail",
         &xbe_com_imports(&[0xFF, 0x25, 0, 0x20, 1, 0], &[8]).unwrap(),
     );
+
+    // Chamada a um serviço **implementado**: RtlInitAnsiString (289), stdcall/8.
+    // Stdcall empilha da direita para a esquerda, então SourceString vai primeiro.
+    // A `.rdata` da fixture tem 0x40 bytes: o thunk fica em 0x12000, o destino em
+    // 0x12010 e a string de origem em 0x12020, sem sobreposição.
+    let mut dispatch_image = xbe_com_imports(
+        &[
+            0x68, 0x20, 0x20, 1, 0, // push 0x12020 (SourceString)
+            0x68, 0x10, 0x20, 1, 0, // push 0x12010 (DestinationString)
+            0xFF, 0x15, 0, 0x20, 1, 0, // call [imports+0]
+            0xC3,
+        ],
+        &[289],
+    )
+    .unwrap();
+    dispatch_image[0x2020..0x2020 + 15].copy_from_slice(b"D:\\default.xbe\0");
+    write(output, "kernel_dispatch", &dispatch_image);
     write(
         output,
         "fs_fault",
