@@ -608,7 +608,11 @@ devem ser conferidas no GitHub Actions; testes locais estão registrados em `doc
 - [x] *(2026-10-19)* Operações inteiras de 8/16/32 bits e subregistradores; AND/OR, INC/DEC/NEG/NOT, MOVZX/MOVSX e LEA
 - [x] *(2026-10-19)* PUSH/POP de 16/32 bits, LEAVE de 32 bits e as 16 condições Jcc curtas/near
 - [x] *(2026-10-19)* Oráculo de ALU na CPU física: 7986 comparações no Rust traduzido; mais 3872 casos de Jcc (ADR-0014)
-- [ ] Completar ISA inteira: ADC/SBB, shifts, multiplicação/divisão, strings, JECXZ/LOOP e chamadas indiretas
+- [x] *(2026-10-19)* ADC/SBB de 8/16/32 bits, com carry/borrow entre blocos e snapshot; 9438 casos gerais de ALU + 262144 comparações exaustivas de ADC/SBB de byte contra a CPU física
+- [x] *(2026-10-19)* SHL/SHR/SAR de 8/16/32 bits por CL/imediato/um implícito; flags definidas verificadas em 445686 comparações físicas e política determinística para flags indefinidas (ADR-0015)
+- [x] *(2026-10-19)* ROL/ROR/RCL/RCR de 8/16/32 bits e SHLD/SHRD de 16/32 bits; 791764 comparações físicas; contagens de resultado indefinido recusadas com PC (ADR-0016)
+- [x] *(2026-10-19)* MUL/IMUL e DIV/IDIV de 8/16/32 bits, IMUL truncado 16/32, CBW/CWDE/CWD/CDQ; 483916 comparações físicas e 1000580 diagnósticos de #DE classificados, sem entrega por IDT/kernel (ADR-0017)
+- [ ] Completar ISA inteira: strings, JECXZ/LOOP e chamadas indiretas
 - [ ] x87/MMX/SSE e validação diferencial independente
 - [ ] Loader real: TLS, ordinais e ambiente XAPI (Fase 4)
 - [ ] Perfis por revisão de XBE, identificação por hash e cache versionado
@@ -1091,6 +1095,10 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-19 | 3-AOT | Primeira recompilação nativa em Rust (ADR-0013) | — | `xberecomp`: XBE de teste → IR → Rust → executável; EAX=62 em 37 instruções; estado e call pendente preserváveis por snapshot |
 | 2026-10-19 | 3-AOT | Subconjunto inteiro ampliado e oráculo físico (ADR-0014) | — | Operandos de 8/16/32 bits, subregistradores, pilha e Jcc; 7986 comparações de ALU + 3872 de branches no código gerado |
 | 2026-10-19 | 0 | Preparação do repositório GitHub e licença Apache-2.0 | — | Histórico inicial de LICENSE preservado; README e metadados Cargo; mídias, BIOS e artefatos locais ignorados |
+| 2026-10-19 | 3-AOT | ADC/SBB e carry preservado entre blocos | — | 8/16/32 bits, AH, memória, imediatos e snapshot; 9438 casos gerais de ALU + 262144 exaustivos de ADC/SBB de byte contra a CPU física; 18 testes nativos |
+| 2026-10-19 | 3-AOT | SHL/SHR/SAR e política de flags (ADR-0015) | — | Contagens mascaradas, CL capturado antes da escrita, flags indefinidas normalizadas; 445686 comparações físicas de shifts; 177 testes de workspace e 24 nativos |
+| 2026-10-19 | 3-AOT | Rotações e shifts duplos (ADR-0016) | — | Anel com carry, aliases de CL/fonte, memória e contagens indefinidas com diagnóstico; 791764 comparações físicas adicionais; 179 testes de workspace e 35 nativos |
+| 2026-10-19 | 3-AOT | MUL/IMUL e DIV/IDIV com diagnóstico de #DE (ADR-0017) | — | 483916 comparações físicas e 1000580 diagnósticos classificados; extensões de sinal, memória, aliases e snapshot; 180 testes de workspace e 45 nativos |
 
 ---
 
@@ -1098,8 +1106,10 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Fase 3-AOT:** ampliar ISA e validação independente, mantendo erros explícitos e
-   estado capturável. Guia: `docs/dev/recomp.md`.
+1. **Fase 3-AOT:** depois de produtos/divisões, implementar JECXZ/LOOP e operações
+   de strings com REP, mantendo orçamento de execução, estado capturável e erros
+   explícitos; depois, chamadas indiretas com descoberta conservadora de alvos.
+   Guia: `docs/dev/recomp.md`.
 2. **Fase 2:** fechar seu aceite pendente, incluindo loader/T14, Miri e documentação;
    a prova AOT usa o bus existente e não declara a fase concluída.
 3. **Fase 4:** TLS e kernel HLE em Rust para avançar de fixture a homebrew real.

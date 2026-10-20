@@ -4,6 +4,11 @@ use std::path::Path;
 use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
+mod double_shifts;
+mod muldiv;
+mod rotations;
+mod shifts;
+
 fn image(output: &Path, name: &str, code: &[u8]) {
     let image = xbe_com_codigo(code).unwrap();
     let program = analysis::analyze(&image).unwrap();
@@ -29,8 +34,14 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     std::fs::write(manifest, config).unwrap();
 
     structural_images(output);
+    carry_images(output);
     main.push_str(include_str!("../verification_more.inc"));
+    main.push_str(include_str!("../verification_carry.inc"));
     main.push_str(&hardware_sources(output));
+    main.push_str(&shifts::sources(output));
+    main.push_str(&rotations::sources(output));
+    main.push_str(&double_shifts::sources(output));
+    main.push_str(&muldiv::sources(output));
 }
 
 fn structural_images(output: &Path) {
@@ -92,12 +103,40 @@ fn structural_images(output: &Path) {
     }
 }
 
+fn carry_images(output: &Path) {
+    for (name, code) in [
+        // A fronteira de bloco separa a palavra baixa da palavra alta.
+        ("adc_chain", &[0x01, 0xC8, 0xEB, 0, 0x11, 0xDA, 0xC3][..]),
+        ("sbb_chain", &[0x29, 0xC8, 0xEB, 0, 0x19, 0xDA, 0xC3][..]),
+        ("adc_high", &[0x10, 0xCC, 0xC3][..]),
+        ("sbb_high", &[0x18, 0xCC, 0xC3][..]),
+        // Imediato de byte e imediato com sinal estendido para word.
+        (
+            "adc_memory",
+            &[0x80, 0x15, 0x20, 0x20, 1, 0, 0xFF, 0xC3][..],
+        ),
+        (
+            "sbb_memory",
+            &[0x66, 0x83, 0x1D, 0x20, 0x20, 1, 0, 0xFF, 0xC3][..],
+        ),
+        ("adc_load", &[0x13, 0x05, 0x20, 0x20, 1, 0, 0xC3][..]),
+        ("sbb_load", &[0x1B, 0x05, 0x20, 0x20, 1, 0, 0xC3][..]),
+        // A leitura de código RX funciona; a escrita deve falhar antes de FLAGS.
+        ("adc_readonly", &[0x11, 0x0D, 0, 0x10, 1, 0, 0xC3][..]),
+        ("sbb_readonly", &[0x19, 0x0D, 0, 0x10, 1, 0, 0xC3][..]),
+    ] {
+        image(output, name, code);
+    }
+}
+
 fn hardware_sources(output: &Path) -> String {
     let mut declarations = String::new();
     let mut alu_cases = String::new();
     for (name, variant, byte, wide, modrm) in [
         ("add", "Add", 0x00, 0x01, 0xC8),
+        ("adc", "Adc", 0x10, 0x11, 0xC8),
         ("sub", "Sub", 0x28, 0x29, 0xC8),
+        ("sbb", "Sbb", 0x18, 0x19, 0xC8),
         ("xor", "Xor", 0x30, 0x31, 0xC8),
         ("and", "And", 0x20, 0x21, 0xC8),
         ("or", "Or", 0x08, 0x09, 0xC8),

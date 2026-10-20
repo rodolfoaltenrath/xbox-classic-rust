@@ -1,6 +1,6 @@
 # Recompilação estática em Rust
 
-Estado: subconjunto inteiro ampliado da Fase 3-AOT, conforme ADRs 0013 e 0014. Não executa jogos
+Estado: subconjunto inteiro ampliado da Fase 3-AOT, conforme ADRs 0013–0017. Não executa jogos
 comerciais nem implementa o kernel, renderização ou áudio.
 
 ## Pipeline implementado
@@ -15,7 +15,7 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
 
 ## Conjunto suportado
 
-- Operações inteiras de 8/16/32 bits: MOV, ADD, SUB, XOR, AND, OR, CMP, TEST,
+- Operações inteiras de 8/16/32 bits: MOV, ADD, ADC, SUB, SBB, XOR, AND, OR, CMP, TEST,
   INC, DEC, NEG e NOT; NOP de 16/32 bits.
 - Registradores completos e partes AL/CL/DL/BL, AH/CH/DH/BH, AX/CX/DX/BX/SP/BP/SI/DI.
   Escrever uma parte preserva os demais bits. `ir::Width` determina leitura,
@@ -29,9 +29,37 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
 - Flags conforme largura efetiva. INC/DEC preservam CF; NOT e instruções de
   transferência preservam flags. Operações lógicas limpam CF/OF e normalizam AF
   indefinido para zero.
+- ADC/SBB consomem CF antes da operação. CF é calculado com operandos estendidos
+  para 64 bits, sem perder carry/borrow quando `src + CF` excede a largura; OF e AF
+  usam os operandos originais e o resultado final. FLAGS só muda após escrita bem
+  sucedida. Pausa e snapshot preservam CF entre blocos de aritmética multipalavra.
+- SHL/SHR/SAR de 8/16/32 bits com contagem um implícita, imediato ou CL. A contagem
+  é mascarada por 31; SAR estende o sinal antes de deslocar. CL é capturado antes
+  da escrita, incluindo quando CL/CX/ECX é o destino. Contagem efetiva zero preserva
+  valor e FLAGS, mantendo a verificação de leitura/escrita da memória. AF indefinido
+  é zero; OF com contagem maior que um e CF lógico com contagem maior ou igual à
+  largura também são normalizados para zero (ADR-0015).
+- ROL/ROR/RCL/RCR de 8/16/32 bits. O emissor rotaciona um anel em `u64`, com um bit
+  extra para CF em RCL/RCR. SF/ZF/AF/PF são preservados; OF indefinido é zero. Uma
+  volta completa em ROL/ROR byte/word preserva o valor mas atualiza CF.
+- SHLD/SHRD de 16/32 bits com fonte em registrador e contagem imediata ou CL.
+  Contagem efetiva maior que a largura retorna `UndefinedDoubleShift` com PC antes
+  de qualquer acesso à memória; o resultado inteiro é indefinido na ISA. Zero
+  preserva FLAGS e valor, mantendo a validação de memória; count=16 em word
+  transfere a fonte inteira. Aliases com contagem/fonte são capturados antes da
+  escrita (ADR-0016).
+- MUL/IMUL implícitos e DIV/IDIV de 8/16/32 bits, com AX/DX:AX/EDX:EAX e partes
+  preservadas. IMUL de dois/três operandos cobre 16/32 bits, com fonte de memória e
+  imediato com sinal. Produtos são calculados em 64 bits, divisões em i128; o
+  emissor compromete resultados só depois de validar a aritmética. CF/OF de
+  produto são definidos por truncamento; outras flags aritméticas indefinidas
+  são zero. Divisão bem sucedida normaliza todas as flags aritméticas para zero.
+- CBW/CWDE/CWD/CDQ, sem alterar flags. Erros `Divide` com PC e motivo distinguem
+  divisor zero de quociente fora da faixa. Não entregam #DE via IDT/kernel; a CPU
+  permanece na instrução, sem contabilizá-la como concluída (ADR-0017).
 
 LOCK/REP, overrides de segmento, endereçamento de 16 bits, JECXZ/LOOP, CALL/RET de
-16 bits, chamadas indiretas, ADC/SBB, shifts, multiplicação/divisão, x87/MMX/SSE e
+16 bits, chamadas indiretas, x87/MMX/SSE e
 outras instruções são recusados com PC e diagnóstico.
 Jumps para o meio de uma instrução, sobreposição de instruções/seções, alvos fora
 de bytes executáveis, código truncado e código gravável também são erros. A análise
@@ -77,15 +105,30 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 13 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 45 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 
 `xbox-cpu/isa-oracle` executa a ALU física sobre registradores inicializados e captura
-suas flags. A comparação cobre 11 operações × 3 larguras × 11 valores de cada
-operando × 2 carries: 7986 casos. Outros 3872 casos cobrem os 16 Jcc curtos e near por
-relações independentes. Os testes de análise cobrem truncamentos, mutações, fluxo
-ambíguo e rejeição de variantes ainda sem suporte. Limites da referência: ADR-0014.
+suas flags. A comparação cobre 13 operações × 3 larguras × 11 valores de cada
+operando × 2 carries: 9438 casos. ADC/SBB de byte também são verificados nas 262144
+combinações de operação, operandos e carry. Outros 3872 casos cobrem os 16 Jcc curtos
+e near por relações independentes. Testes estruturais verificam AH, imediatos com
+sinal, memória, falha de escrita e retomada com carry entre blocos. Os testes de
+análise cobrem truncamentos, mutações, fluxo ambíguo e rejeição de variantes ainda
+sem suporte. Os shifts acrescentam 52470 casos de CL/imediato/um implícito e 393216
+casos exaustivos de byte contra a CPU física; só flags definidas são comparadas,
+enquanto a normalização das demais é verificada separadamente. Limites da referência:
+ADRs 0014 e 0015. Rotações e shifts duplos acrescentam mais 791764 comparações
+físicas (ADR-0016). Contagens de word com resultado indefinido são excluídas do
+oráculo e verificadas separadamente como erros recuperáveis; não há alegação de
+compatibilidade com o resultado indefinido de um Pentium III.
+
+Produtos/divisões acrescentam 483916 comparações físicas e 1000580 diagnósticos
+classificados (ADR-0017). A referência divide em 64 bits para provar segurança e
+só então executa a divisão estreita exata; não provoca #DE no host. IMUL truncado
+é comparado com o produto físico implícito equivalente. Os testes verificam
+separadamente flags indefinidas, fontes read-only, aliases, erros e snapshot.
 
 O snapshot mantém o formato anterior: partes de registrador usam os mesmos oito
 registradores de 32 bits. Helpers de flags de 32 bits continuam disponíveis para os

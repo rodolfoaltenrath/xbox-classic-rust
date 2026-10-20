@@ -18,7 +18,7 @@ resultado/RFLAGS e comparar com o Rust traduzido. `xbox-cpu::oracle` fica atrás
 `isa-oracle` e `target_arch = "x86_64"`. Não é backend de execução guest: a API aceita
 enums e inteiros, sem ponteiros, opcodes ou arquivos.
 
-Os três blocos `unsafe` do macro de assembly estão em `xbox-cpu`, crate autorizado
+Os três blocos `unsafe` do macro de ALU estão em `xbox-cpu`, crate autorizado
 pelo ROADMAP, com comentários SAFETY. Cada caso faz BT para definir CF, uma operação
 fixa, e PUSHFQ/POP balanceado. Não toca DF nem executa endereços guest. O runtime
 AOT continua Rust seguro e não depende dessa feature de teste.
@@ -28,6 +28,17 @@ de entradas/carry contra a CPU. AF indefinido nas operações lógicas é exclu�
 comparação; NOT exige preservação das flags. Outros 3872 casos validam os 16 Jcc
 curtos/near contra relações assinadas/não assinadas, overflow, sinal e paridade.
 Os testes de Jcc não são apresentados como execução de branches guest no host.
+
+### Ampliação de ADC/SBB (2026-10-19)
+
+A mesma referência passa a executar ADC/SBB fixos, com BT inicializando CF antes
+da instrução. São 39 casos AOT (13 operações × 3 larguras), com 9438 combinações na
+matriz geral. Mais 262144 casos esgotam os operandos de byte e os dois carries para
+ADC/SBB, comparando resultado, CF/PF/AF/ZF/SF/OF e preservação dos demais bits.
+Não há novos blocos `unsafe` ou alteração do formato de snapshot.
+
+O [ADR-0015](0015-flags-shifts-inteiros.md) amplia a referência com shifts e
+documenta os três blocos de assembly adicionais para controlar flags de entrada.
 
 ## Consequências e limites
 

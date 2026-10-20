@@ -63,7 +63,9 @@ impl Operand {
 pub enum Binary {
     Mov,
     Add,
+    Adc,
     Sub,
+    Sbb,
     Xor,
     And,
     Or,
@@ -77,6 +79,27 @@ pub enum Unary {
     Dec,
     Neg,
     Not,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shift {
+    Shl,
+    Shr,
+    Sar,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rotate {
+    Rol,
+    Ror,
+    Rcl,
+    Rcr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DoubleShift {
+    Shld,
+    Shrd,
 }
 
 /// As 16 condições de Jcc, em ordem de encoding Intel (0x70..0x7F).
@@ -105,6 +128,26 @@ pub enum Condition {
 pub enum Operation {
     Binary(Binary, Operand, Operand),
     Unary(Unary, Operand),
+    Shift(Shift, Operand, Operand),
+    Rotate(Rotate, Operand, Operand),
+    DoubleShift(DoubleShift, Operand, Operand, Operand),
+    Multiply {
+        signed: bool,
+        src: Operand,
+    },
+    Divide {
+        signed: bool,
+        src: Operand,
+    },
+    Imul {
+        dst: Operand,
+        left: Operand,
+        right: Operand,
+    },
+    SignExtend {
+        source: Width,
+        pair: bool,
+    },
     Extend {
         signed: bool,
         dst: Operand,

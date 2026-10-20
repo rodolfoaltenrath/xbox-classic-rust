@@ -37,7 +37,8 @@ cargo build --offline --release --manifest-path target/recomp-demo/Cargo.toml
 ```
 
 No Linux, o artefato equivalente é `target/recomp-demo/target/release/obsidian-native`.
-Esta rodada foi verificada no Windows; a execução no Linux continua a cargo do CI.
+Há validações locais no Windows e no Linux; os ambientes e resultados estão
+registrados abaixo.
 
 ## Traduzir um XBE de teste
 
@@ -71,8 +72,11 @@ as dependências desse target e pode demorar mais.
 O snapshot da prova inclui CPU e bus. Não equivale a save state de um jogo completo:
 kernel, GPU, áudio e input ainda não participam.
 
-Em x86_64, a integração executa 13 testes dentro do projeto gerado: inclui 7986
-comparações de ALU com a CPU física e 3872 de Jcc por relações independentes. A feature
+Em x86_64, a integração executa 45 testes dentro do projeto gerado: inclui 9438
+comparações de ALU com a CPU física, 262144 casos exaustivos de ADC/SBB de byte,
+445686 comparações de shifts e 791764 de rotações/shifts duplos. Outros 3872 casos
+verificam Jcc por relações independentes. Produtos/divisões acrescentam 483916
+comparações físicas e 1000580 diagnósticos classificados. A feature
 `isa-oracle` só entra como dependência de desenvolvimento desse projeto, sem alterar
 o executável normal. O log fica em `target/recomp-tests/<execução>/native-test-results.txt`.
 
@@ -115,3 +119,107 @@ Não foi executado Miri nesta rodada, nem feito teste de compatibilidade comerci
 O arquivo `Complex_4627v1.03.bin` disponibilizado pelo mantenedor permanece local e
 coberto pela regra `*.bin` do `.gitignore`. Só foi verificada sua presença e tamanho
 (1 MiB); seu conteúdo não foi consultado nem usado nesta etapa.
+
+## ADC/SBB — validação Linux de 2026-10-19
+
+Ambiente: Linux x86_64, Rust/Cargo/Clippy 1.99.0 do Fedora. O host não tem rustup;
+o pin 1.98.1 permanece no repositório, mas não foi o toolchain desta rodada.
+
+- `RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --features xbox-cpu/isa-oracle`:
+  174 testes passaram. A integração compilou e executou os 18 testes nativos.
+- Os mesmos 18 testes nativos passaram em `--release`, com warnings como erros:
+  9438 casos gerais de ALU, 262144 casos exaustivos de ADC/SBB de byte e 3872 casos
+  de Jcc. A demonstração continua produzindo EAX=62 após 37 instruções.
+- Os testes novos cobrem AH, memória de 8/16/32 bits, imediatos com sinal, carry
+  entre blocos, restauração do snapshot e erro de escrita sem comprometer CPU/FLAGS.
+- Dois doctests, `cargo fmt --all --check`, `git diff --check` e `obsidian doctor`:
+  passaram. Clippy dos três pacotes alterados com `--no-deps --all-targets` e
+  `xbox-cpu/isa-oracle`: passou sem warnings.
+- Clippy global com warnings como erros continua falhando nas 19 pendências de
+  `xbox-mem`. O Clippy 1.99 também aponta `assert_is_empty` no teste preexistente
+  de `xbox-formats/src/xdvdfs.rs`. Esses arquivos não foram alterados nesta etapa.
+
+Logs locais: `target/adc-sbb-workspace-tests.log`,
+`target/adc-sbb-native-release-tests.log`, `target/adc-sbb-doctests.log` e
+`target/adc-sbb-workspace-clippy.log`. Nenhuma execução remota de CI, validação de
+jogo comercial ou execução de Miri é declarada por esta rodada.
+
+## SHL/SHR/SAR — validação Linux de 2026-10-19
+
+Mesmo ambiente Linux x86_64 com Rust/Cargo/Clippy 1.99.0 do Fedora; o pin 1.98.1
+permanece no repositório. Política de contagens e flags: [ADR-0015](../adr/0015-flags-shifts-inteiros.md).
+
+- `RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --features xbox-cpu/isa-oracle`:
+  177 testes passaram, incluindo a integração que compila o Rust gerado e executa
+  seus 24 testes nativos. Os mesmos 24 testes passaram em `--release`.
+- 52470 comparações físicas cobrem SHL/SHR/SAR × 8/16/32 bits, CL, imediatos e um
+  implícito. Outros 393216 casos esgotam valores de byte e contagens 0..255 com
+  dois estados de flags de entrada. A matriz mascara somente flags indefinidas;
+  testes separados exigem sua normalização para zero.
+- Testes estruturais cobrem AH/CL/CX/ECX, memória de 8/16/32 bits, contagem zero
+  ou mascarada para zero, falhas de leitura/escrita sem comprometer CPU e snapshot
+  entre shift e ADC. Dois doctests e Clippy dos três pacotes alterados com
+  `--no-deps --all-targets --features xbox-cpu/isa-oracle -- -D warnings` passaram.
+- O executável nativo otimizado continua produzindo EAX=62 em 37 instruções.
+  As pendências globais de Clippy registradas acima continuam fora desta etapa;
+  não há resultado novo de CI remoto, Miri ou jogo comercial.
+
+Logs: `target/shifts-workspace-tests.log`, `target/shifts-native-release-tests.log`
+e `target/shifts-doctests.log`. O log dos 24 testes gerados também fica em
+`target/recomp-tests/<execução>/native-test-results.txt`.
+
+## Rotações e shifts duplos — validação Linux de 2026-10-19
+
+Mesmo host Linux x86_64 com Rust/Cargo/Clippy 1.99.0 do Fedora. O pin 1.98.1
+permanece no repositório. Regras e limites: [ADR-0016](../adr/0016-rotacoes-shifts-duplos.md).
+
+- `RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --features xbox-cpu/isa-oracle`:
+  179 testes passaram. A integração compilou e executou 35 testes nativos; os
+  mesmos 35 passaram em `--release`, também com warnings como erros.
+- 70488 comparações físicas cobrem ROL/ROR/RCL/RCR em 8/16/32 bits com CL,
+  imediatos e um implícito. Outros 524288 casos esgotam valores/contagens de byte
+  e os dois carries. SHLD/SHRD têm 196988 comparações de resultados definidos.
+- Foram verificados AH/CL/CX/ECX, aliases entre fonte/destino/contagem, voltas
+  completas, memória de largura exata, falhas de leitura/escrita e snapshot entre
+  RCL/RCR/SHLD. Contagens efetivas 17..31 de word são verificadas como erros
+  `UndefinedDoubleShift` com PC, sem modificar CPU ou acessar o operando de memória.
+- Dois doctests, formatação, verificação do diff e Clippy dos três pacotes
+  alterados (`--no-deps --all-targets --features xbox-cpu/isa-oracle -- -D warnings`)
+  passaram. O executável nativo otimizado continua com EAX=62 e 37 instruções.
+- As pendências globais de Clippy registradas acima permanecem. Esta etapa não
+  declara Miri, CI remoto, FPS, comportamento de resultados indefinidos em Xbox
+  real ou compatibilidade comercial.
+
+Logs: `target/rotations-workspace-tests.log`,
+`target/rotations-native-release-tests.log`, `target/rotations-doctests.log` e o
+`native-test-results.txt` da execução em `target/recomp-tests`.
+
+## MUL/IMUL e DIV/IDIV — validação Linux de 2026-10-19
+
+Mesmo host Linux x86_64, Rust/Cargo/Clippy 1.99.0 do Fedora; pin 1.98.1 preservado.
+Decisões e limites: [ADR-0017](../adr/0017-multiplicacao-divisao-de.md).
+
+- `RUSTFLAGS='-D warnings' cargo test --workspace --all-targets --features xbox-cpu/isa-oracle`:
+  180 testes passaram. O projeto gerado passou em 45 testes nativos, em debug e
+  release, também com warnings como erros.
+- MUL/IMUL: 2156 comparações gerais e 131072 pares exaustivos de byte contra a
+  referência física. As formas truncadas de IMUL são comparadas com os bits baixos
+  e CF/OF do produto implícito equivalente.
+- DIV/IDIV: 40548 entradas de vetores/geração determinística e 1310720 entradas
+  cobrindo todos os dividendos AX com dez divisores selecionados. Foram 350688
+  resultados físicos estreitos e 1000580 diagnósticos classificados.
+- No total, 483916 comparações físicas novas. A referência pré-checa a faixa por
+  divisão física de 64 bits e não executa #DE nativo; entrega de exceção por IDT
+  não foi implementada nem validada. O runtime retorna erro com PC e motivo.
+- Testes estruturais cobrem AH/EAX/EDX como fontes, partes preservadas, memória
+  read-only, leitura inválida, resto negativo, overflow, zero, CBW/CWDE/CWD/CDQ e
+  snapshot entre produto e divisão. O binário otimizado mantém EAX=62, 37 instruções.
+- Dois doctests, `cargo fmt --all --check`, `git diff --check` e Clippy dos três
+  pacotes alterados com `--no-deps --all-targets --features xbox-cpu/isa-oracle`
+  e `-D warnings` passaram. Pendências globais de Clippy anteriores permanecem;
+  sem declaração de CI remoto, Miri, FPS ou compatibilidade comercial nesta etapa.
+
+Logs: `target/muldiv-workspace-tests.log`, `target/muldiv-native-release-tests.log`,
+`target/muldiv-doctests.log` e o `native-test-results.txt` da execução. A integração
+agora usa `--nocapture` no projeto gerado para registrar separadamente resultados
+físicos e diagnósticos de divisão.

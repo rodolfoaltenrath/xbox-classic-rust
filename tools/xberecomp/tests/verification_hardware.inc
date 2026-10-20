@@ -11,7 +11,7 @@ mod hardware_verification {
     const VALUES: [u32; 11] = [0, 1, 0x7F, 0x80, 0xFF, 0x7FFF, 0x8000, 0xFFFF, 0x7FFFFFFF, 0x80000000, u32::MAX];
 
     #[test]
-    fn alu_traduzida_concorda_com_cpu_real_em_7986_casos() {
+    fn alu_traduzida_concorda_com_cpu_real_em_9438_casos() {
         let cases: &[(Alu, Width, Run, &[u8])] = &[
             /* ALU_CASES */
         ];
@@ -42,7 +42,36 @@ mod hardware_verification {
                 }
             }
         }
-        assert_eq!(checked, 7986);
+        assert_eq!(checked, 9438);
+    }
+
+    #[test]
+    fn adc_sbb_de_byte_concordam_com_cpu_em_262144_casos() {
+        let cases: &[(Alu, Run, &[u8])] = &[
+            (Alu::Adc, alu_adc8::run, include_bytes!("alu_adc8.xbe")),
+            (Alu::Sbb, alu_sbb8::run, include_bytes!("alu_sbb8.xbe")),
+        ];
+        let mut checked = 0;
+        for &(op, run, image) in cases {
+            let mut s = Session::load(image).unwrap();
+            let initial = s.state.clone();
+            for a in 0..=255 {
+                for b in 0..=255 {
+                    for carry in [false, true] {
+                        s.state = initial.clone();
+                        s.state.regs[0] = 0xA55A0000 | a;
+                        s.state.regs[1] = b;
+                        s.state.eflags = 0x602 | u32::from(carry);
+                        let (value, flags) = execute(op, Width::Byte, s.state.regs[0], b, carry);
+                        assert_eq!(run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Returned);
+                        assert_eq!(s.state.regs[0], value, "{op:?} a={a} b={b} cf={carry}");
+                        assert_eq!(s.state.eflags, 0x602 | (flags & 0x8D5), "{op:?} a={a} b={b} cf={carry}");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, 262144);
     }
 
     fn expected_condition(index: u8, a: u32, b: u32) -> bool {

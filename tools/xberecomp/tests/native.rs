@@ -110,13 +110,11 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
             .arg("--manifest-path")
             .arg(output.join("Cargo.toml"))
             .arg("--target-dir")
-            .arg(&target),
+            .arg(&target)
+            .arg("--")
+            .arg("--nocapture"),
     );
-    let expected = if cfg!(target_arch = "x86_64") {
-        "13 passed"
-    } else {
-        "11 passed"
-    };
+    let expected = native_test_summary();
     assert!(tests.contains(expected), "{tests}");
     std::fs::write(output.join("native-test-results.txt"), &tests).unwrap();
     let run = check(
@@ -129,4 +127,12 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
             .arg(&target),
     );
     assert!(run.contains("EAX=62, instruções=37"), "{run}");
+}
+
+fn native_test_summary() -> &'static str {
+    if cfg!(target_arch = "x86_64") {
+        "45 passed"
+    } else {
+        "33 passed"
+    }
 }

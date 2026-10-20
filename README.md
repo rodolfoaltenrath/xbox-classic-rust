@@ -36,8 +36,14 @@ cargo run --offline --manifest-path target/recomp-demo/Cargo.toml
 ```
 
 O subconjunto atual inclui operandos de 8/16/32 bits, registradores parciais,
-instruções de pilha e as 16 condições Jcc. Os testes do Rust gerado verificam 7986
-casos de ALU contra a CPU física e 3872 de saltos por relações independentes.
+instruções de pilha, ADC/SBB, shifts, rotações, MUL/IMUL, DIV/IDIV e as 16 condições
+Jcc. Os testes do Rust gerado verificam 9438 casos de ALU e mais 262144 casos
+exaustivos de ADC/SBB de byte
+contra a CPU física. Outros 445686 casos verificam shifts e suas flags definidas;
+791764 verificam rotações e shifts duplos com resultados definidos.
+Produtos/divisões acrescentam 483916 comparações físicas e 1000580 diagnósticos
+classificados; #DE é reportado ao host, sem entrega por kernel/IDT ainda.
+3872 saltos são verificados por relações independentes.
 Isso ainda não comprova compatibilidade com jogos comerciais ou com toda a ISA.
 
 ## Documentação

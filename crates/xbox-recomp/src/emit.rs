@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use crate::analysis::Program;
-use crate::ir::{Binary, Operand, Operation, Unary, Width};
+use crate::ir::{Binary, DoubleShift, Operand, Operation, Rotate, Shift, Unary, Width};
 
 /// Gera módulo Rust com `run(state, bus, orçamento_de_blocos)`.
 /// Saídas de orçamento acontecem somente em fronteiras de blocos.
@@ -12,9 +12,9 @@ pub fn rust_source(program: &Program) -> String {
         "// Gerado por xbox-recomp. Artefato local.\n\
 use xbox_recomp::{Error, Result};\n\
 #[allow(unused_imports)]\n\
-use xbox_recomp::runtime::{State, Exit, RETURN_SENTINEL, arithmetic_flags_width, logic_flags_width, sign_extend, condition_met};\n\
+use xbox_recomp::runtime::{State, Exit, RETURN_SENTINEL, arithmetic_flags_width, arithmetic_carry_flags_width, logic_flags_width, shift_flags, rotate_flags, double_shift_flags, multiply_values, divide_values, sign_extend, condition_met};\n\
 #[allow(unused_imports)]\n\
-use xbox_recomp::ir::{Width, Condition};\n\
+use xbox_recomp::ir::{Width, Condition, Shift, Rotate, DoubleShift};\n\
 use xbox_mem::{Bus, GuestVirt, Contexto};\n\
 #[allow(unused_variables)]\n\
 pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
@@ -44,18 +44,14 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
     match operation {
         Operation::Binary(op, dst, src) => emit_binary(out, *op, dst, src),
         Operation::Unary(op, dst) => emit_unary(out, *op, dst),
-        Operation::Extend { signed, dst, src } => {
-            line(out, &format!("let b = {};", read(src)));
-            let value = if *signed {
-                format!(
-                    "sign_extend(b, Width::{:?})",
-                    src.width().unwrap_or(Width::Dword)
-                )
-            } else {
-                "b".to_owned()
-            };
-            write_operand(out, dst, &value);
-        }
+        Operation::Shift(op, dst, count) => emit_shift(out, *op, dst, count),
+        Operation::Rotate(op, dst, count) => emit_rotate(out, *op, dst, count),
+        Operation::DoubleShift(op, dst, src, count) => emit_double_shift(out, *op, dst, src, count),
+        Operation::Multiply { signed, src } => emit_multiply(out, *signed, src),
+        Operation::Divide { signed, src } => emit_divide(out, *signed, src),
+        Operation::Imul { dst, left, right } => emit_imul(out, dst, left, right),
+        Operation::SignExtend { source, pair } => emit_sign_extension(out, *source, *pair),
+        Operation::Extend { signed, dst, src } => emit_extend(out, *signed, dst, src),
         Operation::Lea {
             dst,
             address: operand,
@@ -142,6 +138,118 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
     line(out, &format!("s.eip = 0x{next:08X};"));
 }
 
+fn emit_extend(out: &mut String, signed: bool, dst: &Operand, src: &Operand) {
+    line(out, &format!("let b = {};", read(src)));
+    let value = if signed {
+        format!(
+            "sign_extend(b, Width::{:?})",
+            src.width().unwrap_or(Width::Dword)
+        )
+    } else {
+        "b".to_owned()
+    };
+    write_operand(out, dst, &value);
+}
+
+fn accumulator(index: usize, width: Width) -> Operand {
+    if width == Width::Dword {
+        Operand::Reg(index)
+    } else {
+        Operand::Part {
+            index,
+            shift: 0,
+            width,
+        }
+    }
+}
+
+fn emit_multiply(out: &mut String, signed: bool, src: &Operand) {
+    let width = src.width().unwrap_or(Width::Dword);
+    line(out, &format!("let value = {};", read(src)));
+    line(
+        out,
+        &format!(
+            "let (product, overflow) = multiply_values(s.regs[0], value, Width::{width:?}, {signed});"
+        ),
+    );
+    if width == Width::Byte {
+        write_operand(out, &accumulator(0, Width::Word), "product as u32");
+    } else {
+        write_operand(out, &accumulator(0, width), "product as u32");
+        write_operand(
+            out,
+            &accumulator(2, width),
+            &format!("(product >> {}) as u32", width.bits()),
+        );
+    }
+    line(
+        out,
+        "s.eflags = (s.eflags & !0x8D5) | if overflow { 0x801 } else { 0 };",
+    );
+}
+
+fn emit_imul(out: &mut String, dst: &Operand, left: &Operand, right: &Operand) {
+    let width = dst.width().unwrap_or(Width::Dword);
+    line(out, &format!("let a = {};", read(left)));
+    line(out, &format!("let b = {};", read(right)));
+    line(
+        out,
+        &format!("let (product, overflow) = multiply_values(a, b, Width::{width:?}, true);"),
+    );
+    write_operand(out, dst, "product as u32");
+    line(
+        out,
+        "s.eflags = (s.eflags & !0x8D5) | if overflow { 0x801 } else { 0 };",
+    );
+}
+
+fn emit_divide(out: &mut String, signed: bool, src: &Operand) {
+    let width = src.width().unwrap_or(Width::Dword);
+    line(out, &format!("let value = {};", read(src)));
+    line(
+        out,
+        &format!(
+            "let (quotient, remainder) = divide_values(s.regs[0], s.regs[2], value, Width::{width:?}, {signed}).map_err(|reason| Error::Divide {{ pc: s.eip, reason }})?;"
+        ),
+    );
+    if width == Width::Byte {
+        write_operand(
+            out,
+            &accumulator(0, Width::Word),
+            "quotient | (remainder << 8)",
+        );
+    } else {
+        write_operand(out, &accumulator(0, width), "quotient");
+        write_operand(out, &accumulator(2, width), "remainder");
+    }
+    line(out, "s.eflags &= !0x8D5;");
+}
+
+fn emit_sign_extension(out: &mut String, source: Width, pair: bool) {
+    if pair {
+        let sign = 1u32 << (source.bits() - 1);
+        line(
+            out,
+            &format!(
+                "let value = if s.regs[0] & 0x{sign:08X} != 0 {{ 0x{:08X}u32 }} else {{ 0 }};",
+                source.mask()
+            ),
+        );
+        write_operand(out, &accumulator(2, source), "value");
+    } else {
+        let target = if source == Width::Byte {
+            Width::Word
+        } else {
+            Width::Dword
+        };
+        line(
+            out,
+            &format!("let value = sign_extend(s.regs[0], Width::{source:?});"),
+        );
+        write_operand(out, &accumulator(0, target), "value");
+    }
+}
+
 fn emit_binary(out: &mut String, op: Binary, dst: &Operand, src: &Operand) {
     prepare_address(out, dst, "s.regs[4]");
     line(out, &format!("let b = {};", read(src)));
@@ -153,7 +261,9 @@ fn emit_binary(out: &mut String, op: Binary, dst: &Operand, src: &Operand) {
     line(out, &format!("let a = {};", read(dst)));
     let expr = match op {
         Binary::Add => "a.wrapping_add(b)",
+        Binary::Adc => "a.wrapping_add(b).wrapping_add(s.eflags & 1)",
         Binary::Sub | Binary::Cmp => "a.wrapping_sub(b)",
+        Binary::Sbb => "a.wrapping_sub(b).wrapping_sub(s.eflags & 1)",
         Binary::Xor => "a ^ b",
         Binary::And | Binary::Test => "a & b",
         Binary::Or => "a | b",
@@ -172,11 +282,16 @@ fn emit_binary(out: &mut String, op: Binary, dst: &Operand, src: &Operand) {
             &format!("s.eflags = logic_flags_width(s.eflags, result, Width::{width:?});"),
         );
     } else {
+        let flags = if matches!(op, Binary::Adc | Binary::Sbb) {
+            "arithmetic_carry_flags_width"
+        } else {
+            "arithmetic_flags_width"
+        };
         line(
             out,
             &format!(
-                "s.eflags = arithmetic_flags_width(s.eflags, a, b, result, {}, Width::{width:?});",
-                matches!(op, Binary::Sub | Binary::Cmp)
+                "s.eflags = {flags}(s.eflags, a, b, result, {}, Width::{width:?});",
+                matches!(op, Binary::Sub | Binary::Sbb | Binary::Cmp)
             ),
         );
     }
@@ -213,6 +328,120 @@ fn emit_unary(out: &mut String, op: Unary, dst: &Operand) {
         ),
         Unary::Not => {}
     }
+}
+
+fn emit_shift(out: &mut String, op: Shift, dst: &Operand, count: &Operand) {
+    let width = dst.width().unwrap_or(Width::Dword);
+    prepare_address(out, dst, "s.regs[4]");
+    // Capturar CL antes da escrita cobre também SHL ECX,CL e SHR CL,CL.
+    line(out, &format!("let count = ({}) & 31;", read(count)));
+    line(out, &format!("let a = {};", read(dst)));
+    let expr = match op {
+        Shift::Shl => "a << count".to_owned(),
+        Shift::Shr => "a >> count".to_owned(),
+        Shift::Sar => {
+            format!("(sign_extend(a, Width::{width:?}).cast_signed() >> count).cast_unsigned()")
+        }
+    };
+    line(
+        out,
+        &format!("let result = ({expr}) & 0x{:08X}u32;", width.mask()),
+    );
+    // Memória é read-modify-write mesmo com contagem efetiva zero. Falha de
+    // acesso não deve comprometer FLAGS ou registradores da CPU.
+    write_operand(out, dst, "result");
+    line(
+        out,
+        &format!(
+            "s.eflags = shift_flags(s.eflags, a, result, count, Shift::{op:?}, Width::{width:?});"
+        ),
+    );
+}
+
+fn emit_rotate(out: &mut String, op: Rotate, dst: &Operand, count: &Operand) {
+    let width = dst.width().unwrap_or(Width::Dword);
+    let bits = width.bits();
+    let through_carry = matches!(op, Rotate::Rcl | Rotate::Rcr);
+    let ring_bits = bits + u32::from(through_carry);
+    let ring_mask = (1u64 << ring_bits) - 1;
+    prepare_address(out, dst, "s.regs[4]");
+    line(out, &format!("let count = ({}) & 31;", read(count)));
+    line(out, &format!("let a = {};", read(dst)));
+    let ring = if through_carry {
+        format!("u64::from(a) | (u64::from(s.eflags & 1) << {bits})")
+    } else {
+        "u64::from(a)".to_owned()
+    };
+    line(out, &format!("let ring = {ring};"));
+    line(out, &format!("let n = count % {ring_bits};"));
+    let rotated = if matches!(op, Rotate::Rol | Rotate::Rcl) {
+        format!("(ring << n) | (ring >> ({ring_bits} - n))")
+    } else {
+        format!("(ring >> n) | (ring << ({ring_bits} - n))")
+    };
+    line(
+        out,
+        &format!("let rotated = ({rotated}) & 0x{ring_mask:X}u64;"),
+    );
+    line(
+        out,
+        &format!("let result = rotated as u32 & 0x{:08X}u32;", width.mask()),
+    );
+    let carry = match op {
+        Rotate::Rol => "result & 1".to_owned(),
+        Rotate::Ror => format!("result >> {}", bits - 1),
+        Rotate::Rcl | Rotate::Rcr => format!("(rotated >> {bits}) as u32"),
+    };
+    line(out, &format!("let carry = {carry};"));
+    write_operand(out, dst, "result");
+    line(
+        out,
+        &format!(
+            "s.eflags = rotate_flags(s.eflags, result, carry, count, Rotate::{op:?}, Width::{width:?});"
+        ),
+    );
+}
+
+fn emit_double_shift(
+    out: &mut String,
+    op: DoubleShift,
+    dst: &Operand,
+    src: &Operand,
+    count: &Operand,
+) {
+    let width = dst.width().unwrap_or(Width::Dword);
+    let bits = width.bits();
+    line(out, &format!("let count = ({}) & 31;", read(count)));
+    // A ISA não define resultado/flags para count > largura. Recusar antes de
+    // qualquer acesso à memória ou escrita de estado, com diagnóstico do PC.
+    line(
+        out,
+        &format!(
+            "if count > {bits} {{ return Err(Error::UndefinedDoubleShift {{ pc: s.eip, count, bits: {bits} }}); }}"
+        ),
+    );
+    prepare_address(out, dst, "s.regs[4]");
+    line(out, &format!("let a = {};", read(dst)));
+    line(out, &format!("let b = {};", read(src)));
+    let expr = match op {
+        DoubleShift::Shld => {
+            format!("(u64::from(a) << count) | (u64::from(b) >> ({bits} - count))")
+        }
+        DoubleShift::Shrd => {
+            format!("(u64::from(a) >> count) | (u64::from(b) << ({bits} - count))")
+        }
+    };
+    line(
+        out,
+        &format!("let result = ({expr}) as u32 & 0x{:08X}u32;", width.mask()),
+    );
+    write_operand(out, dst, "result");
+    line(
+        out,
+        &format!(
+            "s.eflags = double_shift_flags(s.eflags, a, result, count, DoubleShift::{op:?}, Width::{width:?});"
+        ),
+    );
 }
 
 fn line(out: &mut String, text: &str) {

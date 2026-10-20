@@ -10,6 +10,43 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+**Fase 3-AOT — MUL/IMUL, DIV/IDIV e diagnóstico de #DE (ADR-0017)**
+- Produtos e divisões de 8/16/32 bits com registradores implícitos; IMUL de dois e
+  três operandos em 16/32 bits, com memória e imediatos com sinal.
+- CBW/CWDE/CWD/CDQ. Flags indefinidas normalizadas para zero e partes superiores
+  preservadas. Divisor zero e overflow do quociente retornam `#DE` recuperável com
+  PC, sem comprometer CPU/FLAGS; entrega via IDT/kernel continua pendente.
+- 483916 comparações físicas adicionais e 1000580 diagnósticos classificados de
+  divisão. A integração executa 45 testes nativos, incluindo memória read-only,
+  aliases, erros e snapshot entre produto e divisão.
+
+**Fase 3-AOT — rotações e shifts duplos (ADR-0016)**
+- ROL/ROR/RCL/RCR de 8/16/32 bits, com anel de carry de até 33 bits, contagens
+  mascaradas, voltas completas e preservação de SF/ZF/AF/PF.
+- SHLD/SHRD de 16/32 bits com fonte registrada e contagem imediata ou CL; contagens
+  efetivas maiores que a largura retornam erro recuperável com PC antes de acesso
+  à memória, pois o resultado é indefinido na ISA.
+- Mais 791764 comparações físicas: 70488 rotações gerais, 524288 rotações de byte
+  e 196988 shifts duplos definidos. A integração agora executa 35 testes nativos,
+  incluindo aliases, memória, falhas e snapshot entre RCL/RCR/SHLD.
+
+**Fase 3-AOT — SHL/SHR/SAR e flags indefinidas (ADR-0015)**
+- Shifts de 8/16/32 bits com contagem um implícita, imediato ou CL, com contagem
+  mascarada a cinco bits, sinal de SAR e preservação das flags em contagem zero.
+- Flags indefinidas normalizadas para zero, com máscara de comparação independente
+  no oráculo físico; memória mantém leitura/escrita mesmo com contagem efetiva zero.
+- 52470 comparações físicas de shifts e 393216 casos exaustivos de byte. Testes
+  adicionais de AH/CL/CX/ECX, memória, falhas e snapshot antes de ADC; a integração
+  agora executa 24 testes nativos em x86_64.
+
+**Fase 3-AOT — ADC/SBB e carry entre blocos (ADR-0014)**
+- ADC/SBB de 8/16/32 bits na análise, IR e Rust gerado, com registradores parciais,
+  memória e imediatos; CF de entrada participa do resultado e das flags.
+- Oráculo físico ampliado: 9438 casos gerais de ALU e 262144 comparações exaustivas
+  de ADC/SBB de byte; as 3872 verificações independentes de Jcc permanecem.
+- Testes nativos de AH, imediatos com sinal, leitura/escrita de memória, falha de
+  escrita sem comprometer FLAGS e pausa/snapshot entre palavras de uma soma/subtração.
+
 **Repositório e publicação**
 - README com estado atual, build, demonstração AOT e documentação.
 - Metadados Apache-2.0 conforme a licença já escolhida no repositório do mantenedor;

@@ -9,7 +9,10 @@ use xbox_formats::xbe::SectionFlags;
 use xbox_mem::{Bus, GuestVirt, Perm};
 
 use crate::Result;
-use crate::ir::{Condition, Width};
+use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
+
+mod muldiv;
+pub use muldiv::{divide_values, multiply_values};
 
 /// Retorno do entry point ao chamador do host; nunca é executado como código.
 pub const RETURN_SENTINEL: u32 = 0xFFFF_FFF0;
@@ -221,6 +224,26 @@ pub fn arithmetic_flags_width(
         | (u32::from(overflow) << 11)
 }
 
+/// Flags de ADC/SBB usando CF de entrada em `old`. OF/AF usam os operandos
+/// originais e o resultado final; CF precisa da soma/subtração sem truncamento.
+pub fn arithmetic_carry_flags_width(
+    old: u32,
+    a: u32,
+    b: u32,
+    result: u32,
+    subtract: bool,
+    width: Width,
+) -> u32 {
+    let lhs = u64::from(a & width.mask());
+    let rhs = u64::from(b & width.mask()) + u64::from(old & 1);
+    let carry = if subtract {
+        lhs < rhs
+    } else {
+        lhs + rhs > u64::from(width.mask())
+    };
+    (arithmetic_flags_width(old, a, b, result, subtract, width) & !1) | u32::from(carry)
+}
+
 /// XOR/TEST limpam CF/OF. AF indefinido é normalizado para zero.
 pub fn logic_flags(old: u32, result: u32) -> u32 {
     logic_flags_width(old, result, Width::Dword)
@@ -228,6 +251,90 @@ pub fn logic_flags(old: u32, result: u32) -> u32 {
 
 pub fn logic_flags_width(old: u32, result: u32, width: Width) -> u32 {
     common_flags(old, result & width.mask(), width)
+}
+
+/// Flags de SHL/SHR/SAR (Intel SDM vol. 2, ADR-0015). Contagem mascarada
+/// zero preserva todas as flags. Flags indefinidas são normalizadas para zero.
+pub fn shift_flags(old: u32, a: u32, result: u32, count: u32, op: Shift, width: Width) -> u32 {
+    let count = count & 31;
+    if count == 0 {
+        return old;
+    }
+    let bits = width.bits();
+    let a = a & width.mask();
+    let result = result & width.mask();
+    let carry = match op {
+        Shift::Shl if count < bits => (a >> (bits - count)) & 1,
+        Shift::Shr if count < bits => (a >> (count - 1)) & 1,
+        Shift::Sar => (a >> (count.min(bits) - 1)) & 1,
+        // CF de SHL/SHR é indefinido com count >= bits.
+        Shift::Shl | Shift::Shr => 0,
+    };
+    let overflow = if count == 1 {
+        match op {
+            Shift::Shl => (result >> (bits - 1)) ^ carry,
+            Shift::Shr => a >> (bits - 1),
+            Shift::Sar => 0,
+        }
+    } else {
+        0
+    };
+    common_flags(old, result, width) | carry | (overflow << 11)
+}
+
+/// Rotações preservam SF/ZF/AF/PF. OF indefinido é zero (ADR-0016).
+/// `carry` é o bit extraído do anel rotacionado pelo emissor.
+pub fn rotate_flags(
+    old: u32,
+    result: u32,
+    carry: u32,
+    count: u32,
+    op: Rotate,
+    width: Width,
+) -> u32 {
+    let count = count & 31;
+    if count == 0 {
+        return old;
+    }
+    let sign = width.bits() - 1;
+    let carry = carry & 1;
+    let overflow = if count == 1 {
+        match op {
+            Rotate::Rol | Rotate::Rcl => ((result >> sign) & 1) ^ carry,
+            Rotate::Ror | Rotate::Rcr => ((result >> sign) ^ (result >> (sign - 1))) & 1,
+        }
+    } else {
+        0
+    };
+    (old & !0x801) | carry | (overflow << 11)
+}
+
+/// Flags de SHLD/SHRD. O emissor recusa contagens efetivas maiores que a largura
+/// antes de chamar este helper. AF e OF indefinidos são zero (ADR-0016).
+pub fn double_shift_flags(
+    old: u32,
+    a: u32,
+    result: u32,
+    count: u32,
+    op: DoubleShift,
+    width: Width,
+) -> u32 {
+    let count = count & 31;
+    if count == 0 {
+        return old;
+    }
+    let a = a & width.mask();
+    let result = result & width.mask();
+    let carry = match op {
+        DoubleShift::Shld => ((u64::from(a) << count) >> width.bits()) as u32 & 1,
+        DoubleShift::Shrd => (a >> (count - 1)) & 1,
+    };
+    let overflow = if count == 1 {
+        ((a ^ result) >> (width.bits() - 1)) & 1
+    } else {
+        0
+    };
+    common_flags(old, result, width) | carry | (overflow << 11)
 }
 
 fn common_flags(old: u32, result: u32, width: Width) -> u32 {

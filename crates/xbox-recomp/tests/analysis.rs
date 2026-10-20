@@ -51,12 +51,103 @@ fn imediato_de_oito_bits_e_estendido_com_sinal_para_32() {
 }
 
 #[test]
+fn adc_sbb_estendem_imediato_com_sinal_na_largura_do_destino() {
+    use xbox_recomp::ir::Width;
+    for (code, op, dst, value) in [
+        (
+            &[0x83, 0xD0, 0xFF, 0xC3][..],
+            Binary::Adc,
+            Operand::Reg(0),
+            u32::MAX,
+        ),
+        (
+            &[0x66, 0x83, 0xD8, 0xFF, 0xC3][..],
+            Binary::Sbb,
+            Operand::Part {
+                index: 0,
+                shift: 0,
+                width: Width::Word,
+            },
+            0xFFFF,
+        ),
+    ] {
+        let program = analyze(&xbe_com_codigo(code).unwrap()).unwrap();
+        assert_eq!(
+            program.instructions[&0x11000].operation,
+            Operation::Binary(op, dst, Operand::Imm(value))
+        );
+    }
+}
+
+#[test]
 fn ramo_compartilhado_divide_um_bloco_previamente_descoberto() {
     // xor eax,eax; jz target; nop; target: mov eax,7; ret
     let bytes = xbe_com_codigo(&[0x31, 0xC0, 0x74, 1, 0x90, 0xB8, 7, 0, 0, 0, 0xC3]).unwrap();
     let p = analyze(&bytes).unwrap();
     assert_eq!(p.blocks[&0x11004].len(), 1);
     assert_eq!(p.blocks[&0x11005].len(), 2);
+}
+
+#[test]
+fn shifts_aceitam_cl_imediato_e_um_implicito_com_largura_explicita() {
+    use xbox_recomp::ir::{Shift, Width};
+    for (op, group) in [(Shift::Shl, 4), (Shift::Shr, 5), (Shift::Sar, 7)] {
+        for width in [Width::Byte, Width::Word, Width::Dword] {
+            for (byte_opcode, immediate) in [(0xD0, Some(1)), (0xD2, None), (0xC0, Some(255))] {
+                let mut code = if width == Width::Word {
+                    vec![0x66]
+                } else {
+                    vec![]
+                };
+                code.extend_from_slice(&[
+                    byte_opcode + u8::from(width != Width::Byte),
+                    0xC0 | (group << 3),
+                ]);
+                if byte_opcode == 0xC0 {
+                    code.push(255);
+                }
+                code.push(0xC3);
+                let program = analyze(&xbe_com_codigo(&code).unwrap()).unwrap();
+                let Operation::Shift(actual, dst, count) =
+                    &program.instructions[&0x11000].operation
+                else {
+                    panic!("shift não foi reconhecido");
+                };
+                assert_eq!(*actual, op);
+                assert_eq!(dst.width(), Some(width));
+                assert_eq!(
+                    *count,
+                    immediate.map_or(
+                        Operand::Part {
+                            index: 1,
+                            shift: 0,
+                            width: Width::Byte
+                        },
+                        Operand::Imm,
+                    )
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn movimentos_de_bits_rejeitam_prefixos_e_endereco_de_16_bits() {
+    for code in [
+        &[0xF0, 0xD1, 0x20, 0xC3][..],       // lock shl [eax],1
+        &[0xF3, 0xD1, 0xE0, 0xC3][..],       // rep shl eax,1
+        &[0x64, 0xD1, 0x20, 0xC3][..],       // shl fs:[eax],1
+        &[0x67, 0xD1, 0x20, 0xC3][..],       // shl [bx+si],1
+        &[0xF0, 0xD1, 0x10, 0xC3][..],       // lock rcl [eax],1
+        &[0x64, 0xD1, 0x00, 0xC3][..],       // rol fs:[eax],1
+        &[0xF3, 0x0F, 0xA5, 0xC8, 0xC3][..], // rep shld eax,ecx,cl
+        &[0x67, 0x0F, 0xAD, 0x08, 0xC3][..], // shrd [bx+si],ecx,cl
+    ] {
+        assert!(matches!(
+            analyze(&xbe_com_codigo(code).unwrap()),
+            Err(Error::Analysis { pc: 0x11000, .. })
+        ));
+    }
 }
 
 #[test]
@@ -88,7 +179,7 @@ fn extensao_da_isa_nao_aceita_segmentos_address16_ou_calls16() {
         &[0x67, 0xA1, 0, 0, 0xC3][..], // mov eax,[disp16]
         &[0x66, 0xE8, 0, 0, 0xC3][..], // call rel16
         &[0x66, 0xC3][..],             // ret de 16 bits
-        &[0x11, 0xC8, 0xC3][..],       // adc eax,ecx
+        &[0x0F, 0xA3, 0xC8, 0xC3][..], // bt eax,ecx
         &[0xE3, 0, 0xC3][..],          // jecxz (não é Jcc baseado em FLAGS)
     ] {
         assert!(matches!(

@@ -7,7 +7,9 @@ use iced_x86::{
 };
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
-pub use crate::ir::{Binary, Condition, Operand, Operation, Unary, Width};
+pub use crate::ir::{
+    Binary, Condition, DoubleShift, Operand, Operation, Rotate, Shift, Unary, Width,
+};
 use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,7 +148,9 @@ fn lower(i: &Instruction) -> Result<Operation> {
     let binary = match i.mnemonic() {
         Mnemonic::Mov => Some(Binary::Mov),
         Mnemonic::Add => Some(Binary::Add),
+        Mnemonic::Adc => Some(Binary::Adc),
         Mnemonic::Sub => Some(Binary::Sub),
+        Mnemonic::Sbb => Some(Binary::Sbb),
         Mnemonic::Xor => Some(Binary::Xor),
         Mnemonic::And => Some(Binary::And),
         Mnemonic::Or => Some(Binary::Or),
@@ -174,6 +178,12 @@ fn lower(i: &Instruction) -> Result<Operation> {
     };
     if let Some(op) = unary {
         return Ok(Operation::Unary(op, operand(i, 0)?));
+    }
+    if let Some(op) = lower_bit_motion(i)? {
+        return Ok(op);
+    }
+    if let Some(op) = lower_multiply_divide(i)? {
+        return Ok(op);
     }
     if matches!(i.mnemonic(), Mnemonic::Movsx | Mnemonic::Movzx) {
         let dst = operand(i, 0)?;
@@ -203,6 +213,94 @@ fn lower(i: &Instruction) -> Result<Operation> {
             target: i.near_branch32(),
         });
     }
+    lower_stack_and_flow(i)
+}
+
+fn lower_multiply_divide(i: &Instruction) -> Result<Option<Operation>> {
+    Ok(Some(match i.mnemonic() {
+        Mnemonic::Mul => Operation::Multiply {
+            signed: false,
+            src: operand(i, 0)?,
+        },
+        Mnemonic::Imul if i.op_count() == 1 => Operation::Multiply {
+            signed: true,
+            src: operand(i, 0)?,
+        },
+        Mnemonic::Imul => {
+            let dst = operand(i, 0)?;
+            let (left, right) = if i.op_count() == 2 {
+                (dst.clone(), operand(i, 1)?)
+            } else {
+                (operand(i, 1)?, operand(i, 2)?)
+            };
+            Operation::Imul { dst, left, right }
+        }
+        Mnemonic::Div => Operation::Divide {
+            signed: false,
+            src: operand(i, 0)?,
+        },
+        Mnemonic::Idiv => Operation::Divide {
+            signed: true,
+            src: operand(i, 0)?,
+        },
+        Mnemonic::Cbw => Operation::SignExtend {
+            source: Width::Byte,
+            pair: false,
+        },
+        Mnemonic::Cwde => Operation::SignExtend {
+            source: Width::Word,
+            pair: false,
+        },
+        Mnemonic::Cwd => Operation::SignExtend {
+            source: Width::Word,
+            pair: true,
+        },
+        Mnemonic::Cdq => Operation::SignExtend {
+            source: Width::Dword,
+            pair: true,
+        },
+        _ => return Ok(None),
+    }))
+}
+
+fn lower_bit_motion(i: &Instruction) -> Result<Option<Operation>> {
+    let shift = match i.mnemonic() {
+        Mnemonic::Shl => Some(Shift::Shl),
+        Mnemonic::Shr => Some(Shift::Shr),
+        Mnemonic::Sar => Some(Shift::Sar),
+        _ => None,
+    };
+    if let Some(op) = shift {
+        return Ok(Some(Operation::Shift(op, operand(i, 0)?, operand(i, 1)?)));
+    }
+    let rotate = match i.mnemonic() {
+        Mnemonic::Rol => Some(Rotate::Rol),
+        Mnemonic::Ror => Some(Rotate::Ror),
+        Mnemonic::Rcl => Some(Rotate::Rcl),
+        Mnemonic::Rcr => Some(Rotate::Rcr),
+        _ => None,
+    };
+    if let Some(op) = rotate {
+        return Ok(Some(Operation::Rotate(op, operand(i, 0)?, operand(i, 1)?)));
+    }
+    let double = match i.mnemonic() {
+        Mnemonic::Shld => Some(DoubleShift::Shld),
+        Mnemonic::Shrd => Some(DoubleShift::Shrd),
+        _ => None,
+    };
+    if let Some(op) = double {
+        return Ok(Some(Operation::DoubleShift(
+            op,
+            operand(i, 0)?,
+            operand(i, 1)?,
+            operand(i, 2)?,
+        )));
+    }
+    Ok(None)
+}
+
+fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
+    let pc = i.ip32();
     Ok(match i.code() {
         Code::Nopd | Code::Nopw => Operation::Nop,
         Code::Push_r16 | Code::Push_rm16 | Code::Push_imm16 | Code::Pushw_imm8 => {
