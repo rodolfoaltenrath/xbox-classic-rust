@@ -14,6 +14,14 @@
 Este documento é o portão da Fase 2. Ele revisa o que o ROADMAP planejava, **corrige
 duas decisões com base em medição** e fixa a API que CPU, GPU e kernel vão usar.
 
+**Ordenação AOT posterior (ADR-0028):** SFENCE chama `Bus::ordenar_escritas`.
+RAM é aplicada sincronicamente e a arena permanece exclusiva; visões virtual,
+física e DMA observam os mesmos bytes, sem store buffer pendente. A barreira
+atual não precisa executar código adicional. Escrita diferida, write-combining
+ou DMA concorrente exigem ampliar esse protocolo antes de serem habilitados;
+uma fence do host não substitui a publicação guest nem a conclusão da GPU.
+Detalhes: [ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md).
+
 Medições feitas no host do mantenedor (x86-64, 8 núcleos lógicos, Windows 11,
 `rustc 1.98.1`, perfil `release` com LTO fat). A sonda está em
 `scratchpad/mem-probe` e é reproduzível.

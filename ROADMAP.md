@@ -497,11 +497,13 @@ Um único relógio virtual em `xbox-core::time`, em unidades de ciclo do guest (
 
 Todo evento agendado vive numa fila de eventos por *deadline em ciclos*, não em `Instant` do host — pré-requisito do determinismo (4.4).
 
-Estado AOT atual (ADR-0025–0027): `Clock` integrado à sessão e RDTSC, com custo
+Estado AOT atual (ADR-0025–0028): `Clock` integrado à sessão e RDTSC, com custo
 sintético de um ciclo virtual por instrução/elemento REP concluído. Snapshot
 AOTC v6 preserva tempo, perfil, parada por HLT e breakpoint. CLI limpa IF guest;
 HLT e INT3 entregam controle ao host com diagnóstico. Polls preservam estado/tempo,
 sem entrega de IRQ/IDT ou retomada automática.
+SFENCE usa a barreira do bus síncrono exclusivo, sem estado/fila novo ou conclusão
+de GPU. Escrita diferida e observadores concorrentes exigem ampliar esse contrato.
 Não representa latência física; o Scheduler
 existente e os domínios de vídeo/áudio/kernel ainda precisam ser conectados.
 
@@ -1122,6 +1124,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | Clock determinístico e RDTSC (ADR-0025) | — | Reutiliza Clock do core; custo sintético explícito, REP por elemento e AOTC v4; 84 casos nativos; próximo bloqueio real: CLI em 0x1409E |
 | 2026-10-20 | 3-AOT | CLI guest e parada explícita por HLT (ADR-0026) | — | IF, continuação, polls sem efeitos e diagnóstico no main; AOTC v5 preserva parada; 88 casos nativos; próximo bloqueio real: INT3 em 0x20D6C, preenchimento após CALL |
 | 2026-10-20 | 3-AOT | INT3 e fronteira #BP guest (ADR-0027) | — | Exceção persistente, EIP seguinte, descoberta terminal e diagnóstico; AOTC v6 e 92 casos nativos; próximo bloqueio real: SFENCE em 0x12A43 |
+| 2026-10-20 | 3-AOT | SFENCE e ordenação do bus (ADR-0028) | — | Perfil síncrono exclusivo sem filas a drenar; 96 casos nativos e contrato de alias/físico/DMA sob Miri; AOTC continua v6; próximo bloqueio real: CMOVNE em 0x13B88 |
 
 ---
 
@@ -1132,8 +1135,9 @@ Em ordem:
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
    (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
    de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
-   em tempo de tradução:** `SFENCE` em `0x12A43`, após modelar INT3/#BP no
-   ADR-0027. Definir ordenação/visibilidade dos stores no bus e nos dispositivos.
+   em tempo de tradução:** `CMOVNE` em `0x13B88`, após implementar SFENCE no
+   perfil síncrono exclusivo (ADR-0028). Implementar CMOVcc e validar condições,
+   larguras, operandos e faltas.
    Manter o tempo sintético distinto de latências físicas. Sendo AOT, instrução
    faltante bloqueia antes de qualquer serviço ser exercitado.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,

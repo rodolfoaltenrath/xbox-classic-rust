@@ -198,6 +198,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         }
         Operation::Halt => line(out, "s.halted = Some(s.eip);"),
         Operation::Breakpoint => line(out, "s.breakpoint = Some(s.eip);"),
+        Operation::StoreFence => line(out, "bus.ordenar_escritas();"),
     }
     line(out, &format!("s.eip = 0x{next:08X};"));
 }

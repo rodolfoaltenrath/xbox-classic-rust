@@ -226,5 +226,7 @@ pub enum Operation {
     Halt,
     /// INT3 (0xCC): fronteira de exceção #BP, sem entrega via IDT neste perfil.
     Breakpoint,
+    /// SFENCE: ordenação de stores pelo contrato do bus, sem fence de GPU.
+    StoreFence,
     Nop,
 }

@@ -114,6 +114,10 @@ INT3 conclui com EIP seguinte e #BP pendente. O host recebe diagnóstico, sem
 entrega automática via IDT/SEH. A descoberta termina esse caminho excepcional,
 mantendo destinos de branches e raízes explícitas. Polls não executam código nem
 acrescentam tempo ([ADR-0027](../adr/0027-int3-breakpoint-aot.md)).
+SFENCE chama a barreira do bus. Stores síncronos na arena exclusiva já têm a
+ordenação exigida; não há fila a publicar nem fence de GPU nesta etapa. Introduzir
+observadores concorrentes ou escrita diferida exige ampliar esse contrato
+([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). AOTC continua v6.
 Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro

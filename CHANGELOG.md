@@ -10,6 +10,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: SFENCE tem IR própria e chama `Bus::ordenar_escritas`. No perfil
+  síncrono/exclusivo atual, stores já são visíveis em ordem, sem filas a drenar;
+  a barreira não implementa MMIO ou conclusão de GPU. Testes cobrem aliases/DMA,
+  faltas, snapshots, flags e tempo. AOTC continua v6; 96 casos nativos em x86_64.
+  Próximo bloqueio real: CMOVNE em `0x13B88` (ADR-0028).
+
 - Fase 3-AOT: INT3 (`0xCC`) gera uma fronteira #BP guest, vetor 3, com PC de
   origem, EIP seguinte e diagnóstico no main. Polls não executam a continuação
   nem cobram tempo. A descoberta termina esse caminho de exceção, mantendo

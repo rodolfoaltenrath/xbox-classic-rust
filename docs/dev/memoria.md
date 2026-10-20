@@ -24,6 +24,12 @@ Sem a variável, esse teste explícito falha; a fixture sempre roda normalmente.
 
 ## Miri
 
+SFENCE usa a barreira do bus síncrono exclusivo, sem filas de stores; o contrato
+`barreira_de_stores_preserva_visibilidade_sincrona_entre_visoes_e_aliases` verifica
+RAM por alias, visão física e DMA. AOTC e snapshots do bus mantêm seus formatos.
+Não cobre MMIO funcional ou DMA concorrente, ainda pendentes
+([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)).
+
 ```powershell
 rustup toolchain install nightly-2026-10-20 --profile minimal --component miri,rust-src
 cargo +nightly-2026-10-20 miri setup --target x86_64-unknown-linux-gnu

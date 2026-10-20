@@ -373,7 +373,21 @@ explica o bloqueio encontrado, mas não autoriza retirar bytes ou presumir
 `noreturn` para funções arbitrárias. AOTC v6 salva o breakpoint; v1–v5 migram
 sem essa pendência, mantendo FS, tempo e HLT conforme cada versão.
 
-São 92 testes do Rust gerado em x86_64; os mains de HLT e INT3 também são
-executados. Próximo bloqueio do alvo: SFENCE em `0x12A43`. Definir ordenação e
-visibilidade dos stores no bus antes de implementá-lo. Detalhes:
+Nessa entrega, o conjunto chegou a 92 testes do Rust gerado em x86_64; os mains
+de HLT e INT3 também foram executados. O bloqueio seguinte foi SFENCE em
+`0x12A43`, tratado no ADR-0028 abaixo. Detalhes da fronteira #BP:
 [ADR-0027](../adr/0027-int3-breakpoint-aot.md).
+
+## SFENCE e ordenação do bus — ADR-0028
+
+SFENCE tem operação própria e chama `Bus::ordenar_escritas`. Stores de RAM já
+são síncronos e observáveis em ordem pelas APIs da arena exclusiva; não há fila
+a drenar. A barreira atual tem corpo vazio por esse contrato, sem fence física
+host nem publicação fictícia de dados de GPU. Antes de habilitar escritas
+diferidas ou observadores concorrentes, ampliar o protocolo do bus.
+
+Preserva registradores/flags, continua a descoberta e custa um passo sintético.
+Snapshots continuam AOTC v6: não há estado novo. Quatro testes nativos adicionais
+cobrem aliases/DMA, tempo, orçamento, permissões e replay, levando o conjunto a
+96 casos em x86_64. O próximo bloqueio real é CMOVNE em `0x13B88`. Contrato,
+limites de MMIO e referências: [ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md).

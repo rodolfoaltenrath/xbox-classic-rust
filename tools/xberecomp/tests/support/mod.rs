@@ -11,6 +11,7 @@ mod exchange;
 mod indirect;
 mod kernel;
 mod muldiv;
+mod ordering;
 mod rotations;
 mod shifts;
 mod strings;
@@ -56,6 +57,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&timing::sources(output));
     main.push_str(&control::sources(output));
     main.push_str(&breakpoint::sources(output));
+    main.push_str(&ordering::sources(output));
 }
 
 fn structural_images(output: &Path) {

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`684fabb`** e nas alterações
-locais do **ADR-0027**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`d145514`** e nas alterações
+locais do **ADR-0028**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,7 +42,7 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados e dispatcher concluídos; 1/69 serviços** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; SFENCE pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 4 | ISA necessária | SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; CMOVNE pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
 | 5 | Execução integrada | Pendente; há demonstração e fronteiras de execução reutilizáveis | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
@@ -152,7 +152,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Primeiro bloqueio atual do AOT | `SFENCE` em `0x12A43`, em tempo de tradução |
+| Primeiro bloqueio atual do AOT | `CMOVNE` em `0x13B88`, em tempo de tradução |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -237,7 +237,8 @@ foi de 69 para 71. O relatório mostra `1/69 serviços implementados`.
 parava em `LOCK CMPXCHG` em `0x209C3`. O ADR-0024 implementou essa operação e SETcc;
 o alvo passou a parar em RDTSC (`0x2055B`). O ADR-0025 implementou RDTSC com
 Clock guest. O ADR-0026 implementou CLI/HLT e o ADR-0027 modelou a fronteira #BP
-de INT3; o bloqueio atual é SFENCE (`0x12A43`), antes da execução do homebrew.
+de INT3. O ADR-0028 implementou SFENCE no bus síncrono exclusivo; o bloqueio
+atual é CMOVNE (`0x13B88`), antes da execução do homebrew.
 
 Trabalho restante:
 
@@ -300,10 +301,20 @@ explícitas continuam descobrindo seus destinos, inclusive depois de INT3.
 Retomada futura exige tratamento explícito e continuação traduzida.
 
 AOTC v6 guarda o breakpoint; v1–v5 migram sem essa pendência, preservando as
-regras anteriores de FS, Clock e HLT. O projeto gerado agora tem 92 casos em
-x86_64. O primeiro bloqueio observado é **SFENCE em `0x12A43`**, bytes `0F AE F8`.
-Definir o contrato de ordenação/visibilidade de stores no bus e nos dispositivos
-antes de implementar. Outros bloqueios ainda podem aparecer.
+regras anteriores de FS, Clock e HLT. Essa entrega chegou a 92 casos nativos
+em x86_64 e encontrou SFENCE em `0x12A43`.
+
+O [ADR-0028](docs/adr/0028-sfence-ordenacao-do-bus.md) acrescentou IR própria de
+SFENCE e chamada a `Bus::ordenar_escritas`. O corpo da barreira é vazio no perfil
+atual: RAM é aplicada sincronicamente, a arena é exclusiva e não há store buffer
+a publicar. Isso não implementa MMIO ou conclusão de GPU. Filas de stores,
+write-combining ou observadores concorrentes futuros exigem ampliar a barreira
+e rever os contratos de memória; uma fence host isolada não substitui esse trabalho.
+Não há estado novo: AOTC continua v6 e o perfil de tempo continua 1.
+São 96 casos gerados em x86_64 e um contrato de visibilidade por alias/físico/DMA
+validado também sob Miri. O bloqueio atual é **CMOVNE em `0x13B88`**, bytes
+`0F 45 C1` (ECX → EAX sob condição NE). Implementar CMOVcc com condições,
+larguras, operandos e faltas corretos. Outros bloqueios ainda podem aparecer.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
 
@@ -381,8 +392,8 @@ cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
 cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --out target/alpha-hello
 ```
 
-Na referência atual, `check-memory` passa; `translate` falha em **SFENCE no PC
-`0x12A43`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT e INT3 já não são os bloqueios. Isso ainda
+Na referência atual, `check-memory` passa; `translate` falha em **CMOVNE no PC
+`0x13B88`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT, INT3 e SFENCE já não são os bloqueios. Isso ainda
 não significa execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
@@ -405,7 +416,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 92 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 96 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -434,7 +445,9 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
 > snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
 > termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é SFENCE em 0x12A43. Defina ordenação/visibilidade dos stores no bus e
+> atual é CMOVNE em 0x13B88. SFENCE chama a barreira do bus síncrono exclusivo,
+> sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
+> Implemente CMOVcc com condições, operandos e faltas corretos e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

@@ -202,6 +202,23 @@ impl Bus {
         Ok(())
     }
 
+    /// Ordena stores anteriores aos posteriores (SFENCE do guest).
+    ///
+    /// No perfil atual, RAM é escrita sincronicamente e só pode ser observada
+    /// por acessos sequenciais ao bus/arena exclusivos. Não há store buffer ou
+    /// write-combining para drenar; a ordenação já decorre desse contrato.
+    /// Não é uma fence de GPU, nem conclui MMIO: dispositivos não implementados
+    /// continuam somente registrando/descartando seus acessos.
+    ///
+    /// Ao introduzir escritas diferidas, workers ou observadores concorrentes,
+    /// este ponto precisa ordenar/publicar os stores antes dos posteriores.
+    /// Uma fence atômica do host sozinha não implementaria esse protocolo guest.
+    #[allow(
+        clippy::unused_self,
+        reason = "a barreira exige acesso exclusivo ao bus mesmo no perfil sem filas de stores"
+    )]
+    pub fn ordenar_escritas(&mut self) {}
+
     fn validar_escrita(&mut self, va: GuestVirt, origem: &[u8]) -> Result<(), Falta> {
         let mut atual = va;
         let mut restante = origem;

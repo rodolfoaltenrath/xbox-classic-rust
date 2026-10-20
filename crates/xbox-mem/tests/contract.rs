@@ -9,6 +9,27 @@ fn bus() -> Bus {
 }
 
 #[test]
+fn barreira_de_stores_preserva_visibilidade_sincrona_entre_visoes_e_aliases() {
+    let mut bus = bus();
+    bus.mapear(GuestVirt(0x1000), GuestPhys(0), 1, Perm::RW)
+        .unwrap();
+    bus.mapear(GuestVirt(0x2000), GuestPhys(0), 1, Perm::RW)
+        .unwrap();
+    bus.escrever_u32(GuestVirt(0x1000), 0x12345678).unwrap();
+    bus.ordenar_escritas();
+    assert_eq!(bus.ler_u32(GuestVirt(0x2000)).unwrap(), 0x12345678);
+    assert_eq!(
+        bus.dma(GuestPhys(0), 4).unwrap(),
+        &0x12345678u32.to_le_bytes()
+    );
+    bus.escrever_fisico(GuestPhys(0), &0xABCDEF01u32.to_le_bytes())
+        .unwrap();
+    bus.ordenar_escritas();
+    assert_eq!(bus.ler_u32(GuestVirt(0x1000)).unwrap(), 0xABCDEF01);
+    assert_eq!(bus.telemetria().total_de_acessos(), 0);
+}
+
+#[test]
 fn t1_t2_limites_e_overflow_nao_escapam_da_arena() {
     let mut arena = Arena::com_tamanho(8192).unwrap();
     assert!(Arena::com_tamanho(isize::MAX as usize + 1).is_err());

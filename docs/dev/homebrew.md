@@ -69,7 +69,8 @@ agora implementados no ADR-0024. RDTSC em `0x2055B` foi implementado no ADR-0025
 lê o Clock guest com política sintética determinística, sem tempo host. O bloqueio
 seguinte foi CLI/HLT no caminho de assert do SDK, agora implementados no
 ADR-0026. INT3 em `0x20D6C`, no preenchimento após a chamada a exit em abort,
-agora tem fronteira #BP (ADR-0027). O bloqueio atual é **SFENCE em `0x12A43`**.
+agora tem fronteira #BP (ADR-0027). SFENCE em `0x12A43` chama a barreira do bus
+síncrono exclusivo (ADR-0028). O bloqueio atual é **CMOVNE em `0x13B88`**.
 A análise estática não prova execução dessas regiões nem oferece a lista completa
 da ISA necessária.
 
@@ -121,6 +122,12 @@ preserva a exceção pendente em polls/snapshots. Sem entrega via IDT/SEH, o mai
 encerra com diagnóstico #BP. A análise não segue a exceção como fallthrough;
 continuações precisam de um branch/raiz explícita. Não há retomada automática
 ([ADR-0027](../adr/0027-int3-breakpoint-aot.md)).
+
+SFENCE chama `Bus::ordenar_escritas`: RAM é aplicada imediatamente e as visões
+virtual/física/DMA compartilham a arena exclusiva. Não há filas pendentes a
+drenar. Essa ordenação não implementa GPU ou MMIO; filas, write-combining ou DMA
+concorrente futuros exigem ampliar o protocolo e rever o acesso à arena
+([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). Snapshot permanece AOTC v6.
 
 ## Referências públicas
 

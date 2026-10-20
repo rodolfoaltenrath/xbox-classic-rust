@@ -546,6 +546,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Cli => Operation::ClearInterrupts,
         Code::Hlt => Operation::Halt,
         Code::Int3 => Operation::Breakpoint,
+        Code::Sfence => Operation::StoreFence,
         _ => {
             return Err(fail(
                 pc,
