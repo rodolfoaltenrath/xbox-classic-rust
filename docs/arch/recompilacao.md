@@ -183,6 +183,13 @@ campos privados de um kernel físico; Final preserva a origem por política loca
 Versões de snapshot continuam as mesmas. Limites, fontes e testes independentes:
 [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
+O dispatcher também possui imagem autoritativa de EEPROM com bytes/origem
+explícitos. `ExQueryNonVolatileSetting` atende somente consulta integral;
+o padrão é sintético NTSC-M/português, gerado pelo projeto. A consulta retorna
+cópia em RAM, validando todas as saídas antes de publicar. `KRNL` v2 acrescenta
+`EEPR` v1 e migra KRNL v1 para a imagem padrão. Persistência/escrita e índices
+individuais seguem pendentes. [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que

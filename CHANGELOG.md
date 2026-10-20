@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: consulta integral `ExQueryNonVolatileSetting` usa EEPROM explícita
+  da sessão, com origem sintética/fornecida, bytes preservados e saídas validadas
+  antes de escrever. KRNL v2/EEPR v1 preserva a imagem; migração v1 usa o perfil
+  sintético padrão. 301 testes workspace/doctests e 121 casos gerados em debug/
+  release; hello passa pela consulta e para em NtWaitForSingleObject (233),
+  retorno 0x16B99, handle 4. Registro atual 6/69 serviços; índices individuais,
+  escrita/persistência, espera e threads pendentes (ADR-0034).
+
 - Fase 4/alpha: SHA-1 `XcSHAInit`/`Update`/`Final` em Rust, com contexto opaco
   de 116 bytes na RAM guest, cópia/snapshot parcial e validação de buffers sem
   stores parciais. Formato interno HLE v1, Final preserva origem por política

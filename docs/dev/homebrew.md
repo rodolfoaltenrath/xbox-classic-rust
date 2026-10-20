@@ -59,8 +59,9 @@ ser ligado à mídia/VFS real.
 TLS do alvo: template `0x2A000..0x2A110` (272 bytes), zero-fill 0, índice
 em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
-O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome
-e SHA-1 Init/Update/Final (335/336/337): **5/69 serviços implementados**, com variantes limitadas,
+O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
+SHA-1 Init/Update/Final (335/336/337) e consulta integral de EEPROM (24):
+**6/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -82,7 +83,10 @@ snapshot integral. Nessa entrega a execução passou por ela e parou em
 O ADR-0033 implementou a família SHA-1 com contexto opaco
 HLE de 116 bytes na RAM. SHAInit foi atendido no hello; Update/Final foram
 validados em testes. O bloqueio observado agora é **ExQueryNonVolatileSetting
-(24)**, retorno `0x19176`, consulta de EEPROM de 256 bytes com índice `0xFFFF`.
+(24)**, retorno `0x19176`, consulta de EEPROM de 256 bytes com índice `0xFFFF`,
+na referência do ADR-0033. O ADR-0034 implementou essa consulta usando a imagem
+da sessão, e a execução real agora para em **NtWaitForSingleObject (233)**,
+retorno `0x16B99`, argumentos `4, 0, 0`.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -158,7 +162,7 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Sem essa entrada explícita, a execução para em `UnknownTarget` no CALL de
-`0x209D2` para `0x19110`. Com ela, o erro é o serviço ExQueryNonVolatileSetting ainda
+`0x209D2` para `0x19110`. Com ela, o erro é o serviço NtWaitForSingleObject ainda
 não implementado. Isso demonstra execução inicial real, não o hello funcional
 com framebuffer. Contratos/evidências: [ADR-0030](../adr/0030-bsf-bsr.md) e
 [ADR-0031](../adr/0031-blocos-aot-pilha-host.md) e
@@ -168,6 +172,12 @@ SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
 cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
+
+O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
+permite bytes explícitos; origem e conteúdo ficam em KRNL v2/EEPR v1 no snapshot.
+Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
+Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
+[ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
 
 `Session` possui `kernel: Dispatcher`; a API atual é `session.atender_kernel()`.
 Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por

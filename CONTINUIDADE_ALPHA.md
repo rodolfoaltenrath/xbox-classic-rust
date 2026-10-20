@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`e9446fb`** e nas alterações
-locais do **ADR-0033**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`888b423`** e nas alterações
+locais do **ADR-0034**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -34,8 +34,8 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
-e por XcSHAInit (335). Agora para em ExQueryNonVolatileSetting (24), ainda não
-implementado, na consulta de EEPROM de `init_rand_s`.
+e por XcSHAInit (335) e pela consulta da EEPROM. Agora para em
+NtWaitForSingleObject (233), retorno `0x16B99`, handle `4`, no caminho de mutex.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
@@ -45,9 +45,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutexes e SHA-1; 5/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, criação de mutexes, SHA-1 e consulta de EEPROM; 6/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Execução inicial real até ExQueryNonVolatileSetting; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Execução inicial real até NtWaitForSingleObject; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há **duas entregas de implementação registradas em commits**, mas isso não
@@ -157,7 +157,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 8725 instruções/blocos; 8769 com `--entry 0x19110`; sem recusa de ISA nesse fluxo |
-| Bloqueio de execução atual | ExQueryNonVolatileSetting (24), retorno reportado `0x19176`; índice `0xFFFF`, buffer de 256 bytes; mutex e SHAInit já atendidos |
+| Bloqueio de execução atual | NtWaitForSingleObject (233), retorno reportado `0x16B99`; argumentos `4, 0, 0`; consulta integral da EEPROM já atendida |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -298,11 +298,41 @@ EEPROM, com origem e política explícitas, sem retornar sucesso com um buffer f
 ou buscar dados na BIOS. SHAUpdate/Final estão validados em testes; ainda não foram
 exercidos pelo hello, que parou antes deles.
 
-Registro atual: **5/69 serviços com variantes limitadas**, 3/3 dados; **288 testes
+Registro nessa entrega: **5/69 serviços com variantes limitadas**, 3/3 dados; **288 testes
 de workspace/doctests** e **118 casos gerados em debug/release** (102 em outros
 hosts), Clippy global e fmt. Logs e detalhes:
 [ADR-0033](docs/adr/0033-sha1-contexto-guest.md). Kernel mínimo, threads, orçamento/
 interrupção integrada e framebuffer continuam com aceite aberto.
+
+### Avanço — consulta integral da EEPROM (ADR-0034)
+
+`ExQueryNonVolatileSetting` (24) atende somente `XC_MAX_ALL` (`0xFFFF`), com
+256 bytes da imagem autoritativa de EEPROM do dispatcher, tipo `REG_BINARY` e
+tamanho resultante. Outras consultas continuam com erro de variante não modelada.
+Validar as três saídas antes de escrever evita publicação parcial; buffer curto
+publica só o tamanho necessário e devolve NTSTATUS, conforme política local.
+
+`EepromState` registra bytes e origem `SyntheticV1` ou `Supplied`. O padrão AOT
+reutiliza o gerador existente em NTSC-M/português; não lê BIOS, arquivo ou config
+do host. API permite imagem explícita, sem recalcular bytes fornecidos.
+O perfil sintético tem bloco de segurança em claro e não é dump físico válido.
+Consulta devolve cópia; `ExSave`, persistência e índices individuais ainda faltam.
+
+Snapshot agora usa **KRNL v2 + EEPR v1**, guardando imagem e origem. A carga
+preserva os bytes salvos, independentemente da sessão de destino; KRNL v1 migra
+explicitamente para a EEPROM sintética padrão. AOTS v1, KMUT v1 e AOTC v6 permanecem.
+
+O hello real passou pela consulta de EEPROM e parou em **NtWaitForSingleObject
+(233)**, retorno `0x16B99`, argumentos `4, 0, 0`, usados por `mtx_lock` do nxdk.
+Próximo trabalho: aquisição/espera real sobre o objeto do handle 4, sem sucesso
+genérico ou bloquear a thread host. Examinar propriedade/recursão e o caminho
+efetivamente usado. KMUT v1 só aceita estados iniciais 0/1; ampliar/versionar
+essa seção quando acrescentar recursão/espera, sem perder compatibilidade.
+
+Registro atual: **6/69 serviços**, 3/3 dados; **301 testes workspace/doctests** e
+**121 casos gerados em debug/release** (105 nos demais hosts), Clippy, fmt e loader.
+Detalhes e logs: [ADR-0034](docs/adr/0034-consulta-eeprom-sessao.md). Kernel mínimo,
+threads, execução integrada completa e framebuffer continuam pendentes.
 
 Trabalho restante:
 
@@ -497,7 +527,7 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Na referência atual, `check-memory` e `translate` passam. Com a entrada explícita,
-o binário nativo passa por mutex/SHAInit e para em **ExQueryNonVolatileSetting (24)**,
+o binário nativo passa por mutex/SHAInit/consulta EEPROM e para em **NtWaitForSingleObject (233)**,
 sem framebuffer. Sem ela,
 para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
 completa nem serviços suficientes. A tradução exige
@@ -522,7 +552,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 118 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 121 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -546,26 +576,27 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > atual do Git e leia os arquivos indicados antes de alterar código. A entrega 1
 > tem aceite local; a entrega 2 possui infraestrutura TLS/ABI testada, mas seu
 > aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
-> RtlInitAnsiString, NtCreateMutant sem nome e SHA-1 Init/Update/Final já existem
-> (5/69 serviços). SHA usa contexto opaco de 116 bytes na RAM, com formato HLE v1,
+> RtlInitAnsiString, NtCreateMutant sem nome, SHA-1 Init/Update/Final e consulta
+> integral da EEPROM já existem (6/69 serviços). SHA usa contexto opaco de 116
+> bytes na RAM, com formato HLE v1,
 > não layout comprovado do hardware. Final preserva a origem por política local.
 > Session possui o dispatcher; atender_kernel() não recebe argumento. Snapshot
-> integral AOTS v1 inclui CPU, bus e objetos KRNL/KMUT; CPU/bus isolados não bastam.
+> integral AOTS v1 inclui CPU, bus, KRNL v2/KMUT v1/EEPR v1; CPU/bus isolados não
+> bastam. EEPROM tem bytes/origem explícitos; padrão sintético NTSC-M/português.
 > CMPXCHG/LOCK em RAM e SETcc passaram nos testes;
 > RDTSC também passou, com Clock guest e custo sintético explícito. CLI/HLT têm
 > controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
 > snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
 > termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é ExQueryNonVolatileSetting (24), retorno 0x19176, índice 0xFFFF,
-> buffer 0x7000FD80, tamanho 256, em init_rand_s. SHAInit já foi atendido no hello;
-> SHAUpdate/Final estão validados em testes, mas ainda não observados no alvo.
+> atual é NtWaitForSingleObject (233), retorno 0x16B99, argumentos 4, 0, 0.
+> O hello passou pela consulta da EEPROM; agora exige semântica de mutex/espera.
 > O hello real traduz/compila/inicia com --entry 0x19110 (callback observado em
 > 0x209D2). Funções de bloco limitadas corrigiram a pilha host; são 8769 blocos.
 > SFENCE chama a barreira do bus síncrono exclusivo,
 > sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
 > CMOVcc já cobre as 16 condições em 16/32 bits e lê a origem mesmo se falsa.
 > BSF/BSR também estão implementados, com ZF e política determinística para zero.
-> Implemente contrato e estado/origem explícita da EEPROM para essa consulta e
+> Implemente aquisição/espera de mutex com estado real para o handle existente e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

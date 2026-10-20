@@ -484,5 +484,27 @@ além de erros, cópia, proteção, MMIO, sobreposição e replay da sessão.
 O hello real passou por SHAInit e parou em **ExQueryNonVolatileSetting (24)**,
 retorno `0x19176`, índice `0xFFFF`, buffer de 256 bytes em `0x7000FD80`.
 Update/Final foram validados em testes, sem execução observada no hello ainda.
-O relatório registra **5/69 serviços**; a consulta de EEPROM é o próximo passo.
+O relatório registrava **5/69 serviços**; a consulta de EEPROM era o próximo passo.
 Detalhes e logs: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
+
+## Consulta integral da EEPROM — ADR-0034
+
+`ExQueryNonVolatileSetting` (24) atende `0xFFFF`, copiando os 256 bytes da EEPROM
+da sessão, com tipo/tamanho e NTSTATUS. Demais índices permanecem como variantes
+sem suporte. As três saídas são validadas antes da primeira escrita; sondagem
+com buffer curto publica só o tamanho, conforme política local documentada.
+
+`EepromState` registra bytes e origem. O padrão usa o gerador sintético existente
+em NTSC-M/português; não lê BIOS, arquivo ou configuração do host. API permite
+uma imagem explícita, preservando bytes fornecidos. Consulta devolve cópia;
+persistência, `ExSave` e ligação a `SystemConfig` continuam pendentes.
+`KRNL` v2 acrescenta `EEPR` v1, mantendo bytes/origem no snapshot; KRNL v1 migra
+para o padrão sintético. AOTS v1/KMUT v1/AOTC v6 não mudaram.
+
+**301 testes de workspace/doctests** e **121 testes nativos em x86_64** (105 nos
+demais hosts), em debug/release, cobrem consulta, erros, aliases e snapshot,
+incluindo imagem fornecida com hash esperado calculado independentemente.
+O relatório registra **6/69 serviços**. O hello passou pela consulta e parou
+em **NtWaitForSingleObject (233)**, retorno `0x16B99`, argumentos `4, 0, 0`.
+O próximo trabalho é aquisição/espera real de mutex. Sem framebuffer ainda.
+Detalhes e logs: [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).

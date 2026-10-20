@@ -15,7 +15,7 @@
 //!
 //! ## Estado
 //!
-//! [`Dispatcher`] guarda contadores e mutexes guest serializáveis. A sessão AOT é
+//! [`Dispatcher`] guarda contadores, EEPROM e mutexes guest serializáveis. A sessão AOT é
 //! dona deste estado; salvar só CPU/RAM não preserva os objetos de kernel.
 
 use xbox_core::error::SnapshotError;
@@ -23,9 +23,11 @@ use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod mutants;
+mod nvram;
 mod sha;
 use mutants::Mutants;
 pub use mutants::{INITIAL_THREAD, MAX_MUTANTS, Mutant};
+pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 
 use crate::imports::{Abi, Call, Kind};
@@ -35,6 +37,7 @@ use crate::loader::Result as LoaderResult;
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
+pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -48,6 +51,7 @@ pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_RTL_INIT_ANSI_STRING,
     ORDINAL_XC_SHA_INIT,
@@ -129,12 +133,25 @@ pub struct Dispatcher {
     atendidas: u64,
     recusadas: u64,
     mutants: Mutants,
+    eeprom: EepromState,
 }
 
 impl Dispatcher {
     /// Dispatcher sem estado acumulado.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Origem explícita; sem leitura automática de arquivo ou alteração dos bytes.
+    pub fn with_eeprom(eeprom: EepromState) -> Self {
+        Self {
+            eeprom,
+            ..Self::default()
+        }
+    }
+
+    pub const fn eeprom(&self) -> &EepromState {
+        &self.eeprom
     }
 
     /// Chamadas atendidas por um serviço implementado.
@@ -167,6 +184,7 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             ORDINAL_XC_SHA_INIT => sha::init(bus, &call),
@@ -250,14 +268,16 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 1);
+        out.section("KRNL", 2);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
+        self.eeprom.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        if inp.section("KRNL", 1)? != 1 {
+        let version = inp.section("KRNL", 2)?;
+        if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
                 what: "versão de kernel desconhecida",
@@ -267,10 +287,17 @@ impl Snapshot for Dispatcher {
         let recusadas = inp.u64()?;
         let mut mutants = Mutants::default();
         mutants.load(inp)?;
+        // v1 não tinha EEPROM: migração explícita para o perfil sintético inicial,
+        // independente dos bytes/configuração presentes na sessão de destino.
+        let mut eeprom = EepromState::default();
+        if version >= 2 {
+            eeprom.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
             mutants,
+            eeprom,
         };
         Ok(())
     }
