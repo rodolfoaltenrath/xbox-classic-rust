@@ -10,29 +10,39 @@
 //! O dispatcher precisa ler argumentos e escrever efeitos na memória guest, mas **não**
 //! pode depender de `Session`: `xbox-recomp` já depende deste crate, e o inverso
 //! fecharia um ciclo. Então a assinatura é `(&mut Bus, pc, regs)` e quem aplica o
-//! resultado na CPU é o chamador, por `Session::complete_kernel_call`. Isso também
+//! resultado na CPU é o chamador, por `Session::atender_kernel`. Isso também
 //! mantém o dispatcher testável sem gerar e compilar código.
 //!
 //! ## Estado
 //!
-//! [`Dispatcher`] guarda o estado dos serviços. Hoje guarda apenas contadores de
-//! diagnóstico, porque **um** serviço está implementado. Objetos, handles, threads e
-//! tempo entram conforme os caminhos realmente executados exigirem.
+//! [`Dispatcher`] guarda contadores e mutexes guest serializáveis. A sessão AOT é
+//! dona deste estado; salvar só CPU/RAM não preserva os objetos de kernel.
 
-use xbox_mem::{Bus, GuestVirt};
+use xbox_core::error::SnapshotError;
+use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
+use xbox_mem::{Acesso, Bus, GuestVirt};
+
+mod mutants;
+use mutants::Mutants;
+pub use mutants::{INITIAL_THREAD, MAX_MUTANTS, Mutant};
 
 use crate::imports::{Abi, Call, Kind};
 use crate::loader::Result as LoaderResult;
 
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
+/// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
+pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
+pub const STATUS_SUCCESS: u32 = 0;
+pub const STATUS_ACCESS_VIOLATION: u32 = 0xC000_0005;
+pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
 
 /// Ordinais cujo serviço está implementado.
 ///
 /// Fonte única de verdade: [`crate::imports::servico_implementado`] e o relatório de
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
-pub const IMPLEMENTADOS: &[u32] = &[ORDINAL_RTL_INIT_ANSI_STRING];
+pub const IMPLEMENTADOS: &[u32] = &[ORDINAL_NT_CREATE_MUTANT, ORDINAL_RTL_INIT_ANSI_STRING];
 
 /// `Length`/`MaximumLength` de `ANSI_STRING` são `u16`: uma string sem NUL dentro desse
 /// limite é erro, não truncamento silencioso.
@@ -59,6 +69,18 @@ pub enum Erro {
     /// A fronteira ABI ou um acesso à memória guest falhou.
     #[error(transparent)]
     Fronteira(#[from] crate::loader::Error),
+
+    /// Variante válida da API ainda não modelada: não simular falha do Xbox.
+    #[error(
+        "variante de kernel não implementada: {nome} (ordinal {ordinal}), chamado de 0x{chamador:08X}; {detalhe}; argumentos: {argumentos}"
+    )]
+    VarianteNaoImplementada {
+        nome: &'static str,
+        ordinal: u32,
+        chamador: u32,
+        detalhe: &'static str,
+        argumentos: String,
+    },
 
     /// O ordinal é conhecido e o serviço não existe.
     ///
@@ -95,6 +117,7 @@ pub enum Erro {
 pub struct Dispatcher {
     atendidas: u64,
     recusadas: u64,
+    mutants: Mutants,
 }
 
 impl Dispatcher {
@@ -113,15 +136,16 @@ impl Dispatcher {
         self.recusadas
     }
 
+    /// Consulta de diagnóstico; não expõe ponteiro host ao título.
+    pub fn mutant(&self, handle: u32) -> Option<&Mutant> {
+        self.mutants.get(handle)
+    }
+
     /// Atende a chamada de kernel em `pc`.
     ///
     /// `pc` tem de ser um trampolim instalado nesta imagem — [`Call::read`] verifica
     /// isso antes de qualquer efeito. A CPU não é alterada aqui: o chamador aplica
     /// `eax`, `esp` e `eip` depois, para que uma falha não deixe estado pela metade.
-    // Com um serviço implementado o `match` parece uma comparação de igualdade, mas é a
-    // tabela de despacho: cada serviço novo é um braço. Trocar por `if` agora só para
-    // satisfazer o lint seria desfeito no próximo serviço.
-    #[allow(clippy::single_match_else)]
     pub fn atender(
         &mut self,
         bus: &mut Bus,
@@ -132,9 +156,10 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             _ => {
-                self.recusadas += 1;
+                self.recusadas = self.recusadas.saturating_add(1);
                 return Err(Erro::NaoImplementado {
                     nome: export.name,
                     ordinal: export.ordinal,
@@ -145,9 +170,95 @@ impl Dispatcher {
         };
 
         if resultado.is_ok() {
-            self.atendidas += 1;
+            self.atendidas = self.atendidas.saturating_add(1);
+        } else if matches!(resultado, Err(Erro::VarianteNaoImplementada { .. })) {
+            self.recusadas = self.recusadas.saturating_add(1);
         }
         resultado
+    }
+
+    fn nt_create_mutant(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        let output = call.argument(bus, 0)?;
+        let attributes = call.argument(bus, 1)?;
+        // BOOLEAN é de 8 bits, embora ocupe uma palavra na ABI.
+        let initial_owner = call.argument(bus, 2)? as u8 != 0;
+        if attributes != 0 {
+            // OBJECT_ATTRIBUTES do Xbox tem 12 bytes: RootDirectory, ObjectName,
+            // Attributes. Não usar o layout Win32/NT de desktop.
+            if !ram_range(bus, attributes, 12, Acesso::Leitura) {
+                return Ok(Atendimento {
+                    eax: STATUS_ACCESS_VIOLATION,
+                });
+            }
+            let mut bytes = [0; 12];
+            bus.ler_bytes(GuestVirt(attributes), &mut bytes)?;
+            if bytes != [0; 12] {
+                return Err(Erro::VarianteNaoImplementada {
+                    nome: call.export.name,
+                    ordinal: call.export.ordinal,
+                    chamador: call.return_pc,
+                    detalhe: "nomes, diretórios e flags de OBJECT_ATTRIBUTES ainda não modelados",
+                    argumentos: descrever_argumentos(bus, call),
+                });
+            }
+        }
+        if !ram_range(bus, output, 4, Acesso::Escrita) {
+            return Ok(Atendimento {
+                eax: STATUS_ACCESS_VIOLATION,
+            });
+        }
+        let Some((handle, object)) = self.mutants.prepare(initial_owner) else {
+            return Ok(Atendimento {
+                eax: STATUS_INSUFFICIENT_RESOURCES,
+            });
+        };
+        // O store inteiro é validado pelo Bus antes de escrever; uma falta não
+        // publica objeto, não consome handle e não deixa metade da saída escrita.
+        bus.escrever_bytes(GuestVirt(output), &handle.to_le_bytes())?;
+        self.mutants.commit(handle, object);
+        Ok(Atendimento {
+            eax: STATUS_SUCCESS,
+        })
+    }
+}
+
+/// Restringe ponteiros HLE a RAM. MMIO sem implementação não pode aceitar um
+/// handle que seria descartado pelo barramento. Também evita wrap do endereço.
+fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
+    address != 0
+        && (0..size).all(|offset| {
+            address
+                .checked_add(offset)
+                .and_then(|va| bus.traduzir(GuestVirt(va), access).ok())
+                .is_some_and(|pa| (pa.0 as usize) < bus.ram())
+        })
+}
+
+impl Snapshot for Dispatcher {
+    fn save(&self, out: &mut SnapshotWriter) {
+        out.section("KRNL", 1);
+        out.u64(self.atendidas);
+        out.u64(self.recusadas);
+        self.mutants.save(out);
+    }
+
+    fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
+        if inp.section("KRNL", 1)? != 1 {
+            return Err(SnapshotError::BadValue {
+                section: "KRNL",
+                what: "versão de kernel desconhecida",
+            });
+        }
+        let atendidas = inp.u64()?;
+        let recusadas = inp.u64()?;
+        let mut mutants = Mutants::default();
+        mutants.load(inp)?;
+        *self = Self {
+            atendidas,
+            recusadas,
+            mutants,
+        };
+        Ok(())
     }
 }
 

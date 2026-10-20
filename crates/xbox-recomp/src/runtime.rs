@@ -221,11 +221,12 @@ pub enum Exit {
     },
 }
 
-/// Sessão AOT com TLS inicial e fronteira ABI; serviços HLE são uma etapa separada.
+/// Sessão AOT com CPU, memória e estado HLE. O snapshot da sessão inclui os três.
 #[derive(Debug)]
 pub struct Session {
     pub state: State,
     pub bus: Bus,
+    pub kernel: xbox_kernel::dispatch::Dispatcher,
 }
 
 impl Session {
@@ -237,7 +238,11 @@ impl Session {
         let mut state = State::new(xbe.entry_point);
         state.fs_base = startup.fs_base;
         state.regs[ESP] = startup.esp;
-        Ok(Self { state, bus })
+        Ok(Self {
+            state,
+            bus,
+            kernel: xbox_kernel::dispatch::Dispatcher::new(),
+        })
     }
 
     pub fn kernel_call(&self) -> Result<xbox_kernel::imports::Call> {
@@ -252,15 +257,18 @@ impl Session {
     ///
     /// Em caso de erro a CPU fica **intacta**: `EIP` continua no trampolim e a chamada
     /// pendente segue reconstruível por `EIP`, registradores e RAM — o mesmo contrato
-    /// que o snapshot `AOTC` já exige. Assim um serviço faltante pode ser implementado
+    /// que o snapshot da sessão já exige. Assim um serviço faltante pode ser implementado
     /// e a execução retomada do snapshot, sem estado escondido no host.
-    pub fn atender_kernel(
-        &mut self,
-        dispatcher: &mut xbox_kernel::dispatch::Dispatcher,
-    ) -> Result<()> {
-        let ordinal = self.kernel_call()?.export.ordinal;
-        let atendimento = dispatcher.atender(&mut self.bus, self.state.eip, &self.state.regs)?;
-        self.complete_kernel_call(ordinal, atendimento.eax)
+    pub fn atender_kernel(&mut self) -> Result<()> {
+        let call = self.kernel_call()?;
+        self.validate_kernel_return(&call)?;
+        let atendimento = self
+            .kernel
+            .atender(&mut self.bus, self.state.eip, &self.state.regs)?;
+        // O serviço pode escrever sobre a pilha de argumentos/retorno. Usar a
+        // continuação capturada, sem nova leitura falível depois de publicar efeitos.
+        self.apply_kernel_return(&call, atendimento.eax);
+        Ok(())
     }
 
     /// O dispatcher chama isto somente após implementar o serviço correspondente.
@@ -270,15 +278,45 @@ impl Session {
         if call.export.ordinal != ordinal {
             return Err(xbox_core::Error::format("resposta de outro ordinal de kernel").into());
         }
+        self.validate_kernel_return(&call)?;
+        self.apply_kernel_return(&call, eax);
+        Ok(())
+    }
+
+    fn validate_kernel_return(&self, call: &xbox_kernel::imports::Call) -> Result<()> {
         if call.return_pc != RETURN_SENTINEL {
             self.bus
                 .traduzir(GuestVirt(call.return_pc), Acesso::Execucao)?;
         }
+        Ok(())
+    }
+
+    fn apply_kernel_return(&mut self, call: &xbox_kernel::imports::Call, eax: u32) {
         self.state.regs[EAX] = eax;
         self.state.regs[ESP] = call.return_esp;
         self.state.eip = call.return_pc;
         self.state.returned = call.return_pc == RETURN_SENTINEL;
-        Ok(())
+    }
+}
+
+impl Snapshot for Session {
+    fn save(&self, out: &mut SnapshotWriter) {
+        out.section("AOTS", 1);
+        self.state.save(out);
+        self.bus.save(out);
+        self.kernel.save(out);
+    }
+
+    fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
+        if inp.section("AOTS", 1)? != 1 {
+            return Err(SnapshotError::BadValue {
+                section: "AOTS",
+                what: "versão de sessão desconhecida",
+            });
+        }
+        self.state.load(inp)?;
+        self.bus.load(inp)?;
+        self.kernel.load(inp)
     }
 }
 

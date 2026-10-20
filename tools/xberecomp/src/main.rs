@@ -136,14 +136,13 @@ const FATIAS: u32 = 64;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
-    let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
 
     for _ in 0..FATIAS {
         match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
             Exit::Returned => {
                 println!(
                     "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
-                    session.state.regs[0], session.state.retired, dispatcher.atendidas()
+                    session.state.regs[0], session.state.retired, session.kernel.atendidas()
                 );
                 return Ok(());
             }
@@ -162,14 +161,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             // O erro do dispatcher identifica nome, ordinal, chamador e argumentos.
             // A CPU fica intacta: o estado pendente continua retomável.
-            Exit::KernelCall { .. } => session.atender_kernel(&mut dispatcher)?,
+            Exit::KernelCall { .. } => session.atender_kernel()?,
         }
     }
     Err(format!(
         "execução interrompida após {} blocos; {} chamadas atendidas, {} recusadas",
         BLOCOS_POR_FATIA * u64::from(FATIAS),
-        dispatcher.atendidas(),
-        dispatcher.recusadas()
+        session.kernel.atendidas(),
+        session.kernel.recusadas()
     )
     .into())
 }

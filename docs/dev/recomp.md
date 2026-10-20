@@ -88,7 +88,9 @@ emitido e roda os testes e o executável resultantes. O cache da compilação fi
 do Cargo durante `cargo test --workspace`. A primeira execução desse teste compila
 as dependências desse target e pode demorar mais.
 
-O snapshot da prova inclui CPU e bus. Não equivale a save state de um jogo completo:
+O snapshot da prova inicial inclui CPU e bus. Para serviços com objetos HLE,
+usar `Snapshot` da `Session` completa, incluindo `kernel` (ADR-0032).
+Não equivale a save state de um jogo completo:
 kernel, GPU, áudio e input ainda não participam.
 
 Em x86_64, a integração executa 64 testes dentro do projeto gerado: inclui 9438
@@ -439,3 +441,25 @@ Com `--entry 0x19110`, o hello real traduz 8769 instruções/blocos, compila e
 executa até NtCreateMutant (192), retorno reportado `0x18CFA`, argumentos
 `0x28EEC, 0, 0`. Sem essa raiz explícita, a execução recusa o destino do CALL
 em `0x209D2`. Reprodução e limites: [ADR-0031](../adr/0031-blocos-aot-pilha-host.md).
+
+## NtCreateMutant e snapshot integral — ADR-0032
+
+O runtime agora mantém `Session { state, bus, kernel }`; a chamada HLE usa
+`session.atender_kernel()` sem dispatcher externo. `NtCreateMutant` cria mutexes
+sem nome, devolve handles guest e registra propriedade inicial. Nomes/flags,
+espera, liberação, fechamento e threads ainda precisam de implementação.
+
+O snapshot integral usa `AOTS` v1 e inclui `AOTC` v6, bus, `KRNL` v1 e `KMUT` v1.
+Um snapshot só de CPU/bus não preserva objetos de kernel. A continuação da
+chamada é validada e capturada antes de efeitos, inclusive se a saída sobrepõe
+a pilha de retorno. Regenerar projetos que usam a API anterior.
+
+O conjunto gerado tem **115 testes em x86_64** (99 nos outros hosts), em debug
+e release; quatro casos adicionais validam estado/snapshot, replay, retorno
+inválido, sobreposição e falha NTSTATUS sem objeto. O workspace tem 271 testes
+com doctests. O relatório registra **2/69 serviços**, com variantes limitadas.
+
+No hello real, usando a mesma raiz explícita, a execução passou por NtCreateMutant
+e chegou a **XcSHAInit (335)**, retorno `0x19140`, argumento `0x28EF0`.
+O próximo passo é o contrato SHA do caminho `init_rand_s`; ainda não há framebuffer.
+Detalhes: [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).

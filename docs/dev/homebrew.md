@@ -59,7 +59,8 @@ ser ligado à mídia/VFS real.
 TLS do alvo: template `0x2A000..0x2A110` (272 bytes), zero-fill 0, índice
 em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
-O dispatcher atende `RtlInitAnsiString` (289): **1/69 serviços implementados**
+O dispatcher atende `RtlInitAnsiString` (289) e `NtCreateMutant` (192) sem nome:
+**2/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -75,7 +76,10 @@ CMOVcc de 16/32 bits (ADR-0029). BSF/BSR destravaram o fluxo descoberto (ADR-003
 Separar funções de bloco corrigiu a pilha host do primeiro executável real.
 Com `--entry 0x19110`, o hello traduz 8769 instruções/blocos e executa até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA`, argumentos `0x28EEC, 0, 0`
-(ADR-0031). A análise estática não oferece a lista completa da ISA necessária
+(ADR-0031). O ADR-0032 implementou essa criação com objeto/handle guest e
+snapshot integral. A execução real agora passa por ela e para em
+**XcSHAInit (335)**, retorno `0x19140`, argumento `0x28EF0`, em `init_rand_s`.
+A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
 ## Infraestrutura implementada
@@ -150,10 +154,16 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Sem essa entrada explícita, a execução para em `UnknownTarget` no CALL de
-`0x209D2` para `0x19110`. Com ela, o erro é o serviço NtCreateMutant ainda
+`0x209D2` para `0x19110`. Com ela, o erro é o serviço XcSHAInit ainda
 não implementado. Isso demonstra execução inicial real, não o hello funcional
 com framebuffer. Contratos/evidências: [ADR-0030](../adr/0030-bsf-bsr.md) e
-[ADR-0031](../adr/0031-blocos-aot-pilha-host.md).
+[ADR-0031](../adr/0031-blocos-aot-pilha-host.md) e
+[ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
+
+`Session` possui `kernel: Dispatcher`; a API atual é `session.atender_kernel()`.
+Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por
+`Snapshot` (`AOTS` v1), e não só `state`/`bus`. O snapshot CPU continua `AOTC`
+v6. Regenerar projetos antigos que passavam um dispatcher externo.
 
 ## Referências públicas
 

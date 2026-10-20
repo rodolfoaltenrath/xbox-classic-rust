@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | dados e dispatcher concluídos (ADR-0022, ADR-0023); 1/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | dados, dispatcher e criação de mutexes (ADR-0032); 2/69 serviços com variantes limitadas | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | fluxo descoberto traduz; 8769 instruções com callback explícito; novas entradas podem exigir mais ISA | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | hello inicia nativamente e para em NtCreateMutant (192); aceite aberto | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | hello inicia nativamente e para em XcSHAInit (335); aceite aberto | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -32,7 +32,8 @@ O alvo já foi compilado pelo WSL/Fedora, com SDK/submódulos fixados e hashes
 repetidos após normalização de metadata. A inspeção verificou 4 seções, 27 páginas
 e 72 imports: 69 funções e 3 dados. A infraestrutura de uma thread inicial já
 inicializa TLS nxdk, aplica FS e transporta chamadas stdcall/cdecl/fastcall até
-uma saída explícita do Rust gerado. O dispatcher atende `RtlInitAnsiString`;
+uma saída explícita do Rust gerado. O dispatcher atende `RtlInitAnsiString`
+e criação de mutex sem nome por `NtCreateMutant`;
 os demais serviços permanecem pendentes.
 
 Os três dados que o homebrew exige — `LaunchDataPage`, `PsThreadObjectType` e
@@ -54,15 +55,19 @@ de pilha host, corrigido separando funções de bloco e limitando-as a 32 instru
 Com a entrada explícita `0x19110` para um callback observado, o hello traduz
 8769 instruções/blocos e **executa nativamente até NtCreateMutant (192)**,
 retorno reportado `0x18CFA`, argumentos `0x28EEC, 0, 0`
-([ADR-0031](../adr/0031-blocos-aot-pilha-host.md)). Esse é o próximo serviço a
-modelar; outras raízes de callbacks/threads ainda podem revelar novos bloqueios.
+([ADR-0031](../adr/0031-blocos-aot-pilha-host.md)). Esse serviço foi implementado
+para mutexes sem nome, com handles guest e estado no snapshot integral da sessão
+([ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md)). O hello real passou
+pela criação e agora para em **XcSHAInit (335)**, retorno `0x19140`, argumento
+`0x28EF0`, no caminho de `init_rand_s`. Esse é o próximo serviço a modelar;
+outras raízes de callbacks/threads ainda podem revelar novos bloqueios.
 
-O aceite da entrega 2 permanece aberto: há apenas um serviço de kernel implementado
-(`1/69` no relatório de ordinais) e o CRT cria uma thread para `main`. Build,
+O aceite da entrega 2 permanece aberto: há dois serviços com variantes limitadas
+(`2/69` no relatório de ordinais) e o CRT cria uma thread para `main`. Build,
 inventário, hashes e limites em [`homebrew.md`](homebrew.md) e
 [ADR-0021](../adr/0021-tls-imports-aot.md).
 
 A primeira entrega foi validada com mídia comercial apenas como dado do loader.
 Ainda não há execução completa até o framebuffer. A primeira execução do
-hello parou durante a inicialização de mutex, sem respostas genéricas de sucesso.
+hello parou na inicialização SHA após criar mutex, sem respostas genéricas de sucesso.
 A BIOS não foi usada.

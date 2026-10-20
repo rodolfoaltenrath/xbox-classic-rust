@@ -8,6 +8,7 @@ mod kernel_verification {
     mod tail { include!("kernel_tail.rs"); }
     mod fs_fault { include!("fs_fault.rs"); }
     mod dispatch { include!("kernel_dispatch.rs"); }
+    mod mutant { include!("kernel_mutant.rs"); }
 
     #[test]
     fn abi_tls_fs_e_snapshot_pendente_funcionam_em_rust_nativo() {
@@ -94,14 +95,13 @@ mod kernel_verification {
     #[test]
     fn dispatcher_atende_servico_implementado_e_a_execucao_retoma() {
         let mut s = Session::load(include_bytes!("kernel_dispatch.xbe")).unwrap();
-        let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
         assert_eq!(
             dispatch::run(&mut s.state, &mut s.bus, 100).unwrap(),
             Exit::KernelCall { ordinal: 289 }
         );
-        s.atender_kernel(&mut dispatcher).unwrap();
-        assert_eq!(dispatcher.atendidas(), 1);
-        assert_eq!(dispatcher.recusadas(), 0);
+        s.atender_kernel().unwrap();
+        assert_eq!(s.kernel.atendidas(), 1);
+        assert_eq!(s.kernel.recusadas(), 0);
 
         // Efeito do serviço: ANSI_STRING preenchida apontando para a origem.
         assert_eq!(s.bus.ler_u16(GuestVirt(0x12010)).unwrap(), 14);
@@ -120,18 +120,93 @@ mod kernel_verification {
     #[test]
     fn dispatcher_recusa_servico_faltante_sem_tocar_a_cpu() {
         let mut s = Session::load(include_bytes!("kernel_abi.xbe")).unwrap();
-        let mut dispatcher = xbox_kernel::dispatch::Dispatcher::new();
         assert_eq!(
             abi::run(&mut s.state, &mut s.bus, 100).unwrap(),
             Exit::KernelCall { ordinal: 165 }
         );
         let antes = s.state.clone();
-        let erro = s.atender_kernel(&mut dispatcher).unwrap_err().to_string();
+        let erro = s.atender_kernel().unwrap_err().to_string();
         assert!(erro.contains("MmAllocateContiguousMemory"), "{erro}");
         assert!(erro.contains("165"), "{erro}");
         assert!(erro.contains("0x00001122"), "argumento no relato: {erro}");
         assert_eq!(s.state, antes, "CPU alterada por uma recusa");
-        assert_eq!(dispatcher.recusadas(), 1);
-        assert_eq!(dispatcher.atendidas(), 0);
+        assert_eq!(s.kernel.recusadas(), 1);
+        assert_eq!(s.kernel.atendidas(), 0);
+    }
+
+    #[test]
+    fn mutexes_e_continuacao_sobrevivem_ao_snapshot_integral_da_sessao() {
+        let image = include_bytes!("kernel_mutant.xbe");
+        let mut s = Session::load(image).unwrap();
+        let initial_esp = s.state.regs[ESP];
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::KernelCall { ordinal: 192 });
+        s.atender_kernel().unwrap();
+        assert_eq!(s.state.regs[0], 0);
+        assert_eq!(s.state.regs[ESP], initial_esp);
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12010)).unwrap(), 4);
+        assert_eq!(s.kernel.mutant(4).unwrap().owner, None);
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::KernelCall { ordinal: 192 });
+        let checkpoint = session_bytes(&s);
+        s.atender_kernel().unwrap();
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12014)).unwrap(), 8);
+        assert_eq!(s.kernel.mutant(8).unwrap().owner, Some(1));
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::Returned);
+        let complete = session_bytes(&s);
+
+        let mut restored = Session::load(image).unwrap();
+        let mut reader = SnapshotReader::new(&checkpoint).unwrap();
+        Snapshot::load(&mut restored, &mut reader).unwrap();
+        assert_eq!(reader.remaining(), 0);
+        assert_eq!(session_bytes(&restored), checkpoint);
+        assert!(restored.kernel.mutant(8).is_none());
+        restored.atender_kernel().unwrap();
+        assert_eq!(mutant::run(&mut restored.state, &mut restored.bus, 100).unwrap(), Exit::Returned);
+        assert_eq!(session_bytes(&restored), complete);
+    }
+
+    fn session_bytes(s: &Session) -> Vec<u8> {
+        let mut out = SnapshotWriter::new(); s.save(&mut out); out.finish()
+    }
+
+    #[test]
+    fn retorno_invalido_e_recusado_antes_de_criar_mutex_ou_escrever_saida() {
+        let mut s = Session::load(include_bytes!("kernel_mutant.xbe")).unwrap();
+        mutant::run(&mut s.state, &mut s.bus, 100).unwrap();
+        s.bus.escrever_u32(GuestVirt(s.state.regs[ESP]), 0x50000000).unwrap();
+        let before = s.state.clone();
+        assert!(s.atender_kernel().is_err());
+        assert_eq!(s.state, before);
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12010)).unwrap(), 0);
+        assert!(s.kernel.mutant(4).is_none());
+        assert_eq!(s.kernel.atendidas(), 0);
+    }
+
+    #[test]
+    fn saida_sobre_retorno_usa_continuacao_capturada_antes_do_servico() {
+        let mut s = Session::load(include_bytes!("kernel_mutant.xbe")).unwrap();
+        mutant::run(&mut s.state, &mut s.bus, 100).unwrap();
+        let call = s.kernel_call().unwrap();
+        let esp = s.state.regs[ESP];
+        s.bus.escrever_u32(GuestVirt(esp + 4), esp).unwrap();
+        s.atender_kernel().unwrap();
+        assert_eq!(s.state.eip, call.return_pc);
+        assert_eq!(s.state.regs[ESP], call.return_esp);
+        assert_eq!(s.bus.ler_u32(GuestVirt(esp)).unwrap(), 4);
+        assert!(s.kernel.mutant(4).is_some());
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::KernelCall { ordinal: 192 });
+    }
+
+    #[test]
+    fn erro_ntstatus_retoma_guest_sem_objeto_fantasma() {
+        let mut s = Session::load(include_bytes!("kernel_mutant.xbe")).unwrap();
+        mutant::run(&mut s.state, &mut s.bus, 100).unwrap();
+        s.bus.escrever_u32(GuestVirt(s.state.regs[ESP] + 4), 0).unwrap();
+        s.atender_kernel().unwrap();
+        assert_eq!(s.state.regs[0], 0xC0000005);
+        assert!(s.kernel.mutant(4).is_none());
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::KernelCall { ordinal: 192 });
+        s.atender_kernel().unwrap();
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12014)).unwrap(), 4);
+        assert_eq!(mutant::run(&mut s.state, &mut s.bus, 100).unwrap(), Exit::Returned);
     }
 }

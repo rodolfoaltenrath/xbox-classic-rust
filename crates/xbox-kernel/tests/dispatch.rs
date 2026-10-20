@@ -4,8 +4,13 @@
 //! **erro identificável**, nunca sucesso genérico. E o serviço implementado tem de ter
 //! efeito observável na memória guest, não só um `EAX`.
 
+use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::fixtures::xbe_com_imports;
 use xbox_kernel::dispatch::{Dispatcher, Erro, IMPLEMENTADOS, ORDINAL_RTL_INIT_ANSI_STRING};
+use xbox_kernel::dispatch::{
+    INITIAL_THREAD, MAX_MUTANTS, ORDINAL_NT_CREATE_MUTANT, STATUS_ACCESS_VIOLATION,
+    STATUS_INSUFFICIENT_RESOURCES, STATUS_SUCCESS,
+};
 use xbox_kernel::imports::{self, Kind};
 use xbox_kernel::loader::{Image, STACK_BASE, STACK_SIZE};
 use xbox_mem::{Bus, GuestVirt};
@@ -211,4 +216,209 @@ fn a_lista_de_implementados_casa_exatamente_com_o_que_o_dispatcher_atende() {
             "ordinal {ordinal} deveria recusar: {erro:?}"
         );
     }
+}
+
+fn argumento(bus: &mut Bus, regs: &[u32; 8], index: u32, value: u32) {
+    bus.escrever_u32(GuestVirt(regs[4] + 4 + index * 4), value)
+        .unwrap();
+}
+
+fn salvo(dispatcher: &Dispatcher) -> Vec<u8> {
+    let mut out = SnapshotWriter::new();
+    dispatcher.save(&mut out);
+    out.finish()
+}
+
+#[test]
+fn nt_create_mutant_cria_handles_distintos_e_registra_proprietario_guest() {
+    let (mut bus, pc, regs) = chamada(ORDINAL_NT_CREATE_MUTANT, &[0x12010, 0, 0]);
+    let mut d = Dispatcher::new();
+    assert_eq!(d.atender(&mut bus, pc, &regs).unwrap().eax, STATUS_SUCCESS);
+    let first = bus.ler_u32(GuestVirt(0x12010)).unwrap();
+    assert_eq!(first, 4);
+    assert_eq!(d.mutant(first).unwrap().owner, None);
+    assert_eq!(d.mutant(first).unwrap().recursion, 0);
+
+    argumento(&mut bus, &regs, 2, 0x101);
+    d.atender(&mut bus, pc, &regs).unwrap();
+    let second = bus.ler_u32(GuestVirt(0x12010)).unwrap();
+    assert_eq!(second, 8);
+    assert_eq!(d.mutant(second).unwrap().owner, Some(INITIAL_THREAD));
+    assert_eq!(d.mutant(second).unwrap().recursion, 1);
+    // BOOLEAN ocupa uma palavra na pilha, mas apenas os oito bits baixos valem.
+    argumento(&mut bus, &regs, 2, 0x100);
+    d.atender(&mut bus, pc, &regs).unwrap();
+    assert_eq!(d.mutant(12).unwrap().owner, None);
+    assert!(d.mutant(0).is_none());
+    assert_eq!(d.atendidas(), 3);
+}
+
+#[test]
+fn atributos_vazios_usam_layout_xbox_de_doze_bytes() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0x12020, 0]);
+    bus.escrever_bytes(GuestVirt(0x12020), &[0; 12]).unwrap();
+    let mut d = Dispatcher::new();
+    assert_eq!(d.atender(&mut bus, pc, &regs).unwrap().eax, STATUS_SUCCESS);
+    assert!(d.mutant(bus.ler_u32(GuestVirt(0x12010)).unwrap()).is_some());
+}
+
+#[test]
+fn atributos_nao_modelados_recusam_sem_criar_objeto_ou_escrever_saida() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0x12020, 0]);
+    let mut d = Dispatcher::new();
+    for field in [0, 4, 8] {
+        bus.escrever_bytes(GuestVirt(0x12020), &[0; 12]).unwrap();
+        bus.escrever_u32(GuestVirt(0x12020 + field), 1).unwrap();
+        bus.escrever_u32(GuestVirt(0x12010), 0xDEAD_BEEF).unwrap();
+        let error = d.atender(&mut bus, pc, &regs).unwrap_err();
+        assert!(matches!(
+            error,
+            Erro::VarianteNaoImplementada {
+                ordinal: 192,
+                chamador: RETORNO,
+                ..
+            }
+        ));
+        assert!(error.to_string().contains("OBJECT_ATTRIBUTES"));
+        assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), 0xDEAD_BEEF);
+        assert!(d.mutant(4).is_none());
+    }
+    assert_eq!(d.recusadas(), 3);
+    argumento(&mut bus, &regs, 1, 0);
+    d.atender(&mut bus, pc, &regs).unwrap();
+    assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), 4);
+}
+
+#[test]
+fn ponteiro_de_saida_invalido_nao_deixa_store_parcial_nem_consume_handle() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0, 0]);
+    let mut d = Dispatcher::new();
+    bus.escrever_u16(GuestVirt(0x12FFE), 0xBEEF).unwrap();
+    // Nulo, wrap, página ausente, página RX e store atravessando página ausente.
+    for pointer in [0, u32::MAX - 1, 0x5000_0000, 0x11000, 0x12FFE] {
+        argumento(&mut bus, &regs, 0, pointer);
+        assert_eq!(
+            d.atender(&mut bus, pc, &regs).unwrap().eax,
+            STATUS_ACCESS_VIOLATION
+        );
+        assert!(d.mutant(4).is_none());
+        assert_eq!(bus.ler_u16(GuestVirt(0x12FFE)).unwrap(), 0xBEEF);
+    }
+    argumento(&mut bus, &regs, 0, 0x12011); // Desalinhamento em RAM é permitido.
+    d.atender(&mut bus, pc, &regs).unwrap();
+    assert_eq!(bus.ler_u32(GuestVirt(0x12011)).unwrap(), 4);
+}
+
+#[test]
+fn ponteiro_mmio_nao_recebe_handle_descartado_pelo_bus() {
+    use xbox_mem::{GuestPhys, Perm};
+    let (mut bus, pc, regs) = chamada(192, &[0x5000_0000, 0, 0]);
+    bus.mapear(GuestVirt(0x5000_0000), GuestPhys(0xFD00_0000), 1, Perm::RW)
+        .unwrap();
+    let mut d = Dispatcher::new();
+    assert_eq!(
+        d.atender(&mut bus, pc, &regs).unwrap().eax,
+        STATUS_ACCESS_VIOLATION
+    );
+    assert!(d.mutant(4).is_none());
+}
+
+#[test]
+fn atributos_ilegiveis_devolvem_status_sem_modificar_saida() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0x5000_0000, 0]);
+    bus.escrever_u32(GuestVirt(0x12010), 0xDEAD_BEEF).unwrap();
+    let mut d = Dispatcher::new();
+    assert_eq!(
+        d.atender(&mut bus, pc, &regs).unwrap().eax,
+        STATUS_ACCESS_VIOLATION
+    );
+    assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), 0xDEAD_BEEF);
+    assert!(d.mutant(4).is_none());
+}
+
+#[test]
+fn limite_de_objetos_devolve_ntstatus_e_preserva_saida() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0, 0]);
+    let mut d = Dispatcher::new();
+    for i in 0..MAX_MUTANTS {
+        assert_eq!(d.atender(&mut bus, pc, &regs).unwrap().eax, STATUS_SUCCESS);
+        assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), (i as u32 + 1) * 4);
+    }
+    bus.escrever_u32(GuestVirt(0x12010), 0xDEAD_BEEF).unwrap();
+    assert_eq!(
+        d.atender(&mut bus, pc, &regs).unwrap().eax,
+        STATUS_INSUFFICIENT_RESOURCES
+    );
+    assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), 0xDEAD_BEEF);
+}
+
+#[test]
+fn snapshot_de_kernel_preserva_objetos_propriedade_proximo_handle_e_contadores() {
+    let (mut bus, pc, regs) = chamada(192, &[0x12010, 0, 1]);
+    let mut d = Dispatcher::new();
+    d.atender(&mut bus, pc, &regs).unwrap();
+    argumento(&mut bus, &regs, 1, 0x12020);
+    bus.escrever_u32(GuestVirt(0x12020), 1).unwrap();
+    assert!(matches!(
+        d.atender(&mut bus, pc, &regs),
+        Err(Erro::VarianteNaoImplementada { .. })
+    ));
+    argumento(&mut bus, &regs, 1, 0);
+    let saved = salvo(&d);
+    assert_eq!(saved, salvo(&d));
+    d.atender(&mut bus, pc, &regs).unwrap();
+    let complete = salvo(&d);
+    let mut reader = SnapshotReader::new(&saved).unwrap();
+    d.load(&mut reader).unwrap();
+    assert_eq!(reader.remaining(), 0);
+    assert_eq!(d.atendidas(), 1);
+    assert_eq!(d.recusadas(), 1);
+    assert_eq!(d.mutant(4).unwrap().owner, Some(INITIAL_THREAD));
+    assert!(d.mutant(8).is_none());
+    d.atender(&mut bus, pc, &regs).unwrap();
+    assert_eq!(bus.ler_u32(GuestVirt(0x12010)).unwrap(), 8);
+    assert_eq!(salvo(&d), complete);
+}
+
+#[test]
+fn snapshot_malformado_nao_injeta_handles_ou_proprietarios_invalidos() {
+    use xbox_core::error::SnapshotError;
+    for (next, count, rows) in [
+        (3, 0, vec![]),
+        (4, MAX_MUTANTS as u32 + 1, vec![]),
+        (8, 1, vec![(0, 0, 0)]),
+        (8, 1, vec![(8, 0, 0)]),
+        (8, 1, vec![(5, 0, 0)]),
+        (12, 2, vec![(4, 0, 0), (4, 0, 0)]),
+        (12, 2, vec![(8, 0, 0), (4, 0, 0)]),
+        (8, 1, vec![(4, 2, 1)]),
+        (8, 1, vec![(4, 0, 1)]),
+        (8, 1, vec![(4, 1, 0)]),
+    ] {
+        let mut out = SnapshotWriter::new();
+        out.section("KRNL", 1);
+        out.u64(0);
+        out.u64(0);
+        out.section("KMUT", 1);
+        out.u32(next);
+        out.u32(count);
+        for (handle, owner, recursion) in rows {
+            out.u32(handle);
+            out.u32(owner);
+            out.u32(recursion);
+        }
+        let bytes = out.finish();
+        let mut d = Dispatcher::new();
+        assert!(matches!(
+            d.load(&mut SnapshotReader::new(&bytes).unwrap()),
+            Err(SnapshotError::BadValue { .. })
+        ));
+        assert!(d.mutant(4).is_none());
+    }
+    let valid = salvo(&Dispatcher::new());
+    assert!(
+        Dispatcher::new()
+            .load(&mut SnapshotReader::new(&valid[..valid.len() - 1]).unwrap())
+            .is_err()
+    );
 }

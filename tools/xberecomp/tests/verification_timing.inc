@@ -75,7 +75,7 @@ mod timing_verification {
         assert_eq!(s.state.clock.tsc(),3); let before=s.state.clone();
         for _ in 0..3 { assert_eq!(tsc_kernel::run(&mut s.state,&mut s.bus,1).unwrap(),Exit::KernelCall{ordinal:289}); }
         assert_eq!(s.state,before);
-        let mut dispatcher=xbox_kernel::dispatch::Dispatcher::new(); s.atender_kernel(&mut dispatcher).unwrap(); assert_eq!(s.state.clock.tsc(),3);
+        s.atender_kernel().unwrap(); assert_eq!(s.state.clock.tsc(),3);
         tsc_kernel::run(&mut s.state,&mut s.bus,20).unwrap(); assert_eq!(s.state.regs[0],3); assert_eq!(s.state.clock.tsc(),5);
     }
 }

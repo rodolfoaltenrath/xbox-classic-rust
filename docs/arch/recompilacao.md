@@ -163,10 +163,18 @@ sentinela inserido pelo chamador do entry point.
 
 O perfil inicial prepara TLS nxdk e resolve imports de funções para trampolins
 guest RX. FS tem base guest explícita, LEA usa só offset e chamadas HLE devolvem
-`Exit::KernelCall` com ABI stdcall/cdecl/fastcall. O dispatcher de serviços, dados
-exportados, seções sob demanda, ambiente XAPI, objetos e escalonamento continuam
+`Exit::KernelCall` com ABI stdcall/cdecl/fastcall. Dados exportados e dispatcher
+foram acrescentados nos ADRs 0022/0023. O ADR-0032 acrescenta criação de mutexes
+guest sem nome; seções sob demanda, ambiente XAPI e escalonamento continuam
 pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
+
+`Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
+inclui `AOTC` v6, memória e estado `KRNL`/`KMUT` v1, com handles, propriedade e
+contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
+objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
+do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
+Detalhes e limites: [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
 
 ## Evidência e limites
 

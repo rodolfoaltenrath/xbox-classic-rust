@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: `NtCreateMutant` cria mutexes sem nome com handles guest,
+  propriedade inicial e limite de recursos, sem sucesso genérico. `Session`
+  passa a possuir o dispatcher; snapshot integral AOTS v1 inclui CPU/bus e
+  objetos KRNL/KMUT. Retorno HLE validado antes dos efeitos; 271 testes de
+  workspace/doctests e 115 casos gerados em debug/release. O hello real passa
+  por NtCreateMutant e para em XcSHAInit (335), retorno 0x19140. Registro atual:
+  2/69 serviços com variantes limitadas; espera/threads/framebuffer pendentes
+  (ADR-0032).
+
 - Fase 3-AOT: BSF/BSR de 16/32 bits, com origem registrador/memória e ZF.
   Política determinística: preservar destino em origem zero e zerar as demais
   flags aritméticas indefinidas. Aliases, FS/SIB, SP/ESP, faltas, branches e

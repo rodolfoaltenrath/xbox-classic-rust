@@ -51,6 +51,21 @@ pub(super) fn sources(output: &Path) -> String {
     write(output, "kernel_dispatch", &dispatch_image);
     write(
         output,
+        "kernel_mutant",
+        &xbe_com_imports(
+            &[
+                0x6A, 0, 0x6A, 0, // push FALSE; push NULL
+                0x68, 0x10, 0x20, 1, 0, // output 0x12010
+                0xFF, 0x15, 0, 0x20, 1, 0, 0x6A, 1, 0x6A, 0, // push TRUE; push NULL
+                0x68, 0x14, 0x20, 1, 0, // output 0x12014
+                0xFF, 0x15, 0, 0x20, 1, 0, 0xC3,
+            ],
+            &[192],
+        )
+        .unwrap(),
+    );
+    write(
+        output,
         "fs_fault",
         &xbe_com_codigo(&[0x64, 0xA1, 4, 0, 0, 0, 0xC3]).unwrap(),
     );
