@@ -24,6 +24,10 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
 - Memória de 8/16/32 bits com base, índice, escala e deslocamento. MOVZX/MOVSX
   estendem bytes/words; LEA calcula o endereço sem acessar memória ou mudar flags.
 - JMP e as 16 condições Jcc curtas/near, CALL/RET de 32 bits, RET com limpeza.
+- CALL/JMP near por registrador ou memória de 32 bits. Destinos são descobertos
+  por constantes locais, ponteiros de seções imutáveis ou entradas adicionais
+  declaradas com `--entry`. CALL/JMP e RET validam destinos antes de comprometer
+  CPU/pilha; apenas RET aceita a sentinela de retorno ao host (ADR-0019).
 - PUSH/POP de 16/32 bits, incluindo imediatos estendidos com sinal, e LEAVE de 32 bits.
   PUSH ESP lê ESP antes do decremento; POP ESP substitui o incremento; POP [ESP+...]
   usa ESP incrementado no endereço. Escrita com falha não compromete ESP.
@@ -66,11 +70,12 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
   Cada elemento repetido é uma passagem limitada de um bloco próprio (ADR-0018).
 
 LOCK, overrides de segmento, endereçamento geral de 16 bits, CALL/RET de
-16 bits, chamadas indiretas, INS/OUTS, REPNE fora de CMPS/SCAS, x87/MMX/SSE e
+16 bits, CALL/JMP far, INS/OUTS, REPNE fora de CMPS/SCAS, x87/MMX/SSE e
 outras instruções são recusados com PC e diagnóstico.
 Jumps para o meio de uma instrução, sobreposição de instruções/seções, alvos fora
 de bytes executáveis, código truncado e código gravável também são erros. A análise
-tem limite de 65536 instruções alcançáveis, sem promessa de que esse limite sirva a
+tem limite de 65536 instruções alcançáveis e 256 rodadas de descoberta indireta,
+sem promessa de que esses limites sirvam a
 um título comercial.
 
 ## Execução e estado
@@ -79,6 +84,12 @@ Cada bloco gerado contém operações Rust explícitas. Um `match` de EIP escolh
 compilado; não há dispatcher de opcodes nem leitura do XBE para decodificar durante
 a execução. O ponto de suspensão é uma fronteira de bloco, incluindo cada elemento
 de uma instrução REP, isolada de seu setup e de sua continuação.
+
+Com CALL/JMP indireto, todos os inícios de instrução decodificados viram blocos
+para admitir destinos dinâmicos internos. A granularidade do orçamento passa a
+uma instrução por bloco nesse programa, ou um elemento por passagem de REP.
+Sem CALL/JMP indireto, os blocos anteriores são preservados. A inferência não
+varre dados, não cruza blocos/calls e não presume valores da memória gravável.
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
 e indicador de retorno. Durante comparação REP, guarda também PC e flags originais
@@ -92,7 +103,9 @@ falhou. REP pode retomar no elemento pendente depois que o host resolver a falta
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro
 no meio de bloco ainda não é suportada, e a sessão deve ser descartada.
 Cada elemento REP consome uma unidade de orçamento; `retired` conta a instrução
-apenas na conclusão. Zero repetições não acessa memória. O bus valida todas as
+apenas na conclusão. `UnknownTarget` informa PC e destino sem desempilhar nem
+empilhar; o runtime também confere permissão de execução do destino conhecido.
+Zero repetições não acessa memória. O bus valida todas as
 páginas de uma escrita antes de alterar RAM, evitando store parcial na falta.
 
 O runtime não consulta relógio de parede. O contador `retired` não alimenta o relógio
@@ -118,7 +131,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 55 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 64 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 
@@ -146,6 +159,11 @@ separadamente flags indefinidas, fontes read-only, aliases, erros e snapshot.
 Strings acrescentam 3456 comparações físicas e testes de address16, faltas,
 sobreposição e snapshots parciais (ADR-0018). O oráculo usa buffers host com limites
 validados; o assembly limpa DF antes de devolver o controle ao Rust.
+
+Controle indireto acrescenta nove testes nativos de callbacks, tabelas, aliases de
+ESP, faltas, retornos, orçamento, recursão e snapshot (ADR-0019). As verificações
+de semântica usam resultados esperados independentes; não há execução de endereços
+guest na CPU host nem novo assembly para essas instruções.
 
 O snapshot `AOTC` v2 acrescenta a continuação de comparação REP e lê v1 com esse
 campo vazio. Partes de registrador usam os mesmos oito registradores de 32 bits.

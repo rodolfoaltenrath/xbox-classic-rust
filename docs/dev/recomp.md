@@ -51,6 +51,24 @@ instrução sem suporte, TLS ou imports do kernel. O projeto gerado referencia o
 crates locais por caminho; ainda não é um pacote independente para distribuir.
 `obsidian run` continua sem executar jogos comerciais.
 
+Para callbacks e tabelas de saltos cujos destinos não foram inferidos, declare
+raízes adicionais de código (endereços virtuais do XBE, não offsets de arquivo):
+
+```powershell
+cargo run -p xberecomp -- translate caminho/teste.xbe --out target/meu-recomp --entry 0x00011008 --entry 69646
+```
+
+Cada `--entry` inclui essa rotina e seu fluxo alcançável na tradução. Os endereços
+do exemplo só ilustram a sintaxe; use os alvos da sua imagem. Todas as entradas são
+validadas antes de gerar arquivos. Constantes locais e ponteiros de seções imutáveis
+podem dispensar a opção. Valores de memória gravável não são usados para inferir
+destinos. Um `UnknownTarget` em execução informa a instrução e o destino ausente;
+verifique esse endereço antes de declará-lo e gerar novamente o projeto.
+
+Com CALL/JMP indireto, cada início de instrução conhecido vira um bloco de despacho;
+isso muda a granularidade do orçamento. O conjunto de alvos é fechado durante a
+tradução: não há decoder ou compilação sob demanda durante a execução (ADR-0019).
+
 Use uma pasta dentro de `target` para artefatos: o Rust gerado de um jogo pode
 conter tradução de código proprietário e não deve entrar no repositório.
 
@@ -72,7 +90,7 @@ as dependências desse target e pode demorar mais.
 O snapshot da prova inclui CPU e bus. Não equivale a save state de um jogo completo:
 kernel, GPU, áudio e input ainda não participam.
 
-Em x86_64, a integração executa 55 testes dentro do projeto gerado: inclui 9438
+Em x86_64, a integração executa 64 testes dentro do projeto gerado: inclui 9438
 comparações de ALU com a CPU física, 262144 casos exaustivos de ADC/SBB de byte,
 445686 comparações de shifts e 791764 de rotações/shifts duplos. Outros 3872 casos
 verificam Jcc por relações independentes. Produtos/divisões acrescentam 483916
@@ -251,3 +269,32 @@ Regras e limites: [ADR-0018](../adr/0018-strings-rep-retomaveis.md).
 Logs: `target/strings-workspace-tests.log`, `target/strings-native-release-tests.log`,
 `target/strings-doctests.log` e `target/strings-memory-clippy.log`. O caminho do
 projeto gerado validado está em `target/strings-native-project.txt`.
+
+## Controle indireto — validação Windows de 2026-10-20
+
+Host x86_64-pc-windows-gnu, Rust 1.98.1 fixado. Decisões e limites:
+[ADR-0019](../adr/0019-controle-indireto-aot.md).
+
+- Workspace: 189 testes passaram com `--workspace --all-targets --offline
+  --features xbox-cpu/isa-oracle` e `RUSTFLAGS=-D warnings`. Dois doctests passaram.
+- O Rust gerado passou em 64 testes nativos em debug e release, também com warnings
+  como erros. A prova original mantém EAX=62 e 37 instruções concluídas.
+- Seis testes de análise verificam descoberta iterativa, MOV/LEA locais, ponteiros
+  imutáveis, limites de seção, raízes adicionais, invalidação conservadora e limites
+  de recursos. Não há varredura linear de dados nem pressuposto de valores de RW.
+- Nove testes nativos novos cobrem 15 combinações de CALL/JMP por registrador,
+  callbacks mutáveis, SIB, tabelas indexadas, CALL [ESP]/[ESP-4], retorno validado,
+  faltas de leitura/execução/pilha, destinos desconhecidos, recursão, orçamento e
+  snapshot com CALL pendente. Os resultados esperados são independentes do emissor;
+  não há novo oráculo que execute instruções guest ou ponteiros host arbitrários.
+- A CLI é exercitada com entradas decimais/hexadecimais repetidas, duplicatas e
+  destinos inválidos, antes de criar artefatos. O manifesto/source esperado é
+  comparado com a tradução equivalente pela API.
+- Formatação, diff e Clippy de `xbox-recomp`, `xberecomp` e `xbox-cpu` passaram com
+  `--all-targets --features xbox-cpu/isa-oracle --no-deps -- -D warnings`. Não há
+  mudança em `xbox-mem`; as pendências globais anteriores continuam registradas.
+  Esta etapa não declara Miri, CI remoto, validação Linux, FPS ou jogos comerciais.
+
+Logs: `target/indirect-workspace-tests.log`, `target/indirect-native-release-tests.log`
+e `target/indirect-doctests.log`. O caminho do projeto gerado validado está em
+`target/indirect-native-project.txt`.

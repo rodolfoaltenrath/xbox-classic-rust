@@ -203,6 +203,10 @@ pub enum Operation {
     },
     Direction(bool),
     Call(u32),
+    Indirect {
+        call: bool,
+        target: Operand,
+    },
     Ret(u16),
     Nop,
 }

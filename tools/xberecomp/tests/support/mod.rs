@@ -5,6 +5,7 @@ use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
 mod double_shifts;
+mod indirect;
 mod muldiv;
 mod rotations;
 mod shifts;
@@ -44,6 +45,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&double_shifts::sources(output));
     main.push_str(&muldiv::sources(output));
     main.push_str(&strings::sources(output));
+    main.push_str(&indirect::sources(output));
 }
 
 fn structural_images(output: &Path) {

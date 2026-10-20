@@ -7,7 +7,7 @@ navegável por controle, com Windows/Linux e futuramente Linux direto em KMS/DRM
 
 **Jogos comerciais ainda não executam.** Atualmente há parsers de mídia, VFS,
 memória/MMU/bus e um subconjunto inteiro de x86 que já gera programas Rust executáveis.
-Kernel/TLS, chamadas indiretas, ponto flutuante, gráficos, áudio e frontend continuam
+Kernel/TLS, ponto flutuante, gráficos, áudio e frontend continuam
 em desenvolvimento. O projeto não inclui jogos, BIOS ou bibliotecas proprietárias.
 
 ## Requisitos e build
@@ -38,6 +38,8 @@ cargo run --offline --manifest-path target/recomp-demo/Cargo.toml
 O subconjunto atual inclui operandos de 8/16/32 bits, registradores parciais,
 instruções de pilha, ADC/SBB, shifts, rotações, MUL/IMUL, DIV/IDIV e as 16 condições
 Jcc, JCXZ/JECXZ, LOOP e strings com REP de execução limitada e snapshot parcial.
+CALL/JMP indiretos usam descoberta conservadora e entradas adicionais `--entry`;
+destinos desconhecidos são erros recuperáveis antes de alterar CPU/pilha.
 Os testes do Rust gerado verificam 9438 casos de ALU e mais 262144 casos
 exaustivos de ADC/SBB de byte
 contra a CPU física. Outros 445686 casos verificam shifts e suas flags definidas;

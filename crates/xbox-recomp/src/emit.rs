@@ -52,7 +52,25 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
         line(&mut out, "}");
     }
     out.push_str("            pc => return Err(Error::UnknownBlock(pc)),\n        }\n    }\n    Ok(Exit::Budget)\n}\n");
+    if program
+        .instructions
+        .values()
+        .any(|i| matches!(i.operation, Operation::Indirect { .. } | Operation::Ret(_)))
+    {
+        emit_target_check(&mut out, program);
+    }
     out
+}
+
+fn emit_target_check(out: &mut String, program: &Program) {
+    out.push_str("\nfn checked_target(s: &State, bus: &Bus, target: u32) -> Result<()> {\n    if !matches!(target, ");
+    for (index, pc) in program.blocks.keys().enumerate() {
+        if index != 0 {
+            out.push_str(" | ");
+        }
+        let _ = write!(out, "0x{pc:08X}");
+    }
+    out.push_str(") { return Err(Error::UnknownTarget { pc: s.eip, target }); }\n    bus.traduzir(GuestVirt(target), xbox_mem::Acesso::Execucao)?;\n    Ok(())\n}\n");
 }
 
 fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
@@ -128,8 +146,16 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             line(out, &format!("s.eip = 0x{target:08X};"));
             return;
         }
+        Operation::Indirect { call, target } => {
+            emit_indirect(out, *call, target, next);
+            return;
+        }
         Operation::Ret(bytes) => {
             line(out, "let target = bus.ler_u32(GuestVirt(s.regs[4]))?;");
+            line(
+                out,
+                "if target != RETURN_SENTINEL { checked_target(s, bus, target)?; }",
+            );
             line(
                 out,
                 &format!(
@@ -615,4 +641,19 @@ fn write_operand(out: &mut String, operand: &Operand, value: &str) {
         Operand::Mem { width, .. } => write_memory(out, *width, value),
         Operand::Imm(_) => unreachable!("destinos imediatos são excluídos pelo decoder"),
     }
+}
+
+fn emit_indirect(out: &mut String, call: bool, target: &Operand, next: u32) {
+    // Capturar antes de PUSH cobre CALL ESP, [ESP] e [ESP-4].
+    line(out, &format!("let target = {};", read(target)));
+    line(out, "checked_target(s, bus, target)?;");
+    if call {
+        line(out, "let esp = s.regs[4].wrapping_sub(4);");
+        line(
+            out,
+            &format!("bus.escrever_u32(GuestVirt(esp), 0x{next:08X})?;"),
+        );
+        line(out, "s.regs[4] = esp;");
+    }
+    line(out, "s.eip = target;");
 }

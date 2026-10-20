@@ -613,7 +613,7 @@ devem ser conferidas no GitHub Actions; testes locais estão registrados em `doc
 - [x] *(2026-10-19)* ROL/ROR/RCL/RCR de 8/16/32 bits e SHLD/SHRD de 16/32 bits; 791764 comparações físicas; contagens de resultado indefinido recusadas com PC (ADR-0016)
 - [x] *(2026-10-19)* MUL/IMUL e DIV/IDIV de 8/16/32 bits, IMUL truncado 16/32, CBW/CWDE/CWD/CDQ; 483916 comparações físicas e 1000580 diagnósticos de #DE classificados, sem entrega por IDT/kernel (ADR-0017)
 - [x] *(2026-10-20)* JCXZ/JECXZ, LOOP/LOOPE/LOOPNE e CLD/STD; strings de 8/16/32 bits com endereços de 16/32 bits, REP limitado por elemento e snapshot parcial (ADR-0018); 3456 comparações físicas
-- [ ] Completar controle indireto: CALL/JMP com descoberta conservadora de alvos
+- [x] *(2026-10-20)* CALL/JMP near de 32 bits por registrador/memória, descoberta conservadora e entradas adicionais `--entry`; validação de destinos antes de alterar CPU/pilha e RET validado (ADR-0019). Descoberta completa de tabelas arbitrárias continua pendente
 - [ ] x87/MMX/SSE e validação diferencial independente
 - [ ] Loader real: TLS, ordinais e ambiente XAPI (Fase 4)
 - [ ] Perfis por revisão de XBE, identificação por hash e cache versionado
@@ -1101,6 +1101,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-19 | 3-AOT | Rotações e shifts duplos (ADR-0016) | — | Anel com carry, aliases de CL/fonte, memória e contagens indefinidas com diagnóstico; 791764 comparações físicas adicionais; 179 testes de workspace e 35 nativos |
 | 2026-10-19 | 3-AOT | MUL/IMUL e DIV/IDIV com diagnóstico de #DE (ADR-0017) | — | 483916 comparações físicas e 1000580 diagnósticos classificados; extensões de sinal, memória, aliases e snapshot; 180 testes de workspace e 45 nativos |
 | 2026-10-20 | 3-AOT | Loops por contador e strings REP retomáveis (ADR-0018) | — | 3456 comparações físicas, address16, DF, faltas e snapshots parciais; bus evita escrita parcial; 183 testes de workspace e 55 nativos em debug/release |
+| 2026-10-20 | 3-AOT | Controle indireto e entradas adicionais (ADR-0019) | — | CALL/JMP r/m32, inferência local/RO e `--entry`; destinos validados antes de commit, RET, callbacks e snapshot; 189 testes de workspace e 64 nativos em debug/release |
 
 ---
 
@@ -1108,12 +1109,12 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Fase 3-AOT:** chamadas e saltos indiretos com descoberta conservadora de alvos,
-   mantendo diagnóstico de alvos desconhecidos, orçamento e estado capturável.
-   Guia: `docs/dev/recomp.md`.
-2. **Fase 2:** fechar seu aceite pendente, incluindo loader/T14, Miri e documentação;
+1. **Fase 2:** fechar seu aceite pendente, incluindo loader/T14, Miri e documentação;
    a prova AOT usa o bus existente e não declara a fase concluída.
-3. **Fase 4:** TLS e kernel HLE em Rust para avançar de fixture a homebrew real.
+2. **Fase 4:** TLS e kernel HLE em Rust para avançar de fixture a homebrew real.
+3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de
+   imagem/cache versionado; validar o homebrew com instruções reais emitidas pelo
+   compilador. Guia: `docs/dev/recomp.md`.
 Git inicializado em 2026-10-19 para enviar o projeto a
 `https://github.com/rodolfoaltenrath/xbox-classic-rust`, conforme solicitação do
 mantenedor. A licença Apache-2.0 já selecionada no remoto é mantida (ADR-0007).

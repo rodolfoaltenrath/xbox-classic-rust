@@ -100,6 +100,7 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
     let mut main = std::fs::read_to_string(output.join("src/main.rs")).unwrap();
     main.push_str(include_str!("verification.inc"));
     support::extend_project(&output, &root, &mut main);
+    check_cli_entries(cli, &output);
     std::fs::write(output.join("src/main.rs"), main).unwrap();
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target = root.join("target/recomp-native-check");
@@ -131,8 +132,43 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "55 passed"
+        "64 passed"
     } else {
-        "42 passed"
+        "51 passed"
+    }
+}
+
+fn check_cli_entries(cli: &str, output: &Path) {
+    let image = output.join("src/ind_dynamic.xbe");
+    let translated = output.join("cli-entries");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(&image)
+            .arg("--out")
+            .arg(&translated)
+            .args([
+                "--entry", "0x11008", "--entry", "69646", "--entry", "0X11008",
+            ]),
+    );
+    let bytes = std::fs::read(&image).unwrap();
+    let expected =
+        emit::rust_source(&analysis::analyze_with_entries(&bytes, &[0x11008, 0x1100E]).unwrap());
+    assert_eq!(
+        std::fs::read_to_string(translated.join("src/generated.rs")).unwrap(),
+        expected
+    );
+    for address in ["0x100000000", "-1", "invalid", "0x11001", "0x12020"] {
+        let invalid = output.join("cli-invalid-entry");
+        let result = Command::new(cli)
+            .arg("translate")
+            .arg(&image)
+            .arg("--out")
+            .arg(&invalid)
+            .args(["--entry", address])
+            .output()
+            .unwrap();
+        assert!(!result.status.success());
+        assert!(!invalid.exists());
     }
 }

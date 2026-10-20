@@ -16,3 +16,4 @@ O [ADR-0015](adr/0015-flags-shifts-inteiros.md) define flags, contagens e valida
 O [ADR-0016](adr/0016-rotacoes-shifts-duplos.md) documenta rotações, shifts duplos e resultados indefinidos.
 O [ADR-0017](adr/0017-multiplicacao-divisao-de.md) cobre produtos, divisões e diagnóstico recuperável de #DE.
 O [ADR-0018](adr/0018-strings-rep-retomaveis.md) define loops por contador e strings REP com orçamento e snapshot parcial.
+O [ADR-0019](adr/0019-controle-indireto-aot.md) cobre CALL/JMP indiretos, entradas adicionais e validação de destinos.

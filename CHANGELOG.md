@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: CALL/JMP near de 32 bits por registrador/memória, incluindo SIB e
+  aliases de ESP. Descoberta iterativa por constantes locais e ponteiros imutáveis;
+  API `analyze_with_entries` e CLI `--entry` para callbacks/tabelas mutáveis.
+  Destinos conhecidos são blocos explícitos, sem decodificação em execução.
+  CALL/JMP/RET validam alvo e permissão antes de comprometer CPU/pilha; erros
+  `UnknownTarget` incluem PC e destino. Orçamento, recursão e snapshots preservados
+  (ADR-0019).
+
 - Fase 3-AOT: JCXZ/JECXZ e LOOP/LOOPE/LOOPNE com CX/ECX; CLD/STD e
   MOVS/STOS/LODS/CMPS/SCAS de 8/16/32 bits, com endereços de 16/32 bits.
   REP/REPE/REPNE usam um elemento por passagem de bloco, respeitando orçamento

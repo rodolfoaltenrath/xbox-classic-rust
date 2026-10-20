@@ -43,6 +43,8 @@ pub enum Error {
     Analysis { pc: u32, detail: String },
     #[error("endereço 0x{0:08X} não tem bloco recompilado")]
     UnknownBlock(u32),
+    #[error("transferência em 0x{pc:08X}: alvo 0x{target:08X} não foi recompilado")]
+    UnknownTarget { pc: u32, target: u32 },
     #[error(
         "shift duplo em 0x{pc:08X}: contagem {count} maior que operando de {bits} bits tem resultado indefinido"
     )]

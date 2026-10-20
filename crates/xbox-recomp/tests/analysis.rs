@@ -21,7 +21,6 @@ fn rejeita_fluxo_invalido_e_instrucoes_sem_suporte_com_endereco() {
         &[0x67, 0x8B, 0x00, 0xC3][..],       // endereço de 16 bits (BX+SI)
         &[0xF0, 0x01, 0x08, 0xC3][..],       // LOCK add [eax],ecx
         &[0x64, 0xA1, 0, 0, 0, 0, 0xC3][..], // FS
-        &[0xFF, 0xD0, 0xC3][..],             // call eax: indireta ainda sem suporte
     ] {
         assert!(matches!(
             analyze(&xbe_com_codigo(code).unwrap()),

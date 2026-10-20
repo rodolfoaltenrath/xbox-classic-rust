@@ -13,6 +13,8 @@ pub use crate::ir::{
 };
 use crate::{Error, Result};
 
+mod targets;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Insn {
     pub pc: u32,
@@ -34,90 +36,152 @@ fn fail(pc: u32, detail: impl Into<String>) -> Error {
     }
 }
 
-/// Analisa somente caminhos alcançáveis pelo entry point e por calls diretas.
+/// Analisa fluxo direto e indireto inferível, sem varrer dados como código.
 pub fn analyze(bytes: &[u8]) -> Result<Program> {
+    analyze_with_entries(bytes, &[])
+}
+
+/// Entradas adicionais são raízes explícitas, sujeitas à mesma validação do entry.
+pub fn analyze_with_entries(bytes: &[u8], entries: &[u32]) -> Result<Program> {
     let xbe = Xbe::parse(bytes)?;
     validate_layout(&xbe)?;
-    let mut instructions: BTreeMap<u32, Insn> = BTreeMap::new();
-    let mut pending = VecDeque::from([xbe.entry_point]);
-    let mut owners = BTreeMap::new();
-    let mut leaders = BTreeSet::from([xbe.entry_point]);
-    while let Some(pc) = pending.pop_front() {
-        if instructions.contains_key(&pc) {
-            continue;
-        }
-        if instructions.len() >= 65_536 {
-            return Err(fail(pc, "limite de 65536 instruções alcançáveis"));
-        }
-        if owners.contains_key(&pc) {
-            return Err(fail(pc, "alvo no meio de outra instrução"));
-        }
-        let section = xbe
-            .sections
-            .iter()
-            .enumerate()
-            .find(|(_, s)| {
-                s.flags.tem(SectionFlags::EXECUTABLE)
-                    && pc >= s.virtual_address
-                    && u64::from(pc)
-                        < u64::from(s.virtual_address) + u64::from(s.raw_size.min(s.virtual_size))
-            })
-            .ok_or_else(|| fail(pc, "fluxo fora dos bytes de uma seção executável"))?;
-        if section.1.flags.tem(SectionFlags::WRITABLE) {
+    if entries.len() > 65_536 {
+        return Err(fail(xbe.entry_point, "limite de 65536 entradas adicionais"));
+    }
+    let mut graph = Discovery::default();
+    graph.enqueue(xbe.entry_point);
+    for &entry in entries {
+        graph.enqueue(entry);
+    }
+    let mut rounds = 0;
+    loop {
+        if rounds == 256 {
             return Err(fail(
-                pc,
-                "código gravável exige invalidação AOT ainda não implementada",
+                xbe.entry_point,
+                "limite de 256 rodadas de descoberta indireta; informe entradas adicionais",
             ));
         }
-        let data = xbe.section_data(section.0)?;
-        let offset = (pc - section.1.virtual_address) as usize;
-        let mut decoder =
-            Decoder::with_ip(32, &data[offset..], u64::from(pc), DecoderOptions::NONE);
-        let i = decoder.decode();
-        if i.is_invalid() {
-            return Err(fail(pc, "instrução inválida ou truncada"));
-        }
-        let next = pc
-            .checked_add(i.len() as u32)
-            .ok_or_else(|| fail(pc, "instrução transborda o espaço x86"))?;
-        for address in pc..next {
-            if owners.insert(address, pc).is_some() {
-                return Err(fail(pc, "instruções sobrepostas"));
+        rounds += 1;
+        graph.decode_pending(&xbe)?;
+        let blocks = build_blocks(&graph.instructions, &graph.leaders)?;
+        let inferred = targets::discover(&xbe, &blocks);
+        for target in inferred {
+            if !graph.leaders.contains(&target) {
+                graph.enqueue(target);
             }
         }
-        let operation = lower(&i)?;
-        match operation {
-            Operation::Jump(target) => {
-                leaders.insert(target);
-                pending.push_back(target);
-            }
-            Operation::Branch { target, .. }
-            | Operation::CountBranch { target, .. }
-            | Operation::Call(target) => {
-                leaders.extend([target, next]);
-                pending.extend([target, next]);
-            }
-            Operation::Ret(_) => {}
-            Operation::String { repeat, .. } if repeat != Repeat::None => {
-                leaders.extend([pc, next]);
-                pending.push_back(next);
-            }
-            _ => pending.push_back(next),
+        if graph.pending.is_empty() {
+            break;
         }
-        instructions.insert(
-            pc,
-            Insn {
-                pc,
-                next,
-                operation,
-            },
-        );
     }
-    let blocks = build_blocks(&instructions, &leaders)?;
+    // Um destino dinâmico pode apontar para qualquer início já decodificado.
+    // Só programas com controle indireto pagam pelo despacho por instrução.
+    if graph
+        .instructions
+        .values()
+        .any(|i| matches!(i.operation, Operation::Indirect { .. }))
+    {
+        graph.leaders.extend(graph.instructions.keys());
+    }
+    let blocks = build_blocks(&graph.instructions, &graph.leaders)?;
     Ok(Program {
         entry: xbe.entry_point,
-        instructions,
+        instructions: graph.instructions,
         blocks,
+    })
+}
+
+#[derive(Debug, Default)]
+struct Discovery {
+    instructions: BTreeMap<u32, Insn>,
+    pending: VecDeque<u32>,
+    owners: BTreeMap<u32, u32>,
+    leaders: BTreeSet<u32>,
+}
+
+impl Discovery {
+    fn enqueue(&mut self, pc: u32) {
+        self.leaders.insert(pc);
+        self.pending.push_back(pc);
+    }
+
+    fn decode_pending(&mut self, xbe: &Xbe<'_>) -> Result<()> {
+        while let Some(pc) = self.pending.pop_front() {
+            if self.instructions.contains_key(&pc) {
+                continue;
+            }
+            if self.instructions.len() >= 65_536 {
+                return Err(fail(pc, "limite de 65536 instruções alcançáveis"));
+            }
+            if self.owners.contains_key(&pc) {
+                return Err(fail(pc, "alvo no meio de outra instrução"));
+            }
+            let i = decode(xbe, pc)?;
+            for address in pc..i.next {
+                if self.owners.insert(address, pc).is_some() {
+                    return Err(fail(pc, "instruções sobrepostas"));
+                }
+            }
+            match i.operation {
+                Operation::Jump(target) => self.enqueue(target),
+                Operation::Branch { target, .. }
+                | Operation::CountBranch { target, .. }
+                | Operation::Call(target) => {
+                    self.enqueue(target);
+                    self.enqueue(i.next);
+                }
+                Operation::Indirect { call: true, .. } => self.enqueue(i.next),
+                Operation::Ret(_) | Operation::Indirect { call: false, .. } => {}
+                Operation::String { repeat, .. } if repeat != Repeat::None => {
+                    self.leaders.insert(pc);
+                    self.enqueue(i.next);
+                }
+                _ => self.pending.push_back(i.next),
+            }
+            self.instructions.insert(pc, i);
+        }
+        Ok(())
+    }
+}
+
+fn decode(xbe: &Xbe<'_>, pc: u32) -> Result<Insn> {
+    let (index, section) = xbe
+        .sections
+        .iter()
+        .enumerate()
+        .find(|(_, s)| {
+            s.flags.tem(SectionFlags::EXECUTABLE)
+                && pc >= s.virtual_address
+                && u64::from(pc)
+                    < u64::from(s.virtual_address) + u64::from(s.raw_size.min(s.virtual_size))
+        })
+        .ok_or_else(|| fail(pc, "fluxo fora dos bytes de uma seção executável"))?;
+    if section.flags.tem(SectionFlags::WRITABLE) {
+        return Err(fail(
+            pc,
+            "código gravável exige invalidação AOT ainda não implementada",
+        ));
+    }
+    let data = xbe.section_data(index)?;
+    let offset = (pc - section.virtual_address) as usize;
+    let available = section.raw_size.min(section.virtual_size) as usize;
+    let mut decoder = Decoder::with_ip(
+        32,
+        &data[offset..available],
+        u64::from(pc),
+        DecoderOptions::NONE,
+    );
+    let i = decoder.decode();
+    if i.is_invalid() {
+        return Err(fail(pc, "instrução inválida ou truncada"));
+    }
+    let next = pc
+        .checked_add(i.len() as u32)
+        .ok_or_else(|| fail(pc, "instrução transborda o espaço x86"))?;
+    Ok(Insn {
+        pc,
+        next,
+        operation: lower(&i)?,
     })
 }
 
@@ -141,6 +205,7 @@ fn build_blocks(
                     | Operation::Branch { .. }
                     | Operation::CountBranch { .. }
                     | Operation::Call(_)
+                    | Operation::Indirect { .. }
                     | Operation::Ret(_)
             ) || matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None)
                 || leaders.contains(&pc)
@@ -403,6 +468,14 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Leaved => Operation::Leave,
         Code::Jmp_rel8_32 | Code::Jmp_rel32_32 => Operation::Jump(i.near_branch32()),
         Code::Call_rel32_32 => Operation::Call(i.near_branch32()),
+        Code::Call_rm32 => Operation::Indirect {
+            call: true,
+            target: operand(i, 0)?,
+        },
+        Code::Jmp_rm32 => Operation::Indirect {
+            call: false,
+            target: operand(i, 0)?,
+        },
         Code::Retnd => Operation::Ret(0),
         Code::Retnd_imm16 => Operation::Ret(i.immediate16()),
         _ => {

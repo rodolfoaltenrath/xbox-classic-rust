@@ -26,6 +26,9 @@ enum Action {
         /// Compila e executa o projeto gerado usando Cargo e rustc.
         #[arg(long)]
         run: bool,
+        /// Raiz de código adicional (VA decimal ou 0xHEX); pode ser repetida.
+        #[arg(long = "entry", value_parser = parse_address)]
+        entries: Vec<u32>,
     },
     /// Traduz um .xbe. Instruções ainda não suportadas são erros de tradução.
     Translate {
@@ -35,6 +38,9 @@ enum Action {
         /// Compila e executa o programa traduzido; não há kernel, vídeo ou áudio.
         #[arg(long)]
         run: bool,
+        /// Callback/alvo adicional que não pôde ser inferido estaticamente.
+        #[arg(long = "entry", value_parser = parse_address)]
+        entries: Vec<u32>,
     },
 }
 
@@ -49,11 +55,21 @@ fn main() -> ExitCode {
 }
 
 fn execute(cli: Cli) -> Result<(), Box<dyn Error>> {
-    let (bytes, output, run) = match cli.command {
-        Action::Demo { out, run } => (xbox_formats::fixtures::xbe_com_codigo(DEMO_CODE)?, out, run),
-        Action::Translate { input, out, run } => (std::fs::read(input)?, out, run),
+    let (bytes, output, run, entries) = match cli.command {
+        Action::Demo { out, run, entries } => (
+            xbox_formats::fixtures::xbe_com_codigo(DEMO_CODE)?,
+            out,
+            run,
+            entries,
+        ),
+        Action::Translate {
+            input,
+            out,
+            run,
+            entries,
+        } => (std::fs::read(input)?, out, run, entries),
     };
-    let program = analysis::analyze(&bytes)?;
+    let program = analysis::analyze_with_entries(&bytes, &entries)?;
     // O loader deve aceitar a imagem antes de escrever artefatos ou compilar.
     let _session = xbox_recomp::runtime::Session::load(&bytes)?;
     write_project(&output, &bytes, &emit::rust_source(&program))?;
@@ -76,6 +92,15 @@ fn execute(cli: Cli) -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
+}
+
+fn parse_address(text: &str) -> Result<u32, String> {
+    let result = if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+        u32::from_str_radix(hex, 16)
+    } else {
+        text.parse()
+    };
+    result.map_err(|_| format!("endereço x86 de 32 bits inválido: {text}"))
 }
 
 fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dyn Error>> {
