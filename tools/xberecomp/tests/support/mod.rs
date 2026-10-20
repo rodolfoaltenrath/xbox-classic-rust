@@ -5,6 +5,7 @@ use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
 mod breakpoint;
+mod conditional;
 mod control;
 mod double_shifts;
 mod exchange;
@@ -58,6 +59,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&control::sources(output));
     main.push_str(&breakpoint::sources(output));
     main.push_str(&ordering::sources(output));
+    main.push_str(&conditional::sources(output));
 }
 
 fn structural_images(output: &Path) {

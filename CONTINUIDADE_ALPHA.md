@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`d145514`** e nas alterações
-locais do **ADR-0028**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`6b08704`** e nas alterações
+locais do **ADR-0029**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,7 +42,7 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados e dispatcher concluídos; 1/69 serviços** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; CMOVNE pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 4 | ISA necessária | CMOVcc, SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; BSR pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
 | 5 | Execução integrada | Pendente; há demonstração e fronteiras de execução reutilizáveis | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
@@ -152,7 +152,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Primeiro bloqueio atual do AOT | `CMOVNE` em `0x13B88`, em tempo de tradução |
+| Primeiro bloqueio atual do AOT | `BSR` em `0x1657C`, em tempo de tradução |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -238,7 +238,8 @@ parava em `LOCK CMPXCHG` em `0x209C3`. O ADR-0024 implementou essa operação e 
 o alvo passou a parar em RDTSC (`0x2055B`). O ADR-0025 implementou RDTSC com
 Clock guest. O ADR-0026 implementou CLI/HLT e o ADR-0027 modelou a fronteira #BP
 de INT3. O ADR-0028 implementou SFENCE no bus síncrono exclusivo; o bloqueio
-atual é CMOVNE (`0x13B88`), antes da execução do homebrew.
+seguinte foi CMOVNE (`0x13B88`). O ADR-0029 implementou CMOVcc; o bloqueio atual
+é BSR (`0x1657C`), antes da execução do homebrew.
 
 Trabalho restante:
 
@@ -311,10 +312,23 @@ a publicar. Isso não implementa MMIO ou conclusão de GPU. Filas de stores,
 write-combining ou observadores concorrentes futuros exigem ampliar a barreira
 e rever os contratos de memória; uma fence host isolada não substitui esse trabalho.
 Não há estado novo: AOTC continua v6 e o perfil de tempo continua 1.
-São 96 casos gerados em x86_64 e um contrato de visibilidade por alias/físico/DMA
-validado também sob Miri. O bloqueio atual é **CMOVNE em `0x13B88`**, bytes
-`0F 45 C1` (ECX → EAX sob condição NE). Implementar CMOVcc com condições,
-larguras, operandos e faltas corretos. Outros bloqueios ainda podem aparecer.
+Essa entrega chegou a 96 casos gerados em x86_64 e um contrato de visibilidade
+por alias/físico/DMA validado também sob Miri; o bloqueio seguinte foi CMOVNE.
+
+O [ADR-0029](docs/adr/0029-cmovcc.md) implementou as 16 condições de CMOVcc,
+destino registrador e origem registrador/memória de 16/32 bits. A origem é lida
+incondicionalmente antes da condição: condição falsa não evita falta nem efeito
+de leitura do bus. Flags são preservadas; word conserva a metade alta. Aliases,
+FS/SIB, SP/ESP, RO, leituras cruzando página, snapshots e tempo têm testes no Rust
+gerado. O novo unsafe fica apenas no oráculo opcional de xbox-cpu, com assembly
+fixo em registradores locais e flags mascaradas; não recebe endereços guest.
+São 32768 comparações físicas e 103 testes gerados em x86_64. Não há estado novo:
+AOTC permanece v6 e o perfil de tempo permanece 1.
+
+O primeiro bloqueio observado agora é **BSR em `0x1657C`**, bytes `0F BD CB`
+(EBX → ECX), seguido de JZ em `0x1657F`. Implementar varredura de bits e validar
+origem zero/ZF, incluindo a política para destinos/flags indefinidos.
+Outros bloqueios ainda podem aparecer.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
 
@@ -392,8 +406,8 @@ cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
 cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --out target/alpha-hello
 ```
 
-Na referência atual, `check-memory` passa; `translate` falha em **CMOVNE no PC
-`0x13B88`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT, INT3 e SFENCE já não são os bloqueios. Isso ainda
+Na referência atual, `check-memory` passa; `translate` falha em **BSR no PC
+`0x1657C`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT, INT3, SFENCE e CMOVcc já não são os bloqueios. Isso ainda
 não significa execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
@@ -416,7 +430,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 96 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 103 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -445,9 +459,10 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
 > snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
 > termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é CMOVNE em 0x13B88. SFENCE chama a barreira do bus síncrono exclusivo,
+> atual é BSR em 0x1657C, seguido de JZ. SFENCE chama a barreira do bus síncrono exclusivo,
 > sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
-> Implemente CMOVcc com condições, operandos e faltas corretos e
+> CMOVcc já cobre as 16 condições em 16/32 bits e lê a origem mesmo se falsa.
+> Implemente varredura de bits com origem zero/ZF e política de indefinidos e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

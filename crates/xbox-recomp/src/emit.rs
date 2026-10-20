@@ -113,6 +113,11 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         Operation::Binary(op, dst, src) => emit_binary(out, *op, dst, src),
         Operation::CompareExchange { dst, src, .. } => emit_cmpxchg(out, dst, src),
         Operation::SetCondition { condition, dst } => emit_set_condition(out, *condition, dst),
+        Operation::ConditionalMove {
+            condition,
+            dst,
+            src,
+        } => emit_conditional_move(out, *condition, dst, src),
         Operation::Unary(op, dst) => emit_unary(out, *op, dst),
         Operation::Shift(op, dst, count) => emit_shift(out, *op, dst, count),
         Operation::Rotate(op, dst, count) => emit_rotate(out, *op, dst, count),
@@ -218,6 +223,23 @@ fn emit_return(out: &mut String, bytes: u16) {
     );
     line(out, "s.eip = target;");
     line(out, "s.returned = target == RETURN_SENTINEL;");
+}
+
+fn emit_conditional_move(
+    out: &mut String,
+    condition: crate::ir::Condition,
+    dst: &Operand,
+    src: &Operand,
+) {
+    // CMOVcc lê a origem mesmo quando a condição é falsa. Uma falta impede
+    // qualquer alteração no destino/flags; aliases usam o endereço original.
+    line(out, &format!("let value = {};", read(src)));
+    line(
+        out,
+        &format!("if condition_met(Condition::{condition:?}, s.eflags) {{"),
+    );
+    write_operand(out, dst, "value");
+    line(out, "}");
 }
 
 fn emit_timestamp(out: &mut String) {

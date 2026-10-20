@@ -255,6 +255,9 @@ fn lower(i: &Instruction) -> Result<Operation> {
     if let Some(op) = lower_exchange(i)? {
         return Ok(op);
     }
+    if let Some(op) = lower_conditional_move(i)? {
+        return Ok(op);
+    }
     let binary = match i.mnemonic() {
         Mnemonic::Mov => Some(Binary::Mov),
         Mnemonic::Add => Some(Binary::Add),
@@ -359,6 +362,46 @@ fn lower_exchange(i: &Instruction) -> Result<Option<Operation>> {
         }));
     }
     Ok(None)
+}
+
+fn lower_conditional_move(i: &Instruction) -> Result<Option<Operation>> {
+    if !matches!(
+        i.mnemonic(),
+        Mnemonic::Cmovo
+            | Mnemonic::Cmovno
+            | Mnemonic::Cmovb
+            | Mnemonic::Cmovae
+            | Mnemonic::Cmove
+            | Mnemonic::Cmovne
+            | Mnemonic::Cmovbe
+            | Mnemonic::Cmova
+            | Mnemonic::Cmovs
+            | Mnemonic::Cmovns
+            | Mnemonic::Cmovp
+            | Mnemonic::Cmovnp
+            | Mnemonic::Cmovl
+            | Mnemonic::Cmovge
+            | Mnemonic::Cmovle
+            | Mnemonic::Cmovg
+    ) {
+        return Ok(None);
+    }
+    let dst = operand(i, 0)?;
+    let src = operand(i, 1)?;
+    if i.op0_kind() != OpKind::Register
+        || !matches!(dst.width(), Some(Width::Word | Width::Dword))
+        || src.width() != dst.width()
+    {
+        return Err(fail(
+            i.ip32(),
+            "CMOVcc exige destino registrador e origem r/m de 16/32 bits",
+        ));
+    }
+    Ok(Some(Operation::ConditionalMove {
+        condition: lower_condition(i)?,
+        dst,
+        src,
+    }))
 }
 
 fn lower_string(i: &Instruction) -> Result<Option<Operation>> {

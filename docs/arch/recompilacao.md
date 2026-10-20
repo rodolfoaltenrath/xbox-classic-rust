@@ -118,6 +118,10 @@ SFENCE chama a barreira do bus. Stores síncronos na arena exclusiva já têm a
 ordenação exigida; não há fila a publicar nem fence de GPU nesta etapa. Introduzir
 observadores concorrentes ou escrita diferida exige ampliar esse contrato
 ([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). AOTC continua v6.
+CMOVcc usa as 16 condições existentes e origem de 16/32 bits capturada antes
+da condição, mesmo se falsa. Flags e o destino em condição falsa são preservados;
+leituras faltantes continuam falhando. Word preserva a metade alta do registrador.
+Não há estado novo ([ADR-0029](../adr/0029-cmovcc.md)).
 Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro

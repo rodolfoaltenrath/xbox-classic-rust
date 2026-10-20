@@ -70,7 +70,8 @@ lê o Clock guest com política sintética determinística, sem tempo host. O bl
 seguinte foi CLI/HLT no caminho de assert do SDK, agora implementados no
 ADR-0026. INT3 em `0x20D6C`, no preenchimento após a chamada a exit em abort,
 agora tem fronteira #BP (ADR-0027). SFENCE em `0x12A43` chama a barreira do bus
-síncrono exclusivo (ADR-0028). O bloqueio atual é **CMOVNE em `0x13B88`**.
+síncrono exclusivo (ADR-0028). CMOVNE em `0x13B88` está coberto pelas 16 condições
+CMOVcc de 16/32 bits (ADR-0029). O bloqueio atual é **BSR em `0x1657C`**.
 A análise estática não prova execução dessas regiões nem oferece a lista completa
 da ISA necessária.
 
@@ -128,6 +129,12 @@ virtual/física/DMA compartilham a arena exclusiva. Não há filas pendentes a
 drenar. Essa ordenação não implementa GPU ou MMIO; filas, write-combining ou DMA
 concorrente futuros exigem ampliar o protocolo e rever o acesso à arena
 ([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). Snapshot permanece AOTC v6.
+
+CMOVcc lê a origem antes de testar a condição, inclusive se falsa, preservando
+faltas e efeitos de leitura do bus. Suporta word/dword, registrador/memória,
+FS/SIB e destinos SP/ESP, sem alterar flags. AOTC permanece v6; 32768 casos
+comparados com CPU física no oráculo opcional
+([ADR-0029](../adr/0029-cmovcc.md)).
 
 ## Referências públicas
 

@@ -163,6 +163,11 @@ pub enum Operation {
         condition: Condition,
         dst: Operand,
     },
+    ConditionalMove {
+        condition: Condition,
+        dst: Operand,
+        src: Operand,
+    },
     Unary(Unary, Operand),
     Shift(Shift, Operand, Operand),
     Rotate(Rotate, Operand, Operand),

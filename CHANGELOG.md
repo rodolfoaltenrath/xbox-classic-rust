@@ -10,6 +10,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: CMOVcc nas 16 condições, com origem registrador/memória de
+  16/32 bits, leitura incondicional antes da condição e flags preservadas.
+  Faltas, aliases, FS/SIB, SP/ESP, snapshots e tempo cobertos; 32768 comparações
+  com CMOV físico no oráculo opcional. AOTC continua v6; 103 testes nativos
+  em x86_64. Próximo bloqueio real: BSR em `0x1657C` (ADR-0029).
+
 - Fase 3-AOT: SFENCE tem IR própria e chama `Bus::ordenar_escritas`. No perfil
   síncrono/exclusivo atual, stores já são visíveis em ordem, sem filas a drenar;
   a barreira não implementa MMIO ou conclusão de GPU. Testes cobrem aliases/DMA,

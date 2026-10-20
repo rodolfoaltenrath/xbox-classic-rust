@@ -389,5 +389,19 @@ diferidas ou observadores concorrentes, ampliar o protocolo do bus.
 Preserva registradores/flags, continua a descoberta e custa um passo sintético.
 Snapshots continuam AOTC v6: não há estado novo. Quatro testes nativos adicionais
 cobrem aliases/DMA, tempo, orçamento, permissões e replay, levando o conjunto a
-96 casos em x86_64. O próximo bloqueio real é CMOVNE em `0x13B88`. Contrato,
+96 casos em x86_64. O bloqueio seguinte foi CMOVNE em `0x13B88`. Contrato,
 limites de MMIO e referências: [ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md).
+
+## CMOVcc — ADR-0029
+
+As 16 condições suportam destino registrador e origem registrador/memória de
+16/32 bits. A origem é lida antes da condição: uma condição falsa não evita
+falta de página ou efeito de leitura MMIO. Flags são preservadas; word conserva
+a metade alta do destino. Não há variante byte, LOCK ou REP habilitados.
+
+Há 32768 comparações do Rust gerado com CMOV físico no oráculo opcional,
+mais testes portáveis de condições, memória RO, faltas, aliases, FS/SIB, SP/ESP,
+snapshots e tempo. São 103 testes nativos em x86_64, com AOTC ainda v6.
+O próximo bloqueio real é BSR em `0x1657C`, seguido de JZ; tratar origem zero,
+ZF e a política de resultados indefinidos ao implementar. Detalhes:
+[ADR-0029](../adr/0029-cmovcc.md).

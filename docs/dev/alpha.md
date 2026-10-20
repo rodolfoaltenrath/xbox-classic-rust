@@ -13,7 +13,7 @@ continuam sendo testes; não substituem esse marco.
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
 | 3. Kernel mínimo | dados e dispatcher concluídos (ADR-0022, ADR-0023); 1/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; bloqueio em CMOVNE | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 4. ISA necessária | CMOVcc, SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; bloqueio em BSR | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | pendente | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
@@ -47,8 +47,9 @@ snapshot ([ADR-0026](../adr/0026-controle-cli-hlt.md)). INT3 tem fronteira #BP
 explícita, preservada em snapshot, sem entrega ao kernel ainda
 ([ADR-0027](../adr/0027-int3-breakpoint-aot.md)). SFENCE usa a ordenação do bus
 síncrono exclusivo ([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)), sem concluir
-trabalho de GPU. O bloqueio atual é `CMOVNE` em `0x13B88`, ainda em tempo de
-tradução. A descoberta de INT3 após `abort`
+trabalho de GPU. CMOVcc cobre 16 condições em 16/32 bits, com leitura
+incondicional da origem ([ADR-0029](../adr/0029-cmovcc.md)). O bloqueio atual é
+`BSR` em `0x1657C`, ainda em tempo de tradução. A descoberta de INT3 após `abort`
 não prova execução dessa região ou de um assert.
 Sendo AOT, instrução faltante no fluxo descoberto bloqueia antes de
 qualquer execução — e as entradas de rotinas de thread também precisarão entrar entre

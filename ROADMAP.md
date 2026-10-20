@@ -1125,6 +1125,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | CLI guest e parada explícita por HLT (ADR-0026) | — | IF, continuação, polls sem efeitos e diagnóstico no main; AOTC v5 preserva parada; 88 casos nativos; próximo bloqueio real: INT3 em 0x20D6C, preenchimento após CALL |
 | 2026-10-20 | 3-AOT | INT3 e fronteira #BP guest (ADR-0027) | — | Exceção persistente, EIP seguinte, descoberta terminal e diagnóstico; AOTC v6 e 92 casos nativos; próximo bloqueio real: SFENCE em 0x12A43 |
 | 2026-10-20 | 3-AOT | SFENCE e ordenação do bus (ADR-0028) | — | Perfil síncrono exclusivo sem filas a drenar; 96 casos nativos e contrato de alias/físico/DMA sob Miri; AOTC continua v6; próximo bloqueio real: CMOVNE em 0x13B88 |
+| 2026-10-20 | 3-AOT | CMOVcc de 16/32 bits (ADR-0029) | — | 16 condições, origem lida mesmo se falsa; aliases/FS/SIB/SP/ESP, faltas e snapshots; 32768 comparações físicas e 103 testes nativos; próximo bloqueio real: BSR em 0x1657C |
 
 ---
 
@@ -1135,9 +1136,9 @@ Em ordem:
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
    (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
    de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
-   em tempo de tradução:** `CMOVNE` em `0x13B88`, após implementar SFENCE no
-   perfil síncrono exclusivo (ADR-0028). Implementar CMOVcc e validar condições,
-   larguras, operandos e faltas.
+   em tempo de tradução:** `BSR` em `0x1657C`, após implementar CMOVcc no
+   ADR-0029. Validar origem zero/ZF e a política para destinos/flags indefinidos
+   na varredura de bits.
    Manter o tempo sintético distinto de latências físicas. Sendo AOT, instrução
    faltante bloqueia antes de qualquer serviço ser exercitado.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
