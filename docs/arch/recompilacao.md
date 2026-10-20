@@ -92,19 +92,25 @@ Sem CALL/JMP indireto, os blocos anteriores são preservados. A inferência não
 varre dados, não cruza blocos/calls e não presume valores da memória gravável.
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
-e indicador de retorno. Guarda também FS e o Clock único da sessão AOT atual.
+e indicador de retorno. Guarda também FS, o Clock único da sessão AOT atual e
+o PC de HLT quando a CPU está suspensa.
 Durante comparação REP, guarda PC e flags originais
 para restaurá-las em caso de falta. Não tem ponteiros ou handles do host. O CALL escreve o
 endereço de retorno na pilha do guest; o RET o lê. A sentença Rust de chamada não
 representa a pilha do jogo, permitindo salvar a continuação com uma call pendente.
 
-`run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned`, `Exit::KernelCall`
-ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
+`run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned`, `Exit::KernelCall`,
+`Exit::Halted` ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
 por instrução/elemento REP concluído, sem alegar precisão de ciclos físicos.
-Snapshot AOTC v4 guarda o perfil e o Clock; versões v1–v3 recebem Clock zero.
+Snapshot AOTC v5 guarda perfil, Clock e parada por HLT. Versões v1–v4 migram
+com CPU ativa; v1–v3 recebem Clock zero.
 O agendador do core ainda precisa ser integrado a esse relógio único
 ([ADR-0025](../adr/0025-relogio-aot-rdtsc.md)).
-Orçamento zero preserva o estado. Falhas de memória deixam EIP na instrução que
+CLI limpa IF do guest no perfil privilegiado. HLT preserva flags, avança EIP e
+entrega a parada ao host. Polls não executam a continuação nem avançam tempo;
+não há entrega de interrupções/retomada automática ainda
+([ADR-0026](../adr/0026-controle-cli-hlt.md)).
+Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro
 no meio de bloco ainda não é suportada, e a sessão deve ser descartada.

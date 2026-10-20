@@ -24,6 +24,7 @@ use xbox_mem::{Bus, GuestVirt, Contexto};\n\
 #[allow(unused_variables)]\n\
 pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
     if s.returned { return Ok(Exit::Returned); }\n\
+    if let Some(exit) = s.halted_exit() { return Ok(exit); }\n\
     for _ in 0..blocks {\n\
         match s.eip {\n",
     );
@@ -64,6 +65,10 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
             }
         }
         line(&mut out, "if s.returned { return Ok(Exit::Returned); }");
+        line(
+            &mut out,
+            "if let Some(exit) = s.halted_exit() { return Ok(exit); }",
+        );
         line(&mut out, "}");
     }
     out.push_str("            pc => return Err(Error::UnknownBlock(pc)),\n        }\n    }\n    Ok(Exit::Budget)\n}\n");
@@ -185,26 +190,34 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             return;
         }
         Operation::Ret(bytes) => {
-            line(out, "let target = bus.ler_u32(GuestVirt(s.regs[4]))?;");
-            line(
-                out,
-                "if target != RETURN_SENTINEL { checked_target(s, bus, target)?; }",
-            );
-            line(
-                out,
-                &format!(
-                    "s.regs[4] = s.regs[4].wrapping_add({});",
-                    u32::from(*bytes) + 4
-                ),
-            );
-            line(out, "s.eip = target;");
-            line(out, "s.returned = target == RETURN_SENTINEL;");
+            emit_return(out, *bytes);
             return;
         }
         Operation::Nop => {}
         Operation::ReadTimestamp => emit_timestamp(out),
+        Operation::ClearInterrupts => {
+            line(out, "s.eflags &= !xbox_recomp::runtime::INTERRUPT_FLAG;");
+        }
+        Operation::Halt => line(out, "s.halted = Some(s.eip);"),
     }
     line(out, &format!("s.eip = 0x{next:08X};"));
+}
+
+fn emit_return(out: &mut String, bytes: u16) {
+    line(out, "let target = bus.ler_u32(GuestVirt(s.regs[4]))?;");
+    line(
+        out,
+        "if target != RETURN_SENTINEL { checked_target(s, bus, target)?; }",
+    );
+    line(
+        out,
+        &format!(
+            "s.regs[4] = s.regs[4].wrapping_add({});",
+            u32::from(bytes) + 4
+        ),
+    );
+    line(out, "s.eip = target;");
+    line(out, "s.returned = target == RETURN_SENTINEL;");
 }
 
 fn emit_timestamp(out: &mut String) {

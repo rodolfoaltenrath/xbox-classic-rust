@@ -4,6 +4,7 @@ use std::path::Path;
 use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
+mod control;
 mod double_shifts;
 mod exchange;
 mod indirect;
@@ -52,6 +53,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&kernel::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
+    main.push_str(&control::sources(output));
 }
 
 fn structural_images(output: &Path) {

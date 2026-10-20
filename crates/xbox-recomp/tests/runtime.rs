@@ -198,7 +198,7 @@ fn snapshot_v4_exige_secao_clock_e_limite_de_tempo_e_erro_explicito() {
     let mut writer = SnapshotWriter::new();
     state.save(&mut writer);
     let mut bytes = writer.finish();
-    let offset = bytes.len() - 16;
+    let offset = bytes.windows(4).position(|tag| tag == b"CLK0").unwrap();
     assert_eq!(&bytes[offset..offset + 4], b"CLK0");
     bytes[offset - 4..offset].copy_from_slice(&2u32.to_le_bytes());
     assert!(matches!(
@@ -215,4 +215,33 @@ fn snapshot_v4_exige_secao_clock_e_limite_de_tempo_e_erro_explicito() {
             .load(&mut SnapshotReader::new(&bytes).unwrap())
             .is_err()
     );
+}
+
+#[test]
+fn snapshot_v5_migra_v4_com_cpu_ativa_e_preserva_clock() {
+    let mut writer = SnapshotWriter::new();
+    writer.section("AOTC", 4);
+    for r in 0..8 {
+        writer.u32(r);
+    }
+    writer.u32(ENTRY_POINT);
+    writer.u32(0x202);
+    writer.u64(37);
+    writer.bool(false);
+    writer.bool(false);
+    writer.u32(0x7FFD0000);
+    writer.u32(1);
+    let mut clock = xbox_core::Clock::new();
+    clock.advance(123456789);
+    clock.save(&mut writer);
+    let mut restored = State::new(0);
+    restored.halted = Some(0xBAD);
+    restored
+        .load(&mut SnapshotReader::new(&writer.finish()).unwrap())
+        .unwrap();
+    assert_eq!(restored.halted, None);
+    assert_eq!(restored.clock, clock);
+    assert_eq!(restored.eflags, 0x202);
+    assert_eq!(restored.eip, ENTRY_POINT);
+    assert_eq!(restored.fs_base, 0x7FFD0000);
 }

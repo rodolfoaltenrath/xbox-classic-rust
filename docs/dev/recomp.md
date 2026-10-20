@@ -340,7 +340,22 @@ zero, sem inferir tempo de `retired`. O Scheduler ainda precisa ser conectado ao
 relógio único da sessão; não criar relógios independentes para threads futuras.
 Projetos antigos devem ser regenerados para incluir a contabilização.
 
-O projeto gerado tem 84 testes em x86_64; a tradução real agora encontra CLI no
+Nessa entrega, o projeto gerado chegou a 84 testes em x86_64 e a tradução encontrou CLI no
 PC `0x1409E`, seguido de HLT no caminho de assert do SDK. Isso não significa que
 o homebrew tenha executado ou um assert tenha disparado. Contrato, migração e
 limites: [ADR-0025](../adr/0025-relogio-aot-rdtsc.md).
+
+## CLI e HLT — ADR-0026
+
+CLI limpa apenas IF guest no perfil privilegiado atual. HLT conclui e suspende
+a CPU, com EIP na instrução seguinte e `Exit::Halted { pc, interrupts_enabled }`.
+A continuação também é traduzida; um opcode faltante após HLT continua sendo erro.
+O main gerado relata PC, próximo EIP e IF e encerra com erro, sem travar o host.
+
+Não há IRQ/NMI ou retomada automática: polls preservam CPU, memória e tempo,
+mesmo com orçamento zero. AOTC v5 salva a parada; v1–v4 migram com CPU ativa,
+conservando as regras anteriores de tempo. São 88 testes nativos em x86_64, mais
+verificação do diagnóstico do main. O próximo bloqueio real é INT3 em `0x20D6C`,
+numa região `0xCC` após CALL, ainda durante a tradução. Investigar o fluxo sem
+presumir execução nem remover bytes. Contratos e referências:
+[ADR-0026](../adr/0026-controle-cli-hlt.md).

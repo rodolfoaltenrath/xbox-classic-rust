@@ -497,9 +497,11 @@ Um único relógio virtual em `xbox-core::time`, em unidades de ciclo do guest (
 
 Todo evento agendado vive numa fila de eventos por *deadline em ciclos*, não em `Instant` do host — pré-requisito do determinismo (4.4).
 
-Estado AOT atual (ADR-0025): `Clock` integrado à sessão e RDTSC, com custo
+Estado AOT atual (ADR-0025/0026): `Clock` integrado à sessão e RDTSC, com custo
 sintético de um ciclo virtual por instrução/elemento REP concluído. Snapshot
-AOTC v4 preserva tempo e perfil. Não representa latência física; o Scheduler
+AOTC v5 preserva tempo, perfil e parada por HLT. CLI limpa IF guest; HLT entrega
+controle ao host e polls preservam estado/tempo, sem retomada automática por IRQ.
+Não representa latência física; o Scheduler
 existente e os domínios de vídeo/áudio/kernel ainda precisam ser conectados.
 
 ### 7.10 `xbox-ui` — Big Picture
@@ -1117,6 +1119,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 | Dispatcher de serviços de kernel (ADR-0023) | — | Recusa com nome/ordinal/chamador/argumentos e CPU intacta; `RtlInitAnsiString` como primeiro serviço; laço de despacho no projeto gerado; 71 casos nativos; 1/69 serviços — bloqueio do alvo segue sendo ISA |
 | 2026-10-20 | 3-AOT | CMPXCHG/LOCK em RAM e SETcc (ADR-0024) | — | 147456 comparações físicas; 79 casos nativos; aliases, FS/SIB, proteção e snapshot; próximo bloqueio real: RDTSC em 0x2055B |
 | 2026-10-20 | 3-AOT | Clock determinístico e RDTSC (ADR-0025) | — | Reutiliza Clock do core; custo sintético explícito, REP por elemento e AOTC v4; 84 casos nativos; próximo bloqueio real: CLI em 0x1409E |
+| 2026-10-20 | 3-AOT | CLI guest e parada explícita por HLT (ADR-0026) | — | IF, continuação, polls sem efeitos e diagnóstico no main; AOTC v5 preserva parada; 88 casos nativos; próximo bloqueio real: INT3 em 0x20D6C, preenchimento após CALL |
 
 ---
 
@@ -1127,9 +1130,10 @@ Em ordem:
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
    (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
    de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
-   em tempo de tradução:** `CLI` em `0x1409E`, após implementar RDTSC com Clock
-   determinístico no ADR-0025. Definir o perfil de controle de interrupções,
-   mantendo o tempo sintético distinto de latências físicas. Sendo AOT, instrução
+   em tempo de tradução:** `INT3` em `0x20D6C`, após implementar CLI/HLT no
+   ADR-0026. Investigar o fluxo da chamada anterior e a representação de trap/
+   término; o byte aparece em preenchimento após CALL, sem prova de execução.
+   Manter o tempo sintético distinto de latências físicas. Sendo AOT, instrução
    faltante bloqueia antes de qualquer serviço ser exercitado.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.

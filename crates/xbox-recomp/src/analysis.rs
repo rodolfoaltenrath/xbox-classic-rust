@@ -138,7 +138,9 @@ impl Discovery {
                     self.enqueue(target);
                     self.enqueue(i.next);
                 }
-                Operation::Indirect { call: true, .. } => self.enqueue(i.next),
+                // HLT pode ser retomado por um evento futuro. Traduzir também
+                // a continuação; parar a descoberta aqui esconderia código.
+                Operation::Indirect { call: true, .. } | Operation::Halt => self.enqueue(i.next),
                 Operation::Ret(_) | Operation::Indirect { call: false, .. } => {}
                 Operation::String { repeat, .. } if repeat != Repeat::None => {
                     self.leaders.insert(pc);
@@ -215,6 +217,7 @@ fn build_blocks(
                     | Operation::Call(_)
                     | Operation::Indirect { .. }
                     | Operation::Ret(_)
+                    | Operation::Halt
             ) || matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None)
                 || leaders.contains(&pc)
             {
@@ -535,6 +538,8 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Retnd => Operation::Ret(0),
         Code::Retnd_imm16 => Operation::Ret(i.immediate16()),
         Code::Rdtsc => Operation::ReadTimestamp,
+        Code::Cli => Operation::ClearInterrupts,
+        Code::Hlt => Operation::Halt,
         _ => {
             return Err(fail(
                 pc,

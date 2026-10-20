@@ -10,6 +10,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: CLI limpa IF guest e HLT suspende a CPU com saída explícita ao
+  host, PC/IF no diagnóstico e continuação descoberta estaticamente. Polls não
+  executam código nem cobram tempo; AOTC v5 preserva a parada e migra v1–v4 com
+  CPU ativa. Projeto gerado com 88 testes em x86_64. Próximo bloqueio do hello:
+  INT3 em `0x20D6C`, ainda durante a tradução (ADR-0026).
+
 - Fase 3-AOT: RDTSC lê o Clock guest em EDX:EAX, sem tempo host ou alteração
   de flags. Perfil determinístico de custo sintético por instrução/elemento REP;
   falhas e polls HLE não cobram tempo. Snapshot AOTC v4 guarda perfil/Clock e

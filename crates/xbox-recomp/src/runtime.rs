@@ -39,6 +39,8 @@ pub use xbox_kernel::loader::RETURN_SENTINEL;
 pub const EAX: usize = 0;
 /// Índice de ESP na ordem x86 dos registradores.
 pub const ESP: usize = 4;
+/// Interrupt-enable flag do guest, independente das flags do processo host.
+pub const INTERRUPT_FLAG: u32 = 1 << 9;
 /// Política AOT v1: custo sintético por instrução ou elemento REP concluído.
 /// Não representa latência física do Pentium III, nem tempo de parede do host.
 pub const AOT_STEP_CYCLES: u64 = 1;
@@ -68,6 +70,9 @@ pub struct State {
     /// Relógio único da sessão AOT atual. Não copiar para contextos de threads
     /// ao introduzir o scheduler: todos devem compartilhar o mesmo tempo guest.
     pub clock: Clock,
+    /// PC do HLT concluído. EIP aponta à instrução seguinte; polls não retomam
+    /// a CPU. Não há entrega de IRQ/NMI neste perfil ainda.
+    pub halted: Option<u32>,
 }
 
 impl State {
@@ -81,6 +86,7 @@ impl State {
             repeat: None,
             fs_base: 0,
             clock: Clock::new(),
+            halted: None,
         }
     }
 
@@ -93,11 +99,18 @@ impl State {
             .ok_or(crate::Error::TimeExhausted { pc: self.eip })?;
         Ok(())
     }
+
+    pub fn halted_exit(&self) -> Option<Exit> {
+        self.halted.map(|pc| Exit::Halted {
+            pc,
+            interrupts_enabled: self.eflags & INTERRUPT_FLAG != 0,
+        })
+    }
 }
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 4);
+        out.section("AOTC", 5);
         for r in self.regs {
             out.u32(r);
         }
@@ -113,10 +126,14 @@ impl Snapshot for State {
         out.u32(self.fs_base);
         out.u32(TIMING_PROFILE);
         self.clock.save(out);
+        out.bool(self.halted.is_some());
+        if let Some(pc) = self.halted {
+            out.u32(pc);
+        }
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 4)?;
+        let version = inp.section("AOTC", 5)?;
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -145,6 +162,11 @@ impl Snapshot for State {
             }
             self.clock.load(inp)?;
         }
+        self.halted = if version >= 5 && inp.bool()? {
+            Some(inp.u32()?)
+        } else {
+            None
+        };
         Ok(())
     }
 }
@@ -154,6 +176,11 @@ impl Snapshot for State {
 pub enum Exit {
     Returned,
     Budget,
+    /// CPU suspensa; não equivale a retorno do título ou orçamento esgotado.
+    Halted {
+        pc: u32,
+        interrupts_enabled: bool,
+    },
     /// Fronteira explícita; o serviço ainda precisa ser executado pelo host HLE.
     KernelCall {
         ordinal: u32,

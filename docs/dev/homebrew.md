@@ -67,8 +67,10 @@ e término de threads, objetos/sincronização e outros serviços além do trans
 de chamadas. A build contém `LOCK CMPXCHG` em `0x209C3` e `SETE` em `0x209C9`,
 agora implementados no ADR-0024. RDTSC em `0x2055B` foi implementado no ADR-0025:
 lê o Clock guest com política sintética determinística, sem tempo host. O bloqueio
-atual é **CLI em `0x1409E`**, seguido de HLT, no caminho de assert do SDK. É um
-bloqueio da tradução, não evidência de assert executado ou lista completa da ISA.
+seguinte foi CLI/HLT no caminho de assert do SDK, agora implementados no
+ADR-0026. O bloqueio atual é **INT3 em `0x20D6C`**, após CALL e em região
+preenchida com `0xCC`. Investigar a chamada e o fluxo de término/trap; a análise
+estática não prova execução dessa região nem oferece a lista completa da ISA.
 
 ## Infraestrutura implementada
 
@@ -87,8 +89,9 @@ de uma thread está implementado; o CRT pode escrever novamente o mesmo índice.
 FS é uma base guest explícita em `State`, aplicada aos operandos de memória;
 LEA usa só o offset. Inferência estática não confunde leitura por FS com um
 ponteiro absoluto do arquivo. Strings com segmento e os demais segmentos
-explícitos continuam recusados. Snapshot `AOTC` v4 salva FS e perfil/Clock; versões
-v1–v3 recebem Clock zero ao migrar, pois não guardavam tempo. RAM/MMU existentes
+explícitos continuam recusados. Snapshot `AOTC` v5 salva FS, perfil/Clock e estado
+de parada; v1–v4 migram com CPU ativa, e v1–v3 recebem Clock zero, pois não
+guardavam tempo. RAM/MMU existentes
 guardam TLS e trampolins.
 
 Cada import de função recebe o endereço guest `0x7FFE0000 + ordinal * 8`.
@@ -105,6 +108,11 @@ a parte na pilha. Os testes fornecem respostas controladas para validar ABI;
 essas respostas não são serviços de produção. A CLI gerada para por nome/ordinal
 ao encontrar uma chamada sem implementação. Uma chamada pendente é restaurada
 por EIP, registradores e memória, sem continuação oculta no host.
+
+CLI limpa IF guest; HLT preserva o PC da parada, avança EIP e entrega
+`Exit::Halted` ao host. O main gerado relata a suspensão, sem bloquear o host
+nem anunciar retorno do título. Ainda não há entrega de interrupções ou retomada
+automática. Polls não avançam o Clock ([ADR-0026](../adr/0026-controle-cli-hlt.md)).
 
 ## Referências públicas
 

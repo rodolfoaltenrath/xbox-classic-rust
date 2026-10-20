@@ -220,5 +220,9 @@ pub enum Operation {
     },
     Ret(u16),
     ReadTimestamp,
+    /// Perfil Xbox privilegiado: limpa IF guest, sem executar CLI no host.
+    ClearInterrupts,
+    /// Suspende a CPU guest e entrega o controle ao host.
+    Halt,
     Nop,
 }

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`a5c0533`** e nas alterações
-locais do **ADR-0025**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`aafacd9`** e nas alterações
+locais do **ADR-0026**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,7 +42,7 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados e dispatcher concluídos; 1/69 serviços** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; CLI pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 4 | ISA necessária | CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; INT3 pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
 | 5 | Execução integrada | Pendente; há demonstração e fronteiras de execução reutilizáveis | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
@@ -138,8 +138,9 @@ Commit: **`478c76d` — `feat(kernel): add nxdk TLS initialization and AOT impor
 | Falta de suporte | Erro identificável; não retornar sucesso genérico para avançar |
 
 O perfil limita TLS a meia pilha e recusa callbacks e alinhamentos acima de
-16 bytes. Strings com segmento continuam recusadas. Não há scheduler, serviços
-HLE ou dados exportados implementados nesta referência.
+16 bytes. Strings com segmento continuam recusadas. Na entrega do ADR-0021,
+ainda não havia serviços HLE ou dados exportados; os avanços posteriores estão
+no passo 3 abaixo. O scheduler continua pendente.
 
 ### O que foi descoberto no XBE real
 
@@ -151,7 +152,7 @@ HLE ou dados exportados implementados nesta referência.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Primeiro bloqueio atual do AOT | `CLI` em `0x1409E`, no caminho CLI/HLT de assert, em tempo de tradução |
+| Primeiro bloqueio atual do AOT | `INT3` em `0x20D6C`, região `0xCC` após CALL, em tempo de tradução |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -166,7 +167,7 @@ Passaram testes do workspace e doctests, **69 testes do Rust gerado em debug e
 release**, Clippy global e formatação. Os testes cobrem ABI, TLS/FS, LEA,
 snapshot com chamada pendente, tail call, orçamento e erros. A execução dos
 testes gerados usa 69 casos em x86_64; o conjunto varia conforme o host.
-**Nenhum serviço HLE de produção está implementado. O hello completo não rodou.**
+**Nessa entrega ainda não havia serviços HLE de produção. O hello completo não rodou.**
 
 - [TLS e startup](crates/xbox-kernel/src/loader/startup.rs).
 - [Imports e ABI](crates/xbox-kernel/src/imports.rs) e [catálogo](crates/xbox-kernel/src/imports/catalog.rs).
@@ -235,7 +236,8 @@ foi de 69 para 71. O relatório mostra `1/69 serviços implementados`.
 **`1/69` não mede proximidade de executar o homebrew.** Após o dispatcher, o alvo
 parava em `LOCK CMPXCHG` em `0x209C3`. O ADR-0024 implementou essa operação e SETcc;
 o alvo passou a parar em RDTSC (`0x2055B`). O ADR-0025 implementou RDTSC com
-Clock guest; o bloqueio atual é CLI (`0x1409E`), ainda antes da execução do homebrew.
+Clock guest. O ADR-0026 implementou CLI/HLT; o bloqueio atual é INT3 (`0x20D6C`),
+ainda antes da execução do homebrew.
 
 Trabalho restante:
 
@@ -277,13 +279,21 @@ inventam tempo. Snapshot AOTC v4 guarda o perfil e CLK0; v1–v3 recebem Clock z
 sem derivar ciclos de `retired`. Perfil desconhecido e esgotamento são erros.
 O Scheduler do core ainda não está integrado; futuras threads e serviços de tempo
 devem compartilhar esse único relógio da sessão, não criar relógios por thread.
-O projeto gerado agora tem 84 testes em x86_64.
+Essa entrega levou o projeto gerado a 84 testes em x86_64.
 
 Falta implementar e validar as demais instruções dos caminhos necessários.
-O primeiro bloqueio observado é **CLI em `0x1409E`**, seguido de HLT em `0x1409F`:
-o SDK usa esse caminho em `_xbox_assert`. O AOT o descobre estaticamente; isso
-não demonstra um assert executado. Definir o comportamento de controle/parada
-apropriado, sem remover instruções ou substituí-las por NOP. Outros bloqueios
+O [ADR-0026](docs/adr/0026-controle-cli-hlt.md) implementou CLI/HLT, encontrados
+no caminho `_xbox_assert`. CLI limpa IF guest no perfil privilegiado; HLT guarda
+o PC da parada, avança EIP e devolve `Exit::Halted` com IF. O main gerado encerra
+com diagnóstico, sem bloquear o host nem anunciar retorno. Polls, inclusive com
+orçamento zero, preservam estado e tempo; não há entrega de IRQ/NMI nem retomada
+automática. AOTC v5 guarda a parada e migra v1–v4 com CPU ativa, preservando as
+regras anteriores de tempo. O projeto gerado agora tem 88 testes em x86_64.
+
+O primeiro bloqueio observado agora é **INT3 em `0x20D6C`**. O desassembly mostra
+CALL em `0x20D67`, seguido de preenchimento `0xCC` até `0x20D6F`. Investigar a
+chamada e o fluxo de término/trap sem presumir execução dessa região. A análise
+mantém a continuação de HLT e não remove bytes para avançar. Outros bloqueios
 ainda podem aparecer.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -298,7 +308,7 @@ precisar avançar intercalados; corrigir imports não prova que a ISA esteja pro
 **Objetivo:** conectar imagem, Rust gerado, bus, dispatcher e threads em uma
 execução observável e limitada pelo host.
 
-Reutilizar `Session`, `State`, `Exit::{Returned, Budget, KernelCall}` e os
+Reutilizar `Session`, `State`, `Exit::{Returned, Budget, KernelCall, Halted}` e os
 snapshots. Implementar o ciclo de despacho HLE e retomada, orçamento/interrupção,
 logs úteis e relatório do primeiro erro não suportado. Manter separadas as
 condições de retorno, orçamento esgotado, espera de thread e término do processo.
@@ -362,8 +372,8 @@ cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
 cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --out target/alpha-hello
 ```
 
-Na referência atual, `check-memory` passa; `translate` falha em **CLI no PC
-`0x1409E`**. Os três dados, CMPXCHG, SETcc e RDTSC já não são os bloqueios. Isso ainda
+Na referência atual, `check-memory` passa; `translate` falha em **INT3 no PC
+`0x20D6C`**. Os três dados, CMPXCHG, SETcc, RDTSC e CLI/HLT já não são os bloqueios. Isso ainda
 não significa execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
@@ -386,7 +396,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 84 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 88 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -411,9 +421,10 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > tem aceite local; a entrega 2 possui infraestrutura TLS/ABI testada, mas seu
 > aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
 > RtlInitAnsiString já existem. CMPXCHG/LOCK em RAM e SETcc passaram nos testes;
-> RDTSC também passou, com Clock guest e snapshot AOTC v4; o tempo AOT tem custo
-> sintético explícito. O bloqueio atual de tradução é CLI em 0x1409E, seguido de HLT
-> no caminho de assert do SDK. Defina esse comportamento de controle/parada e
+> RDTSC também passou, com Clock guest e custo sintético explícito. CLI/HLT têm
+> controle/parada guest, polls sem efeitos e snapshot AOTC v5; ainda não há IRQ/NMI
+> ou retomada automática. O bloqueio atual de tradução é INT3 em 0x20D6C, numa
+> região de preenchimento após CALL. Investigue esse fluxo de término/trap e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

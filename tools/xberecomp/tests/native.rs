@@ -119,7 +119,7 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
     assert!(tests.contains(expected), "{tests}");
     std::fs::write(output.join("native-test-results.txt"), &tests).unwrap();
     let run = check(
-        Command::new(cargo)
+        Command::new(&cargo)
             .arg("run")
             .arg("--offline")
             .arg("--manifest-path")
@@ -128,13 +128,42 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
             .arg(&target),
     );
     assert!(run.contains("EAX=62, instruções=37"), "{run}");
+    check_halted_main(cli, &output, &cargo, &target);
+}
+
+fn check_halted_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    // Exercita também o main emitido: HLT deve sair com diagnóstico, sem
+    // anunciar conclusão nem girar até consumir o orçamento total.
+    let halted_project = output.join("halted-main");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/control_assert.xbe"))
+            .arg("--out")
+            .arg(&halted_project),
+    );
+    let halted = Command::new(cargo)
+        .args(["run", "--offline", "--manifest-path"])
+        .arg(halted_project.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(target)
+        .output()
+        .unwrap();
+    assert!(!halted.status.success());
+    let diagnostic = String::from_utf8_lossy(&halted.stderr);
+    assert!(diagnostic.contains("HLT em 0x00011001"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("próximo EIP=0x00011002, IF=0"),
+        "{diagnostic}"
+    );
+    assert!(!String::from_utf8_lossy(&halted.stdout).contains("Execução nativa concluída"));
 }
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "84 passed"
+        "88 passed"
     } else {
-        "70 passed"
+        "74 passed"
     }
 }
 
