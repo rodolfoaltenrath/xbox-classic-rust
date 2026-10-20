@@ -219,5 +219,6 @@ pub enum Operation {
         target: Operand,
     },
     Ret(u16),
+    ReadTimestamp,
     Nop,
 }

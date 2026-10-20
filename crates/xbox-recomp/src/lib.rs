@@ -35,6 +35,8 @@ pub const DEMO_CODE: &[u8] = &[
 /// Falha recuperável de análise, carregamento ou execução AOT.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("relógio virtual esgotado antes da instrução em 0x{pc:08X}")]
+    TimeExhausted { pc: u32 },
     #[error(transparent)]
     Loader(#[from] xbox_kernel::loader::Error),
     #[error(transparent)]

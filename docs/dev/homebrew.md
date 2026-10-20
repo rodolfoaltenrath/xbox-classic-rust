@@ -65,8 +65,10 @@ e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
 e término de threads, objetos/sincronização e outros serviços além do transporte
 de chamadas. A build contém `LOCK CMPXCHG` em `0x209C3` e `SETE` em `0x209C9`,
-agora implementados no ADR-0024. A tradução real avançou para **RDTSC em
-`0x2055B`**, ainda sem suporte; isso não é um inventário completo da ISA faltante.
+agora implementados no ADR-0024. RDTSC em `0x2055B` foi implementado no ADR-0025:
+lê o Clock guest com política sintética determinística, sem tempo host. O bloqueio
+atual é **CLI em `0x1409E`**, seguido de HLT, no caminho de assert do SDK. É um
+bloqueio da tradução, não evidência de assert executado ou lista completa da ISA.
 
 ## Infraestrutura implementada
 
@@ -85,8 +87,9 @@ de uma thread está implementado; o CRT pode escrever novamente o mesmo índice.
 FS é uma base guest explícita em `State`, aplicada aos operandos de memória;
 LEA usa só o offset. Inferência estática não confunde leitura por FS com um
 ponteiro absoluto do arquivo. Strings com segmento e os demais segmentos
-explícitos continuam recusados. Snapshot `AOTC` v3 salva FS e migra v1/v2 com
-base zero. RAM/MMU existentes guardam TLS e trampolins.
+explícitos continuam recusados. Snapshot `AOTC` v4 salva FS e perfil/Clock; versões
+v1–v3 recebem Clock zero ao migrar, pois não guardavam tempo. RAM/MMU existentes
+guardam TLS e trampolins.
 
 Cada import de função recebe o endereço guest `0x7FFE0000 + ordinal * 8`.
 Somente slots importados têm marcador válido. O código gerado contém os destinos
@@ -119,7 +122,7 @@ por EIP, registradores e memória, sem continuação oculta no host.
 
 A BIOS e as ISOs comerciais não foram usadas nesta etapa.
 
-Validação local: testes do workspace e doctests aprovados, mais 69 testes do Rust
+Validação inicial do ADR-0021: testes do workspace e doctests aprovados, mais 69 testes do Rust
 gerado em debug e release (release com `-D warnings`). Clippy global com
 `xbox-cpu/isa-oracle`, `cargo fmt --all --check` e `git diff --check` passaram.
 O teste T14 opcional de mídia comercial permaneceu ignorado nesta etapa.

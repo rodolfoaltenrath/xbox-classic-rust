@@ -1,5 +1,6 @@
 //! Estado explícito e loader experimental, sem decodificação durante a execução.
 
+use xbox_core::Clock;
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::Xbe;
@@ -38,6 +39,10 @@ pub use xbox_kernel::loader::RETURN_SENTINEL;
 pub const EAX: usize = 0;
 /// Índice de ESP na ordem x86 dos registradores.
 pub const ESP: usize = 4;
+/// Política AOT v1: custo sintético por instrução ou elemento REP concluído.
+/// Não representa latência física do Pentium III, nem tempo de parede do host.
+pub const AOT_STEP_CYCLES: u64 = 1;
+const TIMING_PROFILE: u32 = 1;
 
 /// Flags de entrada da instrução de comparação REP em andamento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +65,9 @@ pub struct State {
     pub repeat: Option<RepeatState>,
     /// Base do segmento FS no espaço de endereços guest, sem ponteiro host.
     pub fs_base: u32,
+    /// Relógio único da sessão AOT atual. Não copiar para contextos de threads
+    /// ao introduzir o scheduler: todos devem compartilhar o mesmo tempo guest.
+    pub clock: Clock,
 }
 
 impl State {
@@ -72,13 +80,24 @@ impl State {
             returned: false,
             repeat: None,
             fs_base: 0,
+            clock: Clock::new(),
         }
+    }
+
+    /// Um limite de representação é erro do runtime, antes de qualquer efeito
+    /// da próxima instrução. Evita overflow/pânico ou wrap silencioso do relógio.
+    pub fn check_time_step(&self) -> Result<()> {
+        self.clock
+            .cycles()
+            .checked_add(AOT_STEP_CYCLES)
+            .ok_or(crate::Error::TimeExhausted { pc: self.eip })?;
+        Ok(())
     }
 }
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 3);
+        out.section("AOTC", 4);
         for r in self.regs {
             out.u32(r);
         }
@@ -92,10 +111,12 @@ impl Snapshot for State {
             out.u32(repeat.eflags);
         }
         out.u32(self.fs_base);
+        out.u32(TIMING_PROFILE);
+        self.clock.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 3)?;
+        let version = inp.section("AOTC", 4)?;
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -112,6 +133,18 @@ impl Snapshot for State {
             None
         };
         self.fs_base = if version >= 3 { inp.u32()? } else { 0 };
+        // As versões anteriores não guardavam tempo. Não inferir ciclos a partir
+        // de retired: elementos REP parciais ainda não aposentaram a instrução.
+        self.clock = Clock::new();
+        if version >= 4 {
+            if inp.u32()? != TIMING_PROFILE {
+                return Err(SnapshotError::BadValue {
+                    section: "AOTC",
+                    what: "perfil de tempo AOT desconhecido",
+                });
+            }
+            self.clock.load(inp)?;
+        }
         Ok(())
     }
 }

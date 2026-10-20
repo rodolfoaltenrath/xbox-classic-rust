@@ -41,11 +41,16 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
         line(&mut out, &format!("0x{start:08X} => {{"));
         for i in instructions {
             line(&mut out, &format!("s.eip = 0x{:08X};", i.pc));
+            line(&mut out, "s.check_time_step()?;");
             line(
                 &mut out,
                 "bus.definir_contexto(Contexto { pc: Some(GuestVirt(s.eip)), thread: None });",
             );
             emit_operation(&mut out, &i.operation, i.next);
+            line(
+                &mut out,
+                "s.clock.advance(xbox_recomp::runtime::AOT_STEP_CYCLES);",
+            );
             if matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None) {
                 line(
                     &mut out,
@@ -197,8 +202,16 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             return;
         }
         Operation::Nop => {}
+        Operation::ReadTimestamp => emit_timestamp(out),
     }
     line(out, &format!("s.eip = 0x{next:08X};"));
+}
+
+fn emit_timestamp(out: &mut String) {
+    // RDTSC lê o instante anterior ao custo desta própria instrução.
+    line(out, "let timestamp = s.clock.tsc();");
+    line(out, "s.regs[0] = timestamp as u32;");
+    line(out, "s.regs[2] = (timestamp >> 32) as u32;");
 }
 
 fn emit_count_branch(out: &mut String, kind: CountBranch, counter: Width, target: u32, next: u32) {

@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: RDTSC lê o Clock guest em EDX:EAX, sem tempo host ou alteração
+  de flags. Perfil determinístico de custo sintético por instrução/elemento REP;
+  falhas e polls HLE não cobram tempo. Snapshot AOTC v4 guarda perfil/Clock e
+  migra v1–v3 com tempo zero; esgotamento é erro explícito antes de efeitos.
+  Projeto gerado com 84 testes em x86_64. O hello avança para CLI em `0x1409E`,
+  ainda em tempo de tradução, sem execução completa (ADR-0025).
+
 - Fase 3-AOT: CMPXCHG de 8/16/32 bits e LOCK em destino RAM, com escrita mesmo
   na comparação desigual e sem commit parcial em faltas. SETcc implementa as
   16 condições em byte baixo/alto/memória, preservando flags. Oráculo físico:

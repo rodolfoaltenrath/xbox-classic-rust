@@ -12,6 +12,7 @@ mod muldiv;
 mod rotations;
 mod shifts;
 mod strings;
+mod timing;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
     let image = xbe_com_codigo(code).unwrap();
@@ -50,6 +51,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
     main.push_str(&exchange::sources(output));
+    main.push_str(&timing::sources(output));
 }
 
 fn structural_images(output: &Path) {

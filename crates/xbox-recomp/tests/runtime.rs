@@ -62,6 +62,7 @@ fn snapshot_de_cpu_e_deterministico_e_rejeita_truncamento() {
     state.regs[0] = 0x1234_5678;
     state.retired = 9;
     state.fs_base = 0x7FFD0000;
+    state.clock.advance(0x123456789ABCDEF0);
     let mut writer = SnapshotWriter::new();
     state.save(&mut writer);
     let bytes = writer.finish();
@@ -157,4 +158,61 @@ fn tls_malformado_imports_invalidos_e_codigo_gravavel_sao_recusados() {
     let mut bytes = xbe_com_codigo(&[0xC3]).unwrap();
     bytes[0x300..0x304].copy_from_slice(&7u32.to_le_bytes());
     assert!(Session::load(&bytes).is_err());
+}
+
+#[test]
+fn snapshot_v4_migra_v3_sem_inventar_tempo_a_partir_de_retired() {
+    let mut writer = SnapshotWriter::new();
+    writer.section("AOTC", 3);
+    for r in 0..8 {
+        writer.u32(r);
+    }
+    writer.u32(ENTRY_POINT);
+    writer.u32(0x202);
+    writer.u64(u64::MAX);
+    writer.bool(false);
+    writer.bool(true);
+    writer.u32(ENTRY_POINT);
+    writer.u32(0xAD7);
+    writer.u32(0x7FFD0000);
+    let bytes = writer.finish();
+    let mut restored = State::new(0);
+    restored.clock.advance(999);
+    restored
+        .load(&mut SnapshotReader::new(&bytes).unwrap())
+        .unwrap();
+    assert_eq!(restored.clock.tsc(), 0);
+    assert_eq!(restored.retired, u64::MAX);
+    assert_eq!(restored.fs_base, 0x7FFD0000);
+    assert!(restored.repeat.is_some());
+}
+
+#[test]
+fn snapshot_v4_exige_secao_clock_e_limite_de_tempo_e_erro_explicito() {
+    let mut state = State::new(ENTRY_POINT);
+    state.clock.advance(u64::MAX);
+    assert!(matches!(
+        state.check_time_step(),
+        Err(xbox_recomp::Error::TimeExhausted { pc: ENTRY_POINT })
+    ));
+    let mut writer = SnapshotWriter::new();
+    state.save(&mut writer);
+    let mut bytes = writer.finish();
+    let offset = bytes.len() - 16;
+    assert_eq!(&bytes[offset..offset + 4], b"CLK0");
+    bytes[offset - 4..offset].copy_from_slice(&2u32.to_le_bytes());
+    assert!(matches!(
+        State::new(0).load(&mut SnapshotReader::new(&bytes).unwrap()),
+        Err(xbox_core::SnapshotError::BadValue {
+            section: "AOTC",
+            ..
+        })
+    ));
+    bytes[offset - 4..offset].copy_from_slice(&1u32.to_le_bytes());
+    bytes[offset] = b'X';
+    assert!(
+        State::new(0)
+            .load(&mut SnapshotReader::new(&bytes).unwrap())
+            .is_err()
+    );
 }

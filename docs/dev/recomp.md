@@ -324,5 +324,23 @@ baixo/alto/memória, sem alterar flags.
 
 O teste gerador passou a 79 casos em x86_64, com 147456 comparações adicionais
 de CMPXCHG contra a CPU física, mais aliases, FS/SIB, RO, página cruzada e
-snapshot/reexecução. O nxdk hello agora para em RDTSC (`0x2055B`) durante a
+snapshot/reexecução. Nessa entrega, o nxdk hello passou a parar em RDTSC (`0x2055B`) durante a
 tradução. Detalhes e contrato de LOCK: [ADR-0024](../adr/0024-cmpxchg-setcc.md).
+
+## Clock determinístico e RDTSC — ADR-0025
+
+RDTSC lê `State::clock`, reutilizando `xbox_core::time::Clock`, em EDX:EAX e
+preserva flags. O AOT cobra um ciclo virtual por instrução ou elemento REP
+concluído; esse custo é sintético e não representa a latência física do Pentium III.
+Fatias diferentes preservam os timestamps; faltas, orçamento zero e polls HLE
+não cobram passos extras. O limite u64 causa erro antes da próxima instrução.
+
+Snapshot AOTC v4 inclui perfil de tempo 1 e CLK0. Versões v1–v3 migram com Clock
+zero, sem inferir tempo de `retired`. O Scheduler ainda precisa ser conectado ao
+relógio único da sessão; não criar relógios independentes para threads futuras.
+Projetos antigos devem ser regenerados para incluir a contabilização.
+
+O projeto gerado tem 84 testes em x86_64; a tradução real agora encontra CLI no
+PC `0x1409E`, seguido de HLT no caminho de assert do SDK. Isso não significa que
+o homebrew tenha executado ou um assert tenha disparado. Contrato, migração e
+limites: [ADR-0025](../adr/0025-relogio-aot-rdtsc.md).

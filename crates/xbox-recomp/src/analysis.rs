@@ -534,6 +534,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         },
         Code::Retnd => Operation::Ret(0),
         Code::Retnd_imm16 => Operation::Ret(i.immediate16()),
+        Code::Rdtsc => Operation::ReadTimestamp,
         _ => {
             return Err(fail(
                 pc,

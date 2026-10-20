@@ -489,13 +489,18 @@ Implementações: `windows/`, `linux/`, `kms/` (Fase 10). Nenhum outro crate con
 
 ### 7.9 Tempo e sincronização
 
-Um único relógio virtual em `xbox-core::timing`, em unidades de ciclo do guest (733.33 MHz), do qual derivam: RDTSC, `KeQueryPerformanceCounter` (3.375 MHz), `KeTickCount` (1 ms), vblank, sample clock do APU (48 kHz), e os timers do kernel. Modos de sincronização:
+Um único relógio virtual em `xbox-core::time`, em unidades de ciclo do guest (733.33 MHz), do qual derivam: RDTSC, `KeQueryPerformanceCounter` (3.375 MHz), `KeTickCount` (1 ms), vblank, sample clock do APU (48 kHz), e os timers do kernel. Modos de sincronização:
 
 - **Vsync do host** (padrão no desktop);
 - **Áudio como mestre** (padrão no appliance — elimina crackle, que é mais perceptível que judder);
 - **Livre/turbo** (para benchmarks e testes).
 
 Todo evento agendado vive numa fila de eventos por *deadline em ciclos*, não em `Instant` do host — pré-requisito do determinismo (4.4).
+
+Estado AOT atual (ADR-0025): `Clock` integrado à sessão e RDTSC, com custo
+sintético de um ciclo virtual por instrução/elemento REP concluído. Snapshot
+AOTC v4 preserva tempo e perfil. Não representa latência física; o Scheduler
+existente e os domínios de vídeo/áudio/kernel ainda precisam ser conectados.
 
 ### 7.10 `xbox-ui` — Big Picture
 
@@ -1111,6 +1116,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 | Dados exportados do kernel (ADR-0022) | — | Três dados em duas páginas com permissões distintas; slot de dado recebe endereço do símbolo; procedimentos envenenados; 10 testes de layout/permissão/conteúdo; `translate` do hello avança do ordinal 164 para `LOCK CMPXCHG` em 0x209C3 |
 | 2026-10-20 | 4 | Dispatcher de serviços de kernel (ADR-0023) | — | Recusa com nome/ordinal/chamador/argumentos e CPU intacta; `RtlInitAnsiString` como primeiro serviço; laço de despacho no projeto gerado; 71 casos nativos; 1/69 serviços — bloqueio do alvo segue sendo ISA |
 | 2026-10-20 | 3-AOT | CMPXCHG/LOCK em RAM e SETcc (ADR-0024) | — | 147456 comparações físicas; 79 casos nativos; aliases, FS/SIB, proteção e snapshot; próximo bloqueio real: RDTSC em 0x2055B |
+| 2026-10-20 | 3-AOT | Clock determinístico e RDTSC (ADR-0025) | — | Reutiliza Clock do core; custo sintético explícito, REP por elemento e AOTC v4; 84 casos nativos; próximo bloqueio real: CLI em 0x1409E |
 
 ---
 
@@ -1121,9 +1127,9 @@ Em ordem:
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
    (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
    de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
-   em tempo de tradução:** `RDTSC` em `0x2055B`, após implementar CMPXCHG/SETcc
-   no ADR-0024. Definir relógio guest determinístico, sem confundir contagem
-   de instruções ou timestamp host com ciclos do Xbox. Sendo AOT, instrução
+   em tempo de tradução:** `CLI` em `0x1409E`, após implementar RDTSC com Clock
+   determinístico no ADR-0025. Definir o perfil de controle de interrupções,
+   mantendo o tempo sintético distinto de latências físicas. Sendo AOT, instrução
    faltante bloqueia antes de qualquer serviço ser exercitado.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.

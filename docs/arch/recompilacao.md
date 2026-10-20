@@ -92,12 +92,18 @@ Sem CALL/JMP indireto, os blocos anteriores são preservados. A inferência não
 varre dados, não cruza blocos/calls e não presume valores da memória gravável.
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
-e indicador de retorno. Durante comparação REP, guarda também PC e flags originais
+e indicador de retorno. Guarda também FS e o Clock único da sessão AOT atual.
+Durante comparação REP, guarda PC e flags originais
 para restaurá-las em caso de falta. Não tem ponteiros ou handles do host. O CALL escreve o
 endereço de retorno na pilha do guest; o RET o lê. A sentença Rust de chamada não
 representa a pilha do jogo, permitindo salvar a continuação com uma call pendente.
 
-`run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned` ou erro recuperável.
+`run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned`, `Exit::KernelCall`
+ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
+por instrução/elemento REP concluído, sem alegar precisão de ciclos físicos.
+Snapshot AOTC v4 guarda o perfil e o Clock; versões v1–v3 recebem Clock zero.
+O agendador do core ainda precisa ser integrado a esse relógio único
+([ADR-0025](../adr/0025-relogio-aot-rdtsc.md)).
 Orçamento zero preserva o estado. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro

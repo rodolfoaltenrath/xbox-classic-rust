@@ -13,7 +13,7 @@ continuam sendo testes; não substituem esse marco.
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
 | 3. Kernel mínimo | dados e dispatcher concluídos (ADR-0022, ADR-0023); 1/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | CMPXCHG/LOCK em RAM e SETcc implementados; bloqueio em RDTSC | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 4. ISA necessária | RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; bloqueio em CLI | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | pendente | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
@@ -40,8 +40,11 @@ Os três dados que o homebrew exige — `LaunchDataPage`, `PsThreadObjectType` e
 permissões distintas ([ADR-0022](../adr/0022-dados-exportados-do-kernel.md)). Com
 isso, `translate` do `hello.xbe` deixou de parar no ordinal 164 e passou a parar em
 `LOCK CMPXCHG` em `0x209C3`. Essa instrução e as 16 condições SETcc agora estão
-implementadas ([ADR-0024](../adr/0024-cmpxchg-setcc.md)); o bloqueio atual é
-`RDTSC` em `0x2055B`, ainda em tempo de tradução. Sendo AOT, instrução faltante no fluxo descoberto bloqueia antes de
+implementadas ([ADR-0024](../adr/0024-cmpxchg-setcc.md)). RDTSC também foi implementado,
+com o Clock guest e custo sintético explícito ([ADR-0025](../adr/0025-relogio-aot-rdtsc.md)).
+O bloqueio atual é `CLI` em `0x1409E`, no caminho CLI/HLT de assert do SDK,
+ainda em tempo de tradução. Isso não prova que um assert foi executado.
+Sendo AOT, instrução faltante no fluxo descoberto bloqueia antes de
 qualquer execução — e as entradas de rotinas de thread também precisarão entrar entre
 os destinos recompilados.
 
