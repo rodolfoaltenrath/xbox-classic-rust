@@ -599,38 +599,15 @@ fn memory(i: &Instruction, width: Width) -> Result<Operand> {
 /// O mesmo layout deve ser usado na análise e no carregamento. Seções sobrepostas
 /// poderiam fazer o código compilado divergir dos bytes efetivamente carregados.
 pub(crate) fn validate_layout(xbe: &Xbe<'_>) -> Result<()> {
+    xbox_kernel::loader::validate_layout(xbe)?;
     let base = xbe.header.base_address;
-    let end = base
-        .checked_add(xbe.header.size_of_image)
-        .ok_or_else(|| fail(base, "imagem transborda o espaço x86"))?;
-    let headers_end = base
-        .checked_add(xbe.header.size_of_headers)
-        .filter(|&v| v <= end)
-        .ok_or_else(|| fail(base, "headers fora da imagem"))?;
-    let mut ranges = vec![(base, headers_end)];
-    for s in &xbe.sections {
-        if s.virtual_size == 0 {
-            continue;
-        }
-        let section_end = s
-            .virtual_address
-            .checked_add(s.virtual_size)
-            .filter(|&v| v <= end && s.virtual_address >= base)
-            .ok_or_else(|| fail(s.virtual_address, "seção fora da imagem declarada"))?;
-        if s.raw_size > s.virtual_size {
-            return Err(fail(
-                s.virtual_address,
-                "raw_size maior que virtual_size não suportado",
-            ));
-        }
-        ranges.push((s.virtual_address, section_end));
-    }
-    ranges.sort_unstable();
-    for pair in ranges.windows(2) {
-        if pair[0].1 > pair[1].0 {
-            return Err(fail(pair[1].0, "seções/headers sobrepostos"));
-        }
-    }
+    let mut ranges = vec![(base, base + xbe.header.size_of_headers)];
+    ranges.extend(
+        xbe.sections
+            .iter()
+            .filter(|s| s.virtual_size != 0)
+            .map(|s| (s.virtual_address, s.virtual_address + s.virtual_size)),
+    );
     if ranges
         .iter()
         .any(|&(start, finish)| start < 0x7001_0000 && finish > 0x7000_0000)

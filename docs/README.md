@@ -17,3 +17,5 @@ O [ADR-0016](adr/0016-rotacoes-shifts-duplos.md) documenta rotações, shifts du
 O [ADR-0017](adr/0017-multiplicacao-divisao-de.md) cobre produtos, divisões e diagnóstico recuperável de #DE.
 O [ADR-0018](adr/0018-strings-rep-retomaveis.md) define loops por contador e strings REP com orçamento e snapshot parcial.
 O [ADR-0019](adr/0019-controle-indireto-aot.md) cobre CALL/JMP indiretos, entradas adicionais e validação de destinos.
+O [ADR-0020](adr/0020-loader-memoria-validada.md) fecha o aceite local de memória e define o loader compartilhado.
+Consulte a [validação de memória](dev/memoria.md) e os [seis marcos do alpha](dev/alpha.md).

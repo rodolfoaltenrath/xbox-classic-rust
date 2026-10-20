@@ -114,6 +114,10 @@ tempo explícito em etapa posterior.
 
 ## Loader experimental
 
+Desde o ADR-0020, a sessão AOT reutiliza `xbox-kernel::loader::Image` em `Mode::Aot`.
+O modo `Inspect` separado aceita permissões da imagem real e mapeia alias físico
+para o comando `obsidian check-memory`; nunca é usado para rodar código AOT.
+
 Valida que headers/seções não se sobreponham, que as seções caibam na imagem e que
 não ocupem a pilha de teste. Mapeia páginas do XBE sobre frames alocados pelo bus,
 copia headers e dados e aplica permissões RX/RO/RW. Páginas compartilhadas entre

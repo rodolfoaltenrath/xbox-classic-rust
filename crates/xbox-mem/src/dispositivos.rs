@@ -237,15 +237,14 @@ impl Telemetria {
 
     /// Quantos registros distintos foram descartados por exceder [`MAX_REGISTROS`].
     pub fn descartados(&self) -> u64 {
-        self.descartados.lock().map(|d| *d).unwrap_or(0)
+        self.descartados.lock().map_or(0, |d| *d)
     }
 
     /// Soma de todas as ocorrências.
     pub fn total_de_acessos(&self) -> u64 {
         self.registros
             .lock()
-            .map(|r| r.values().map(|x| x.ocorrencias).sum())
-            .unwrap_or(0)
+            .map_or(0, |r| r.values().map(|x| x.ocorrencias).sum())
     }
 
     /// Relatório em texto, ordenado por quantidade de ocorrências.
@@ -261,30 +260,40 @@ impl Telemetria {
         });
 
         let mut s = String::new();
-        s.push_str(&format!(
-            "{} registradores distintos, {} acessos no total",
-            rs.len(),
-            self.total_de_acessos()
-        ));
+        let _ = std::fmt::Write::write_fmt(
+            &mut s,
+            format_args!(
+                "{} registradores distintos, {} acessos no total",
+                rs.len(),
+                self.total_de_acessos()
+            ),
+        );
         let d = self.descartados();
         if d > 0 {
-            s.push_str(&format!(", {d} registros descartados por limite"));
+            let _ = std::fmt::Write::write_fmt(
+                &mut s,
+                format_args!(", {d} registros descartados por limite"),
+            );
         }
         s.push('\n');
         for r in rs {
-            s.push_str(&format!(
-                "  {} {:<8} {}B x{:<8} {}",
-                r.endereco,
-                r.operacao.nome(),
-                r.tamanho,
-                r.ocorrencias,
-                r.motivo.descricao()
-            ));
+            let _ = std::fmt::Write::write_fmt(
+                &mut s,
+                format_args!(
+                    "  {} {:<8} {}B x{:<8} {}",
+                    r.endereco,
+                    r.operacao.nome(),
+                    r.tamanho,
+                    r.ocorrencias,
+                    r.motivo.descricao()
+                ),
+            );
             if let Some(v) = r.primeiro_valor {
-                s.push_str(&format!("  primeiro valor 0x{v:X}"));
+                let _ =
+                    std::fmt::Write::write_fmt(&mut s, format_args!("  primeiro valor 0x{v:X}"));
             }
             if let Some(pc) = r.primeiro_contexto.pc {
-                s.push_str(&format!("  de {pc}"));
+                let _ = std::fmt::Write::write_fmt(&mut s, format_args!("  de {pc}"));
             }
             s.push('\n');
         }

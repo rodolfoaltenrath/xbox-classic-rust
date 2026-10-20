@@ -12,6 +12,8 @@ use clap::{Parser, Subcommand};
 use xbox_core::{BuildInfo, Config, Error, Result};
 use xbox_formats::{Fatx, Media, Mount, TipoDeMidia, Vfs, Xbe, Xdvdfs};
 
+mod memory;
+
 /// Emulador de Xbox clássico com interface Big Picture.
 #[derive(Debug, Parser)]
 #[command(name = "obsidian", version, about, long_about = None)]
@@ -44,6 +46,8 @@ enum Command {
     },
     /// Relata o ambiente do host e o estado de cada subsistema.
     Doctor,
+    /// Valida seções, imports e alias físico pelo bus, sem executar código.
+    CheckMemory { arquivo: PathBuf },
 }
 
 fn main() -> ExitCode {
@@ -77,6 +81,7 @@ fn executar(cli: &Cli) -> Result<()> {
         Command::Ui => abrir_ui(&config),
         Command::Run { jogo } => rodar_jogo(&config, jogo),
         Command::Info { arquivo } => mostrar_info(arquivo),
+        Command::CheckMemory { arquivo } => memory::check(arquivo),
         Command::Doctor => {
             doctor(&config, &caminho_config);
             Ok(())

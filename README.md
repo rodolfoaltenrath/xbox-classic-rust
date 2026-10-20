@@ -21,6 +21,15 @@ cargo run -p obsidian -- doctor
 cargo test --workspace --all-targets --features xbox-cpu/isa-oracle
 ```
 
+Para validar um XBE, pasta extraída ou ISO pelo barramento, sem executar o título:
+
+```sh
+cargo run -p obsidian -- check-memory caminho/do/jogo.iso
+```
+
+O primeiro dos [seis marcos do alpha](docs/dev/alpha.md) foi concluído localmente:
+memória/loader verificados com mídia real, contratos sob Miri e benchmark seguro.
+
 ## Demonstração de recompilação
 
 ```sh
@@ -62,8 +71,8 @@ Isso ainda não comprova compatibilidade com jogos comerciais ou com toda a ISA.
 
 As ISOs, XBEs locais, BIOS/binários, saves, dados de teste locais e diretórios de
 build ficam fora do Git. Fixtures versionadas são geradas por código do projeto.
-Pendências conhecidas de validação, incluindo Clippy em `xbox-mem`, estão registradas
-na documentação; nem todas as fases ou verificações do roadmap estão concluídas.
+O Clippy do workspace passou após corrigir os avisos antigos de `xbox-mem`.
+Os limites de validação estão documentados; as demais etapas do alpha permanecem pendentes.
 
 ## Licença
 

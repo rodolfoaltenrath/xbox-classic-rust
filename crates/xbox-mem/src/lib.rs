@@ -19,7 +19,7 @@
 //!
 //! ## `unsafe`
 //!
-//! Vive **só** em [`arena`], em quatro blocos, cada um com seu invariante em
+//! Vive **só** em [`arena`]: 16 blocos (contando ambos os sistemas) e um `unsafe impl Send`, com invariantes em
 //! `docs/arch/memoria-unsafe.md`. Todo o resto do crate é Rust seguro e verificável por
 //! Miri.
 //!

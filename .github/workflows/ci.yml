@@ -74,3 +74,12 @@ jobs:
       # Só compila; medir em CI não dá número confiável (ROADMAP §10 pede medição local).
       - run: cargo bench --no-run
         working-directory: crates/xbox-core/bench
+
+  memory-miri:
+    name: contrato de memória sob Miri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly-2026-10-20 --profile minimal --component miri,rust-src
+      - run: cargo +nightly-2026-10-20 miri setup
+      - run: cargo +nightly-2026-10-20 miri test -p xbox-mem --test contract

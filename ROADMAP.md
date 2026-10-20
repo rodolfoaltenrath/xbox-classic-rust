@@ -577,21 +577,23 @@ devem ser conferidas no GitHub Actions; testes locais estão registrados em `doc
 > despachado por falha de página (custa 11,5 µs no Windows). Os ADRs 0009 a 0011
 > formalizam o resultado.
 
-- [ ] Newtypes `GuestVirt`, `GuestPhys`, `ArenaOff` sem conversão implícita (ADR-0009)
-- [ ] Arena de 64 MiB (+ feature `ram128`) em **objeto de memória compartilhável** (`memfd`/seção), handle `Send + Sync`, para a Fase 5 importar no Vulkan sem cópia (ADR-0011)
-- [ ] MMU do guest: páginas de 4 KiB e 4 MiB, permissões, dirty/accessed, cache de tradução, `Falta` com `CR2` e código de erro
-- [ ] Janelas virtuais por tabela de páginas, incluindo a contígua `0x80000000` — **sem** aritmética de janela escondida no bus
-- [ ] Classificação de região física + tabela de dispositivos com stubs e **telemetria de acesso desconhecido**
-- [ ] Caminho de acesso seguro completo; `unsafe` confinado a dois blocos na arena
-- [ ] `Snapshot` determinístico de arena e MMU
-- [ ] `docs/arch/memoria-unsafe.md` com cada bloco `unsafe`, seu invariante e o teste que o exercita
-- [ ] Testes T1–T13 do §7 da revisão, incluindo **Miri** no caminho completo
-- [ ] **T14: integração com o loader** — mapear as 14 seções do XBE real e provar que os 152 ordinais lidos *pelo bus* batem com os lidos do arquivo
-- [ ] Benchmark do caminho seguro, como linha de base para o fastmem da Fase 3b
+- [x] Newtypes `GuestVirt`, `GuestPhys`, `ArenaOff` sem conversão implícita (ADR-0009)
+- [x] Arena compartilhável de 64 MiB (+ feature `ram128`); posse exclusiva, **Send e não Sync**, sem Clone. Integração Vulkan/concorrência ficam para a Fase 5 (ADR-0020 revisa ADR-0011)
+- [x] MMU do guest: páginas de 4 KiB e 4 MiB, permissões, dirty/accessed, `Falta` com endereço e código de erro; cache TLB adiado até medição
+- [x] Janelas por tabela de páginas; alias contíguo `0x80000000 + PA` explícito na inspeção. O AOT não oferece alias RW para código
+- [x] Classificação física + stubs e telemetria de acesso desconhecido
+- [x] Caminho seguro; 16 blocos unsafe confinados à arena, auditados (em vez da previsão de dois)
+- [x] Snapshot determinístico de arena, MMU e frames
+- [x] `docs/arch/memoria-unsafe.md` com inventário, invariantes e evidência
+- [x] T1–T10 sob Miri com arena pequena; T11/T12 com vetor independente e 20000 cenários nativos. Diferencial com fastmem aguarda Fase 3b
+- [x] **T14 local:** 14 seções e 152 ordinais do NFSU2 pelo bus iguais ao arquivo; fixture no CI e mídia real atrás de `OBSIDIAN_MIDIA_REAL`
+- [x] Benchmark seguro reproduzível em `xbox-mem/examples/safe_memory.rs`; resultados locais em `docs/dev/memoria.md`
 
 **Fora de escopo por decisão:** fastmem (Fase 3b, ADR-0010), janela *tiled* (Fase 5 — é transformação de endereço, não espelho), dispositivos além de stub (Fases 5 e 6).
 
-**Aceite:** T1–T14 verdes, Miri sem UB no caminho seguro, e a demonstração de T14 rodando contra a mídia real do mantenedor.
+**Aceite local concluído em 2026-10-20:** contrato T1–T10 sob Miri sem diagnóstico
+de UB, traço nativo T11/T12 e T14 com fixture/mídia real. FFI Linux e CI remoto
+não foram executados neste host; GPU, fastmem e concorrência não estão cobertos.
 
 ---
 
@@ -658,7 +660,8 @@ gráfica continua pendente de integração; a prova usa somente CPU e memória.
 
 ### Fase 4 — Kernel HLE *(a fase mais longa)*
 
-- [ ] Loader de XBE → memória do guest + resolução de thunks para trampolins
+- [x] Carregamento de headers/seções/BSS e permissões pelo loader compartilhado; inspeção e política AOT (ADR-0020)
+- [ ] TLS e resolução de thunks para trampolins; imports ainda não executam
 - [ ] Mecanismo de trampolim (JIT/HV/interp) com ABI stdcall e logging de ordinal
 - [ ] Object manager: arena de objetos indexada, handles, `OBJECT_ATTRIBUTES`, parsing de caminhos `\Device\...`
 - [ ] **Scheduler de threads do guest** determinístico (prioridades, quantum, IRQL, APC, DPC)
@@ -1102,6 +1105,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-19 | 3-AOT | MUL/IMUL e DIV/IDIV com diagnóstico de #DE (ADR-0017) | — | 483916 comparações físicas e 1000580 diagnósticos classificados; extensões de sinal, memória, aliases e snapshot; 180 testes de workspace e 45 nativos |
 | 2026-10-20 | 3-AOT | Loops por contador e strings REP retomáveis (ADR-0018) | — | 3456 comparações físicas, address16, DF, faltas e snapshots parciais; bus evita escrita parcial; 183 testes de workspace e 55 nativos em debug/release |
 | 2026-10-20 | 3-AOT | Controle indireto e entradas adicionais (ADR-0019) | — | CALL/JMP r/m32, inferência local/RO e `--entry`; destinos validados antes de commit, RET, callbacks e snapshot; 189 testes de workspace e 64 nativos em debug/release |
+| 2026-10-20 | 2 / 4 | Aceite local de memória e loader compartilhado (ADR-0020) | — | T14 NFSU2: 14 seções, 152 ordinais; Miri T1–T10, 20000 cenários, auditoria unsafe e Clippy global limpo; marco 1/6 do alpha |
 
 ---
 
@@ -1109,9 +1113,9 @@ Uma linha por marco concluído. Append-only.
 
 Em ordem:
 
-1. **Fase 2:** fechar seu aceite pendente, incluindo loader/T14, Miri e documentação;
-   a prova AOT usa o bus existente e não declara a fase concluída.
-2. **Fase 4:** TLS e kernel HLE em Rust para avançar de fixture a homebrew real.
+1. **Alpha, marco 2/6:** preparar build reproduzível do `nxdk samples/hello` na revisão
+   fixada em `docs/dev/alpha.md`; inventariar TLS/imports/ISA do XBE gerado e implementar TLS e trampolins.
+2. **Fase 4:** serviços mínimos do kernel efetivamente usados pelo homebrew.
 3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de
    imagem/cache versionado; validar o homebrew com instruções reais emitidas pelo
    compilador. Guia: `docs/dev/recomp.md`.

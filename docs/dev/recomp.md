@@ -298,3 +298,14 @@ Host x86_64-pc-windows-gnu, Rust 1.98.1 fixado. Decisões e limites:
 Logs: `target/indirect-workspace-tests.log`, `target/indirect-native-release-tests.log`
 e `target/indirect-doctests.log`. O caminho do projeto gerado validado está em
 `target/indirect-native-project.txt`.
+
+## Loader compartilhado — validação Windows de 2026-10-20
+
+A sessão AOT agora usa `xbox-kernel::loader::Image` em modo Aot e reserva sua pilha
+separadamente. A inspeção de mídia real usa outro modo, com alias físico e sem
+execução. TLS/imports e páginas RWX continuam recusados na sessão AOT.
+
+Passaram 200 testes de workspace, 64 testes nativos em debug/release e dois
+doctests. Clippy global passou, corrigindo os 19 avisos de memória registrados
+nas entradas históricas acima. T14 real e contratos sob Miri estão detalhados em
+[memoria.md](memoria.md). O marco 1/6 do alpha está em [alpha.md](alpha.md).

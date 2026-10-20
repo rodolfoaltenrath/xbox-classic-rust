@@ -71,6 +71,7 @@ impl GuestVirt {
     }
 
     /// Endereço do início da página que contém este endereço.
+    #[must_use]
     pub const fn base_da_pagina(self) -> Self {
         Self(self.0 & !PAGE_MASK)
     }
@@ -79,6 +80,7 @@ impl GuestVirt {
     ///
     /// Satura em vez de dar wrap porque wrap silencioso em aritmética de endereço é
     /// fonte de bug: um acesso em `0xFFFFFFFF` deve falhar, não voltar para zero.
+    #[must_use]
     pub const fn saturating_add(self, n: u32) -> Self {
         Self(self.0.saturating_add(n))
     }

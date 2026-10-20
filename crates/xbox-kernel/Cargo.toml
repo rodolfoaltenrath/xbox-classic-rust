@@ -9,6 +9,9 @@ license.workspace = true
 
 [dependencies]
 xbox-core = { workspace = true }
+xbox-formats = { workspace = true }
+xbox-mem = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [lints]

@@ -36,6 +36,8 @@ pub const DEMO_CODE: &[u8] = &[
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    Loader(#[from] xbox_kernel::loader::Error),
+    #[error(transparent)]
     Format(#[from] xbox_core::Error),
     #[error(transparent)]
     Memory(#[from] xbox_mem::Falta),

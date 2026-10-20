@@ -197,7 +197,7 @@ enum EntradaDeDiretorio {
     /// Página grande de 4 MiB.
     Grande(Entrada),
     /// Tabela de 1024 páginas de 4 KiB.
-    Tabela(Box<Vec<Entrada>>),
+    Tabela(Vec<Entrada>),
 }
 
 /// A unidade de gerenciamento de memória do guest.
@@ -265,7 +265,7 @@ impl Mmu {
         let d = va.indice_diretorio();
         if !matches!(self.diretorio[d], EntradaDeDiretorio::Tabela(_)) {
             let tabela = (0..ENTRADAS_TABELA).map(|_| Entrada::ausente()).collect();
-            self.diretorio[d] = EntradaDeDiretorio::Tabela(Box::new(tabela));
+            self.diretorio[d] = EntradaDeDiretorio::Tabela(tabela);
         }
         if let EntradaDeDiretorio::Tabela(t) = &mut self.diretorio[d] {
             t[va.indice_tabela()] = Entrada::nova(pa.frame(), perm);
@@ -282,7 +282,9 @@ impl Mmu {
             acesso: Acesso::Escrita,
             motivo,
         };
-        if va.0 % LARGE_PAGE_SIZE as u32 != 0 || pa.0 % LARGE_PAGE_SIZE as u32 != 0 {
+        if !va.0.is_multiple_of(LARGE_PAGE_SIZE as u32)
+            || !pa.0.is_multiple_of(LARGE_PAGE_SIZE as u32)
+        {
             return Err(falta(MotivoDeFalta::Transbordo));
         }
         self.diretorio[va.indice_diretorio()] =
@@ -338,9 +340,8 @@ impl Mmu {
 
     fn entrada(&self, va: GuestVirt) -> Option<(&Entrada, bool)> {
         match &self.diretorio[va.indice_diretorio()] {
-            EntradaDeDiretorio::Ausente => None,
             EntradaDeDiretorio::Grande(e) if e.presente() => Some((e, true)),
-            EntradaDeDiretorio::Grande(_) => None,
+            EntradaDeDiretorio::Ausente | EntradaDeDiretorio::Grande(_) => None,
             EntradaDeDiretorio::Tabela(t) => {
                 let e = &t[va.indice_tabela()];
                 if e.presente() { Some((e, false)) } else { None }
@@ -386,9 +387,8 @@ impl Mmu {
         self.diretorio
             .iter()
             .map(|d| match d {
-                EntradaDeDiretorio::Ausente => 0,
                 EntradaDeDiretorio::Grande(e) if e.presente() => ENTRADAS_TABELA,
-                EntradaDeDiretorio::Grande(_) => 0,
+                EntradaDeDiretorio::Ausente | EntradaDeDiretorio::Grande(_) => 0,
                 EntradaDeDiretorio::Tabela(t) => t.iter().filter(|e| e.presente()).count(),
             })
             .sum()
@@ -405,11 +405,10 @@ impl Snapshot for Mmu {
         let mut pequenas = Vec::new();
         for (d, entrada) in self.diretorio.iter().enumerate() {
             match entrada {
-                EntradaDeDiretorio::Ausente => {}
                 EntradaDeDiretorio::Grande(e) if e.presente() => {
                     grandes.push((d as u32, e.frame, e.flags.get()));
                 }
-                EntradaDeDiretorio::Grande(_) => {}
+                EntradaDeDiretorio::Ausente | EntradaDeDiretorio::Grande(_) => {}
                 EntradaDeDiretorio::Tabela(t) => {
                     for (i, e) in t.iter().enumerate() {
                         if e.presente() {
@@ -470,7 +469,7 @@ impl Snapshot for Mmu {
             }
             if !matches!(self.diretorio[d], EntradaDeDiretorio::Tabela(_)) {
                 let tabela = (0..ENTRADAS_TABELA).map(|_| Entrada::ausente()).collect();
-                self.diretorio[d] = EntradaDeDiretorio::Tabela(Box::new(tabela));
+                self.diretorio[d] = EntradaDeDiretorio::Tabela(tabela);
             }
             if let EntradaDeDiretorio::Tabela(t) = &mut self.diretorio[d] {
                 t[i] = Entrada {

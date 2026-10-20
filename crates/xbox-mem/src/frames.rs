@@ -30,7 +30,7 @@ impl AlocadorDeFrames {
     pub fn novo(ram: usize) -> Self {
         let frames = (ram / 4096) as u32;
         Self {
-            bitmap: vec![0; ((frames + BITS - 1) / BITS) as usize],
+            bitmap: vec![0; frames.div_ceil(BITS) as usize],
             frames,
             usados: 0,
         }
@@ -75,16 +75,15 @@ impl AlocadorDeFrames {
         }
         let mut inicio = 0u32;
         while inicio + n <= self.frames {
-            match (inicio..inicio + n).find(|&f| self.em_uso(f)) {
+            if let Some(ocupado) = (inicio..inicio + n).find(|&f| self.em_uso(f)) {
                 // Achou um ocupado: pula para depois dele.
-                Some(ocupado) => inicio = ocupado + 1,
-                None => {
-                    for f in inicio..inicio + n {
-                        self.marcar(f, true);
-                    }
-                    self.usados += n;
-                    return Some(GuestPhys::do_frame(inicio));
+                inicio = ocupado + 1;
+            } else {
+                for f in inicio..inicio + n {
+                    self.marcar(f, true);
                 }
+                self.usados += n;
+                return Some(GuestPhys::do_frame(inicio));
             }
         }
         None

@@ -11,6 +11,7 @@ license.workspace = true
 xbox-core = { workspace = true }
 xbox-formats = { workspace = true }
 xbox-mem = { workspace = true }
+xbox-kernel = { workspace = true }
 iced-x86 = { workspace = true }
 thiserror = { workspace = true }
 

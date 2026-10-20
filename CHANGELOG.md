@@ -10,6 +10,16 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Marco 1/6 do alpha: loader compartilhado em `xbox-kernel`, com políticas de
+  inspeção/AOT; `obsidian check-memory` valida XBE/pasta/ISO pelo bus sem executar
+  código. T14 NFSU2 local confirma 14 seções, 152 ordinais e 4634697 bytes.
+  Contratos T1–T10 passaram no Miri; 20000 cenários contra vetor independente,
+  benchmark seguro, auditoria de unsafe e job Miri no CI (ADR-0020).
+- Corrigidos os 19 avisos de Clippy de memória; preservado formato de snapshot.
+  Arena recusa tamanho acima de isize::MAX. Posse exclusiva Send/não Sync documentada;
+  proposta de aceitar data races do ADR-0011 substituída. Alvo nxdk hello fixado
+  para as próximas entregas; ainda não há homebrew executando.
+
 - Fase 3-AOT: CALL/JMP near de 32 bits por registrador/memória, incluindo SIB e
   aliases de ESP. Descoberta iterativa por constantes locais e ponteiros imutáveis;
   API `analyze_with_entries` e CLI `--entry` para callbacks/tabelas mutáveis.

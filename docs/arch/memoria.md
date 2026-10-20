@@ -1,12 +1,12 @@
 # Revisão arquitetural — memória, MMU, MMIO e fastmem
 
-> **Status:** revisão concluída; caminho seguro implementado, aceite da Fase 2 pendente.
+> **Status:** aceite local da Fase 2 concluído em 2026-10-20 (ADR-0020).
 > **Data:** 2026-10-19
 > **Escopo:** Fase 2 do [ROADMAP](../../ROADMAP.md).
 > **Gatilho:** revisão externa pedindo validação independente antes de escrever código.
 
 > **Implementação posterior (2026-10-20):** o bus seguro está em uso pelo AOT;
-> o aceite completo da Fase 2 permanece pendente. `Bus::escrever_bytes` agora valida
+> o T14 real, os contratos sob Miri e o benchmark estão em `docs/dev/memoria.md`. `Bus::escrever_bytes` valida
 > todas as páginas/regiões antes de executar a escrita, para evitar alteração parcial
 > de RAM quando a segunda página falha. Leituras e telemetria mantêm os limites
 > anteriores. A motivação e os testes estão no [ADR-0018](../adr/0018-strings-rep-retomaveis.md).
@@ -264,6 +264,11 @@ Ganho colateral: a Fase 2 fica quase toda em Rust seguro, o que torna o requisit
 
 Só em `xbox-mem`, e dentro dele só em dois lugares:
 
+**Correção da previsão:** a implementação tem 16 blocos em `arena.rs`, cobrindo
+alocação, fatias, FFI e destruição, e um impl Send. O inventário vigente está em
+[memoria-unsafe.md](memoria-unsafe.md). A tabela abaixo descreve a ideia original,
+não uma contagem dos blocos entregues. Não há API pública de ponteiro de RAM.
+
 | Local | O que faz | Invariante |
 |---|---|---|
 | `Arena::novo` | cria o objeto de memória compartilhável e mapeia | o mapeamento tem exatamente `RAM_SIZE` bytes e é RW |
@@ -379,11 +384,15 @@ O que fica preparado agora, sem uma linha de GPU:
 - `Bus::dma(GuestPhys, len) -> Result<&[u8], Falta>`: a interface pela qual a GPU lerá,
   já tipada em físico;
 - arena criada como objeto compartilhável, com o descritor guardado para a Fase 5;
-- a arena é um handle clonável `Send + Sync`, para a thread de GPU do ROADMAP §5.2
-  existir sem refatoração;
+- a arena tem posse exclusiva e é Send, não Sync e não clonável; acesso concorrente
+  pela GPU precisa de nova decisão de sincronização/posse na Fase 5 (ADR-0020);
 - nada de formato de textura, pipeline ou shader. Isso é Fase 5.
 
 ### A corrida que precisa ser decidida, não escondida
+
+**Decisão atual (ADR-0020):** Arena é Send, não Sync e não clonável. Transferência
+de posse/sincronização ou cópia deverá ser definida na Fase 5. A proposta histórica
+abaixo de aceitar data races foi substituída; não é uma permissão de introduzir UB.
 
 A thread de CPU escreve na arena enquanto a thread de GPU lê. Isso é, pelo modelo de
 memória do Rust, corrida de dados — UB formal, mesmo que em x86-64 acessos alinhados
@@ -417,7 +426,8 @@ não existe seria pior do que escolher conscientemente.
    página a eventos raros, e afeta o desenho da invalidação de textura na Fase 5.
 5. **Janela tiled não implementada**; acesso falha explicitamente.
 6. **128 MiB (dev kit) não validado** — a feature existe, nenhum título real foi testado.
-7. **Corrida CPU↔GPU na arena** é desvio consciente do modelo de memória do Rust (§8).
+7. **Concorrência CPU↔GPU pendente:** a arena atual tem posse exclusiva; a proposta
+   de aceitar data races foi substituída pelo ADR-0020. Não há acesso concorrente hoje.
 8. **Miri não cobre fastmem** nem manipulador de sinal. Quando o fastmem entrar, essa
    parte sai da cobertura de Miri e passa a depender de teste diferencial.
 9. **Medições são de um host só** (Windows, x86-64 moderno). O alvo do projeto é um

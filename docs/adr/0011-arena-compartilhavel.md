@@ -1,6 +1,6 @@
 # ADR-0011: Arena compartilhável e a corrida entre CPU e GPU
 
-- **Status:** aceito
+- **Status:** revisado pelo ADR-0020 (posse exclusiva; proposta de corrida substituída)
 - **Data:** 2026-10-19
 - **Fase:** 2 (prepara a 5)
 
@@ -36,6 +36,12 @@ comportamento indefinido — mesmo que em x86-64 um acesso alinhado não rasgue 
 3. **Aceitar a corrida**, com acesso por ponteiro cru e invariante documentado.
 
 ## Decisão
+
+**Revisão em 2026-10-20:** a arena implementada é Send, não Sync, e não é clonável.
+A proposta abaixo de aceitar uma corrida não autoriza acesso concorrente às fatias
+Rust. A Fase 5 deverá implementar posse/sincronização ou cópia que respeite o modelo
+de memória. Ver [ADR-0020](0020-loader-memoria-validada.md); o restante registra a
+decisão histórica, sem comprovar importação Vulkan ou execução concorrente segura.
 
 Arena criada como **objeto de memória compartilhável**, com o descritor guardado para a
 Fase 5 importar.

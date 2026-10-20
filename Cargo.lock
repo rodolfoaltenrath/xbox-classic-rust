@@ -532,8 +532,11 @@ dependencies = [
 name = "xbox-kernel"
 version = "0.0.1"
 dependencies = [
+ "thiserror",
  "tracing",
  "xbox-core",
+ "xbox-formats",
+ "xbox-mem",
 ]
 
 [[package]]
@@ -560,6 +563,7 @@ dependencies = [
  "thiserror",
  "xbox-core",
  "xbox-formats",
+ "xbox-kernel",
  "xbox-mem",
 ]
 

@@ -1,11 +1,8 @@
 //! Estado explícito e loader experimental, sem decodificação durante a execução.
 
-use std::collections::BTreeMap;
-
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::Xbe;
-use xbox_formats::xbe::SectionFlags;
 use xbox_mem::{Bus, GuestVirt, Perm};
 
 use crate::Result;
@@ -120,101 +117,18 @@ impl Session {
             )
             .into());
         }
-        let mut bus = Bus::novo()?;
-        let mut pages = BTreeMap::<u32, Perm>::new();
-        add_pages(
-            &mut pages,
-            xbe.header.base_address,
-            xbe.header.size_of_headers,
-            Perm::RO,
-            bus.ram(),
-        )?;
-        for s in &xbe.sections {
-            if s.raw_size > s.virtual_size {
-                return Err(xbox_core::Error::format(
-                    "seção AOT com raw_size maior que virtual_size",
-                )
-                .into());
-            }
-            let mut perm = Perm::RO;
-            if s.flags.tem(SectionFlags::EXECUTABLE) {
-                perm.0 |= Perm::EXECUTAR;
-            }
-            if s.flags.tem(SectionFlags::WRITABLE) {
-                perm.0 |= Perm::ESCREVER;
-            }
-            if perm.0 & (Perm::ESCREVER | Perm::EXECUTAR) == (Perm::ESCREVER | Perm::EXECUTAR) {
-                return Err(xbox_core::Error::format(
-                    "AOT inicial não aceita seção executável gravável",
-                )
-                .into());
-            }
-            add_pages(
-                &mut pages,
-                s.virtual_address,
-                s.virtual_size,
-                perm,
-                bus.ram(),
-            )?;
-        }
-        add_pages(&mut pages, STACK_BASE, STACK_SIZE, Perm::RW, bus.ram())?;
-        for va in pages.keys() {
-            let frame = bus
-                .frames_mut()
-                .alocar()
-                .ok_or_else(|| xbox_core::Error::format("RAM insuficiente para o XBE"))?;
-            bus.mapear(GuestVirt(*va), frame, 1, Perm::RWX)?;
-        }
-        let headers = bytes
-            .get(..xbe.header.size_of_headers as usize)
-            .ok_or_else(|| xbox_core::Error::format("headers XBE truncados"))?;
-        bus.escrever_bytes(GuestVirt(xbe.header.base_address), headers)?;
-        for (i, s) in xbe.sections.iter().enumerate() {
-            bus.escrever_bytes(GuestVirt(s.virtual_address), xbe.section_data(i)?)?;
-        }
-        for (va, perm) in pages {
-            if perm.0 & (Perm::ESCREVER | Perm::EXECUTAR) == (Perm::ESCREVER | Perm::EXECUTAR) {
-                return Err(xbox_core::Error::format(
-                    "página AOT compartilhada entre dados graváveis e código",
-                )
-                .into());
-            }
-            let frame = bus.traduzir(GuestVirt(va), xbox_mem::Acesso::Leitura)?;
-            bus.mapear(GuestVirt(va), frame, 1, perm)?;
-        }
+        let image = xbox_kernel::loader::Image::load(bytes, xbox_kernel::loader::Mode::Aot)?;
+        let mut bus = image.bus;
+        let stack = bus
+            .frames_mut()
+            .alocar_contiguo(STACK_SIZE / 4096)
+            .ok_or_else(|| xbox_core::Error::format("RAM insuficiente para a pilha AOT"))?;
+        bus.mapear(GuestVirt(STACK_BASE), stack, STACK_SIZE / 4096, Perm::RW)?;
         let mut state = State::new(xbe.entry_point);
         state.regs[ESP] = STACK_BASE + STACK_SIZE - 4;
         bus.escrever_u32(GuestVirt(state.regs[ESP]), RETURN_SENTINEL)?;
         Ok(Self { state, bus })
     }
-}
-
-fn add_pages(
-    pages: &mut BTreeMap<u32, Perm>,
-    start: u32,
-    size: u32,
-    perm: Perm,
-    ram: usize,
-) -> Result<()> {
-    if size == 0 {
-        return Ok(());
-    }
-    let end = start
-        .checked_add(size - 1)
-        .ok_or_else(|| xbox_core::Error::format("seção XBE transborda"))?;
-    if u64::from(end / 4096 - start / 4096 + 1) > (ram / 4096) as u64 {
-        return Err(xbox_core::Error::format("seção XBE maior que a RAM disponível").into());
-    }
-    for page in start / 4096..=end / 4096 {
-        pages
-            .entry(page * 4096)
-            .and_modify(|p| p.0 |= perm.0)
-            .or_insert(perm);
-        if pages.len() > ram / 4096 {
-            return Err(xbox_core::Error::format("imagem XBE maior que a RAM disponível").into());
-        }
-    }
-    Ok(())
 }
 
 /// Flags CF/PF/AF/ZF/SF/OF de ADD/SUB de 32 bits (Intel SDM, vol. 2).

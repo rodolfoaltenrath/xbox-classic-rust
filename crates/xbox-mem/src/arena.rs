@@ -39,6 +39,7 @@ use crate::addr::ArenaOff;
 
 /// De onde vieram os bytes, e como devolvê-los.
 #[derive(Debug)]
+#[cfg_attr(miri, allow(dead_code))]
 enum Origem {
     /// Objeto de memória compartilhável do sistema operacional.
     Compartilhada(backing::Objeto),
@@ -75,9 +76,12 @@ impl Arena {
     /// Existe para teste e para o modo de dev kit; o tamanho precisa ser múltiplo de
     /// página, porque a MMU e o alocador de frames trabalham em páginas inteiras.
     pub fn com_tamanho(tamanho: usize) -> Result<Self> {
-        if tamanho == 0 || tamanho % xbox_core::PAGE_SIZE != 0 {
+        if tamanho == 0
+            || tamanho > isize::MAX as usize
+            || !tamanho.is_multiple_of(xbox_core::PAGE_SIZE)
+        {
             return Err(Error::config(format!(
-                "tamanho de arena {tamanho} não é múltiplo de {} bytes",
+                "tamanho de arena {tamanho} inválido: exige múltiplo de {} bytes e limite isize::MAX",
                 xbox_core::PAGE_SIZE
             )));
         }
@@ -245,6 +249,7 @@ impl Snapshot for Arena {
 /// As funções do sistema são declaradas à mão em vez de usar um crate de bindings: o
 /// que precisamos é um punhado de funções, e no host de desenvolvimento atual isto
 /// também contorna o problema de toolchain do ADR-0008.
+#[cfg_attr(miri, allow(dead_code))]
 pub mod backing {
     use std::ptr::NonNull;
 
@@ -405,13 +410,12 @@ pub mod backing {
             }
             // SAFETY: `handle` é válido e a view cobre o objeto inteiro.
             let p = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, tamanho) };
-            match NonNull::new(p) {
-                Some(nn) => Some((nn, Objeto { handle })),
-                None => {
-                    // SAFETY: handle válido, fechado uma vez só.
-                    unsafe { CloseHandle(handle) };
-                    None
-                }
+            if let Some(nn) = NonNull::new(p) {
+                Some((nn, Objeto { handle }))
+            } else {
+                // SAFETY: handle válido, fechado uma vez só.
+                unsafe { CloseHandle(handle) };
+                None
             }
         }
 
