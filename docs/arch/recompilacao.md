@@ -93,23 +93,27 @@ varre dados, não cruza blocos/calls e não presume valores da memória graváve
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
 e indicador de retorno. Guarda também FS, o Clock único da sessão AOT atual e
-o PC de HLT quando a CPU está suspensa.
+o PC de HLT quando a CPU está suspensa ou de INT3 quando #BP está pendente.
 Durante comparação REP, guarda PC e flags originais
 para restaurá-las em caso de falta. Não tem ponteiros ou handles do host. O CALL escreve o
 endereço de retorno na pilha do guest; o RET o lê. A sentença Rust de chamada não
 representa a pilha do jogo, permitindo salvar a continuação com uma call pendente.
 
 `run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned`, `Exit::KernelCall`,
-`Exit::Halted` ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
+`Exit::Halted`, `Exit::Breakpoint` ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
 por instrução/elemento REP concluído, sem alegar precisão de ciclos físicos.
-Snapshot AOTC v5 guarda perfil, Clock e parada por HLT. Versões v1–v4 migram
-com CPU ativa; v1–v3 recebem Clock zero.
+Snapshot AOTC v6 guarda perfil, Clock, parada por HLT e breakpoint pendente.
+Versões v1–v5 migram sem breakpoint, v1–v4 com CPU ativa; v1–v3 recebem Clock zero.
 O agendador do core ainda precisa ser integrado a esse relógio único
 ([ADR-0025](../adr/0025-relogio-aot-rdtsc.md)).
 CLI limpa IF do guest no perfil privilegiado. HLT preserva flags, avança EIP e
 entrega a parada ao host. Polls não executam a continuação nem avançam tempo;
 não há entrega de interrupções/retomada automática ainda
 ([ADR-0026](../adr/0026-controle-cli-hlt.md)).
+INT3 conclui com EIP seguinte e #BP pendente. O host recebe diagnóstico, sem
+entrega automática via IDT/SEH. A descoberta termina esse caminho excepcional,
+mantendo destinos de branches e raízes explícitas. Polls não executam código nem
+acrescentam tempo ([ADR-0027](../adr/0027-int3-breakpoint-aot.md)).
 Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro

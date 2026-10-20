@@ -148,6 +148,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             Exit::Budget => continue,
+            Exit::Breakpoint { pc } => {
+                return Err(format!(
+                    "exceção guest #BP (vetor 3) por INT3 em 0x{pc:08X}; próximo EIP=0x{:08X}; entrega de exceções ainda não implementada",
+                    session.state.eip
+                ).into());
+            }
             Exit::Halted { pc, interrupts_enabled } => {
                 return Err(format!(
                     "CPU guest suspensa por HLT em 0x{pc:08X}; próximo EIP=0x{:08X}, IF={}; entrega de interrupções ainda não implementada",

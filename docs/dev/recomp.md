@@ -354,8 +354,26 @@ O main gerado relata PC, próximo EIP e IF e encerra com erro, sem travar o host
 
 Não há IRQ/NMI ou retomada automática: polls preservam CPU, memória e tempo,
 mesmo com orçamento zero. AOTC v5 salva a parada; v1–v4 migram com CPU ativa,
-conservando as regras anteriores de tempo. São 88 testes nativos em x86_64, mais
-verificação do diagnóstico do main. O próximo bloqueio real é INT3 em `0x20D6C`,
+conservando as regras anteriores de tempo. Essa entrega chegou a 88 testes nativos em x86_64, mais
+verificação do diagnóstico do main. Nessa referência, o bloqueio real era INT3 em `0x20D6C`,
 numa região `0xCC` após CALL, ainda durante a tradução. Investigar o fluxo sem
 presumir execução nem remover bytes. Contratos e referências:
 [ADR-0026](../adr/0026-controle-cli-hlt.md).
+
+## INT3 e fronteira #BP — ADR-0027
+
+INT3 curto (`0xCC`) conclui com EIP seguinte e `Exit::Breakpoint { pc }`, vetor 3.
+Preserva o contexto anterior à entrega da exceção; o main relata #BP e encerra
+com erro. Não há IDT, frame de interrupção, SEH ou retomada automática. Polls
+continuam devolvendo a exceção sem executar código ou acrescentar tempo.
+
+O caminho termina na exceção, sem fallthrough. Destinos posteriores alcançados
+por branches/`--entry` continuam sendo traduzidos. O preenchimento após abort
+explica o bloqueio encontrado, mas não autoriza retirar bytes ou presumir
+`noreturn` para funções arbitrárias. AOTC v6 salva o breakpoint; v1–v5 migram
+sem essa pendência, mantendo FS, tempo e HLT conforme cada versão.
+
+São 92 testes do Rust gerado em x86_64; os mains de HLT e INT3 também são
+executados. Próximo bloqueio do alvo: SFENCE em `0x12A43`. Definir ordenação e
+visibilidade dos stores no bus antes de implementá-lo. Detalhes:
+[ADR-0027](../adr/0027-int3-breakpoint-aot.md).

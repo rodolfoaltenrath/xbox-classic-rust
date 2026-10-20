@@ -68,9 +68,10 @@ de chamadas. A build contém `LOCK CMPXCHG` em `0x209C3` e `SETE` em `0x209C9`,
 agora implementados no ADR-0024. RDTSC em `0x2055B` foi implementado no ADR-0025:
 lê o Clock guest com política sintética determinística, sem tempo host. O bloqueio
 seguinte foi CLI/HLT no caminho de assert do SDK, agora implementados no
-ADR-0026. O bloqueio atual é **INT3 em `0x20D6C`**, após CALL e em região
-preenchida com `0xCC`. Investigar a chamada e o fluxo de término/trap; a análise
-estática não prova execução dessa região nem oferece a lista completa da ISA.
+ADR-0026. INT3 em `0x20D6C`, no preenchimento após a chamada a exit em abort,
+agora tem fronteira #BP (ADR-0027). O bloqueio atual é **SFENCE em `0x12A43`**.
+A análise estática não prova execução dessas regiões nem oferece a lista completa
+da ISA necessária.
 
 ## Infraestrutura implementada
 
@@ -89,8 +90,9 @@ de uma thread está implementado; o CRT pode escrever novamente o mesmo índice.
 FS é uma base guest explícita em `State`, aplicada aos operandos de memória;
 LEA usa só o offset. Inferência estática não confunde leitura por FS com um
 ponteiro absoluto do arquivo. Strings com segmento e os demais segmentos
-explícitos continuam recusados. Snapshot `AOTC` v5 salva FS, perfil/Clock e estado
-de parada; v1–v4 migram com CPU ativa, e v1–v3 recebem Clock zero, pois não
+explícitos continuam recusados. Snapshot `AOTC` v6 salva FS, perfil/Clock, estado
+de HLT e breakpoint; v1–v5 migram sem breakpoint, v1–v4 com CPU ativa, e v1–v3
+recebem Clock zero, pois não
 guardavam tempo. RAM/MMU existentes
 guardam TLS e trampolins.
 
@@ -113,6 +115,12 @@ CLI limpa IF guest; HLT preserva o PC da parada, avança EIP e entrega
 `Exit::Halted` ao host. O main gerado relata a suspensão, sem bloquear o host
 nem anunciar retorno do título. Ainda não há entrega de interrupções ou retomada
 automática. Polls não avançam o Clock ([ADR-0026](../adr/0026-controle-cli-hlt.md)).
+
+INT3 (`0xCC`) entrega `Exit::Breakpoint` ao host com PC e EIP seguinte; a CPU
+preserva a exceção pendente em polls/snapshots. Sem entrega via IDT/SEH, o main
+encerra com diagnóstico #BP. A análise não segue a exceção como fallthrough;
+continuações precisam de um branch/raiz explícita. Não há retomada automática
+([ADR-0027](../adr/0027-int3-breakpoint-aot.md)).
 
 ## Referências públicas
 

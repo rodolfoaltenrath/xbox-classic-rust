@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: INT3 (`0xCC`) gera uma fronteira #BP guest, vetor 3, com PC de
+  origem, EIP seguinte e diagnóstico no main. Polls não executam a continuação
+  nem cobram tempo. A descoberta termina esse caminho de exceção, mantendo
+  destinos alcançados por branches/entradas explícitas. AOTC v6 guarda o
+  breakpoint e migra v1–v5 sem exceção pendente. Projeto gerado com 92 casos em
+  x86_64; próximo bloqueio real: SFENCE em `0x12A43` (ADR-0027).
+
 - Fase 3-AOT: CLI limpa IF guest e HLT suspende a CPU com saída explícita ao
   host, PC/IF no diagnóstico e continuação descoberta estaticamente. Polls não
   executam código nem cobram tempo; AOTC v5 preserva a parada e migra v1–v4 com

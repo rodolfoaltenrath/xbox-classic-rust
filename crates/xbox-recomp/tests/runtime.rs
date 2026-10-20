@@ -245,3 +245,58 @@ fn snapshot_v5_migra_v4_com_cpu_ativa_e_preserva_clock() {
     assert_eq!(restored.eip, ENTRY_POINT);
     assert_eq!(restored.fs_base, 0x7FFD0000);
 }
+
+#[test]
+fn snapshot_v6_migra_v5_sem_breakpoint_e_preserva_hlt_retorno_e_tempo() {
+    for (returned, halted) in [(false, None), (false, Some(0x11000)), (true, None)] {
+        let mut writer = SnapshotWriter::new();
+        writer.section("AOTC", 5);
+        for r in 0..8 {
+            writer.u32(r);
+        }
+        writer.u32(0x11001);
+        writer.u32(0xAD7);
+        writer.u64(9);
+        writer.bool(returned);
+        writer.bool(false);
+        writer.u32(0x7FFD0000);
+        writer.u32(1);
+        let mut clock = xbox_core::Clock::new();
+        clock.advance(12345);
+        clock.save(&mut writer);
+        writer.bool(halted.is_some());
+        if let Some(pc) = halted {
+            writer.u32(pc);
+        }
+        let mut restored = State::new(0);
+        restored.breakpoint = Some(0xBAD);
+        restored
+            .load(&mut SnapshotReader::new(&writer.finish()).unwrap())
+            .unwrap();
+        assert_eq!(restored.breakpoint, None);
+        assert_eq!(restored.halted, halted);
+        assert_eq!(restored.returned, returned);
+        assert_eq!(restored.clock, clock);
+        assert_eq!(restored.eflags, 0xAD7);
+        assert_eq!(restored.fs_base, 0x7FFD0000);
+    }
+}
+
+#[test]
+fn snapshot_v6_recusa_breakpoint_com_retorno_ou_hlt() {
+    for (returned, halted) in [(false, Some(0x11000)), (true, None)] {
+        let mut state = State::new(0x11001);
+        state.breakpoint = Some(0x11000);
+        state.returned = returned;
+        state.halted = halted;
+        let mut writer = SnapshotWriter::new();
+        state.save(&mut writer);
+        assert!(matches!(
+            State::new(0).load(&mut SnapshotReader::new(&writer.finish()).unwrap()),
+            Err(xbox_core::SnapshotError::BadValue {
+                section: "AOTC",
+                ..
+            })
+        ));
+    }
+}

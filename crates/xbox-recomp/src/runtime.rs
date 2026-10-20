@@ -73,6 +73,9 @@ pub struct State {
     /// PC do HLT concluído. EIP aponta à instrução seguinte; polls não retomam
     /// a CPU. Não há entrega de IRQ/NMI neste perfil ainda.
     pub halted: Option<u32>,
+    /// PC de INT3 que gerou #BP. EIP já aponta à instrução seguinte; a exceção
+    /// continua pendente até existir tratamento explícito, não por novo poll.
+    pub breakpoint: Option<u32>,
 }
 
 impl State {
@@ -87,6 +90,7 @@ impl State {
             fs_base: 0,
             clock: Clock::new(),
             halted: None,
+            breakpoint: None,
         }
     }
 
@@ -106,11 +110,22 @@ impl State {
             interrupts_enabled: self.eflags & INTERRUPT_FLAG != 0,
         })
     }
+
+    /// Fronteiras persistentes, inclusive quando o orçamento de execução é zero.
+    pub fn stopped_exit(&self) -> Option<Exit> {
+        if self.returned {
+            Some(Exit::Returned)
+        } else if let Some(pc) = self.breakpoint {
+            Some(Exit::Breakpoint { pc })
+        } else {
+            self.halted_exit()
+        }
+    }
 }
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 5);
+        out.section("AOTC", 6);
         for r in self.regs {
             out.u32(r);
         }
@@ -130,10 +145,14 @@ impl Snapshot for State {
         if let Some(pc) = self.halted {
             out.u32(pc);
         }
+        out.bool(self.breakpoint.is_some());
+        if let Some(pc) = self.breakpoint {
+            out.u32(pc);
+        }
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 5)?;
+        let version = inp.section("AOTC", 6)?;
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -167,6 +186,17 @@ impl Snapshot for State {
         } else {
             None
         };
+        self.breakpoint = if version >= 6 && inp.bool()? {
+            Some(inp.u32()?)
+        } else {
+            None
+        };
+        if self.breakpoint.is_some() && (self.halted.is_some() || self.returned) {
+            return Err(SnapshotError::BadValue {
+                section: "AOTC",
+                what: "breakpoint incompatível com CPU suspensa ou retornada",
+            });
+        }
         Ok(())
     }
 }
@@ -176,6 +206,10 @@ impl Snapshot for State {
 pub enum Exit {
     Returned,
     Budget,
+    /// #BP (vetor 3) pendente. O host não entregou a exceção ao kernel guest.
+    Breakpoint {
+        pc: u32,
+    },
     /// CPU suspensa; não equivale a retorno do título ou orçamento esgotado.
     Halted {
         pc: u32,

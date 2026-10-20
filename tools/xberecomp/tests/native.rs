@@ -128,42 +128,49 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
             .arg(&target),
     );
     assert!(run.contains("EAX=62, instruções=37"), "{run}");
-    check_halted_main(cli, &output, &cargo, &target);
+    check_stopped_main(cli, &output, &cargo, &target);
 }
 
-fn check_halted_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
-    // Exercita também o main emitido: HLT deve sair com diagnóstico, sem
+fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    // Exercita também o main emitido: HLT e INT3 devem sair com diagnóstico, sem
     // anunciar conclusão nem girar até consumir o orçamento total.
-    let halted_project = output.join("halted-main");
-    check(
-        Command::new(cli)
-            .arg("translate")
-            .arg(output.join("src/control_assert.xbe"))
-            .arg("--out")
-            .arg(&halted_project),
-    );
-    let halted = Command::new(cargo)
-        .args(["run", "--offline", "--manifest-path"])
-        .arg(halted_project.join("Cargo.toml"))
-        .arg("--target-dir")
-        .arg(target)
-        .output()
-        .unwrap();
-    assert!(!halted.status.success());
-    let diagnostic = String::from_utf8_lossy(&halted.stderr);
-    assert!(diagnostic.contains("HLT em 0x00011001"), "{diagnostic}");
-    assert!(
-        diagnostic.contains("próximo EIP=0x00011002, IF=0"),
-        "{diagnostic}"
-    );
-    assert!(!String::from_utf8_lossy(&halted.stdout).contains("Execução nativa concluída"));
+    for (fixture, expected) in [
+        ("control_assert", "HLT em 0x00011001"),
+        ("bp_direct", "#BP (vetor 3) por INT3 em 0x00011000"),
+    ] {
+        let halted_project = output.join(format!("{fixture}-main"));
+        check(
+            Command::new(cli)
+                .arg("translate")
+                .arg(output.join(format!("src/{fixture}.xbe")))
+                .arg("--out")
+                .arg(&halted_project),
+        );
+        let halted = Command::new(cargo)
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(halted_project.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(!halted.status.success());
+        let diagnostic = String::from_utf8_lossy(&halted.stderr);
+        assert!(diagnostic.contains(expected), "{diagnostic}");
+        let next = if fixture == "control_assert" {
+            "próximo EIP=0x00011002, IF=0"
+        } else {
+            "próximo EIP=0x00011001"
+        };
+        assert!(diagnostic.contains(next), "{diagnostic}");
+        assert!(!String::from_utf8_lossy(&halted.stdout).contains("Execução nativa concluída"));
+    }
 }
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "88 passed"
+        "92 passed"
     } else {
-        "74 passed"
+        "78 passed"
     }
 }
 

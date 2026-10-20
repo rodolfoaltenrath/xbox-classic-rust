@@ -224,5 +224,7 @@ pub enum Operation {
     ClearInterrupts,
     /// Suspende a CPU guest e entrega o controle ao host.
     Halt,
+    /// INT3 (0xCC): fronteira de exceção #BP, sem entrega via IDT neste perfil.
+    Breakpoint,
     Nop,
 }

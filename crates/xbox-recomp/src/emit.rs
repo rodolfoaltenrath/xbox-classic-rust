@@ -23,8 +23,7 @@ use xbox_recomp::ir::{Width, Condition, Shift, Rotate, DoubleShift};\n\
 use xbox_mem::{Bus, GuestVirt, Contexto};\n\
 #[allow(unused_variables)]\n\
 pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
-    if s.returned { return Ok(Exit::Returned); }\n\
-    if let Some(exit) = s.halted_exit() { return Ok(exit); }\n\
+    if let Some(exit) = s.stopped_exit() { return Ok(exit); }\n\
     for _ in 0..blocks {\n\
         match s.eip {\n",
     );
@@ -64,10 +63,9 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
                 line(&mut out, "s.retired = s.retired.wrapping_add(1);");
             }
         }
-        line(&mut out, "if s.returned { return Ok(Exit::Returned); }");
         line(
             &mut out,
-            "if let Some(exit) = s.halted_exit() { return Ok(exit); }",
+            "if let Some(exit) = s.stopped_exit() { return Ok(exit); }",
         );
         line(&mut out, "}");
     }
@@ -199,6 +197,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             line(out, "s.eflags &= !xbox_recomp::runtime::INTERRUPT_FLAG;");
         }
         Operation::Halt => line(out, "s.halted = Some(s.eip);"),
+        Operation::Breakpoint => line(out, "s.breakpoint = Some(s.eip);"),
     }
     line(out, &format!("s.eip = 0x{next:08X};"));
 }

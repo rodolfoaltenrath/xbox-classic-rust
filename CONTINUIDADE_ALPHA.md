@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`aafacd9`** e nas alterações
-locais do **ADR-0026**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`684fabb`** e nas alterações
+locais do **ADR-0027**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,7 +42,7 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados e dispatcher concluídos; 1/69 serviços** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; INT3 pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 4 | ISA necessária | INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; SFENCE pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
 | 5 | Execução integrada | Pendente; há demonstração e fronteiras de execução reutilizáveis | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
@@ -152,7 +152,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Primeiro bloqueio atual do AOT | `INT3` em `0x20D6C`, região `0xCC` após CALL, em tempo de tradução |
+| Primeiro bloqueio atual do AOT | `SFENCE` em `0x12A43`, em tempo de tradução |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -236,8 +236,8 @@ foi de 69 para 71. O relatório mostra `1/69 serviços implementados`.
 **`1/69` não mede proximidade de executar o homebrew.** Após o dispatcher, o alvo
 parava em `LOCK CMPXCHG` em `0x209C3`. O ADR-0024 implementou essa operação e SETcc;
 o alvo passou a parar em RDTSC (`0x2055B`). O ADR-0025 implementou RDTSC com
-Clock guest. O ADR-0026 implementou CLI/HLT; o bloqueio atual é INT3 (`0x20D6C`),
-ainda antes da execução do homebrew.
+Clock guest. O ADR-0026 implementou CLI/HLT e o ADR-0027 modelou a fronteira #BP
+de INT3; o bloqueio atual é SFENCE (`0x12A43`), antes da execução do homebrew.
 
 Trabalho restante:
 
@@ -288,13 +288,22 @@ o PC da parada, avança EIP e devolve `Exit::Halted` com IF. O main gerado encer
 com diagnóstico, sem bloquear o host nem anunciar retorno. Polls, inclusive com
 orçamento zero, preservam estado e tempo; não há entrega de IRQ/NMI nem retomada
 automática. AOTC v5 guarda a parada e migra v1–v4 com CPU ativa, preservando as
-regras anteriores de tempo. O projeto gerado agora tem 88 testes em x86_64.
+regras anteriores de tempo. Essa entrega chegou a 88 testes gerados em x86_64.
 
-O primeiro bloqueio observado agora é **INT3 em `0x20D6C`**. O desassembly mostra
-CALL em `0x20D67`, seguido de preenchimento `0xCC` até `0x20D6F`. Investigar a
-chamada e o fluxo de término/trap sem presumir execução dessa região. A análise
-mantém a continuação de HLT e não remove bytes para avançar. Outros bloqueios
-ainda podem aparecer.
+O [ADR-0027](docs/adr/0027-int3-breakpoint-aot.md) modelou INT3 (`0xCC`) como
+`Exit::Breakpoint { pc }`, vetor 3, EIP seguinte e exceção persistente em polls e
+snapshots. Não há IDT/SEH nem retomada automática; o main encerra com diagnóstico.
+O preenchimento encontrado após CALL em `0x20D67` corresponde ao fim de abort,
+confirmado pelo objeto público e suas relocações para raise/exit. Isso não prova
+que esse caminho executou. A descoberta termina na exceção; branches e raízes
+explícitas continuam descobrindo seus destinos, inclusive depois de INT3.
+Retomada futura exige tratamento explícito e continuação traduzida.
+
+AOTC v6 guarda o breakpoint; v1–v5 migram sem essa pendência, preservando as
+regras anteriores de FS, Clock e HLT. O projeto gerado agora tem 92 casos em
+x86_64. O primeiro bloqueio observado é **SFENCE em `0x12A43`**, bytes `0F AE F8`.
+Definir o contrato de ordenação/visibilidade de stores no bus e nos dispositivos
+antes de implementar. Outros bloqueios ainda podem aparecer.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
 
@@ -308,7 +317,7 @@ precisar avançar intercalados; corrigir imports não prova que a ISA esteja pro
 **Objetivo:** conectar imagem, Rust gerado, bus, dispatcher e threads em uma
 execução observável e limitada pelo host.
 
-Reutilizar `Session`, `State`, `Exit::{Returned, Budget, KernelCall, Halted}` e os
+Reutilizar `Session`, `State`, `Exit::{Returned, Budget, KernelCall, Halted, Breakpoint}` e os
 snapshots. Implementar o ciclo de despacho HLE e retomada, orçamento/interrupção,
 logs úteis e relatório do primeiro erro não suportado. Manter separadas as
 condições de retorno, orçamento esgotado, espera de thread e término do processo.
@@ -372,8 +381,8 @@ cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
 cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --out target/alpha-hello
 ```
 
-Na referência atual, `check-memory` passa; `translate` falha em **INT3 no PC
-`0x20D6C`**. Os três dados, CMPXCHG, SETcc, RDTSC e CLI/HLT já não são os bloqueios. Isso ainda
+Na referência atual, `check-memory` passa; `translate` falha em **SFENCE no PC
+`0x12A43`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT e INT3 já não são os bloqueios. Isso ainda
 não significa execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
@@ -396,7 +405,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 88 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 92 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -422,9 +431,10 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
 > RtlInitAnsiString já existem. CMPXCHG/LOCK em RAM e SETcc passaram nos testes;
 > RDTSC também passou, com Clock guest e custo sintético explícito. CLI/HLT têm
-> controle/parada guest, polls sem efeitos e snapshot AOTC v5; ainda não há IRQ/NMI
-> ou retomada automática. O bloqueio atual de tradução é INT3 em 0x20D6C, numa
-> região de preenchimento após CALL. Investigue esse fluxo de término/trap e
+> controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
+> snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
+> termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
+> atual é SFENCE em 0x12A43. Defina ordenação/visibilidade dos stores no bus e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

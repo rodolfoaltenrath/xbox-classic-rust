@@ -141,7 +141,11 @@ impl Discovery {
                 // HLT pode ser retomado por um evento futuro. Traduzir também
                 // a continuação; parar a descoberta aqui esconderia código.
                 Operation::Indirect { call: true, .. } | Operation::Halt => self.enqueue(i.next),
-                Operation::Ret(_) | Operation::Indirect { call: false, .. } => {}
+                // INT3 transfere para uma exceção, sem fallthrough automático.
+                // Uma continuação futura deve ser raiz explícita (--entry).
+                Operation::Ret(_)
+                | Operation::Indirect { call: false, .. }
+                | Operation::Breakpoint => {}
                 Operation::String { repeat, .. } if repeat != Repeat::None => {
                     self.leaders.insert(pc);
                     self.enqueue(i.next);
@@ -218,6 +222,7 @@ fn build_blocks(
                     | Operation::Indirect { .. }
                     | Operation::Ret(_)
                     | Operation::Halt
+                    | Operation::Breakpoint
             ) || matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None)
                 || leaders.contains(&pc)
             {
@@ -540,6 +545,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Rdtsc => Operation::ReadTimestamp,
         Code::Cli => Operation::ClearInterrupts,
         Code::Hlt => Operation::Halt,
+        Code::Int3 => Operation::Breakpoint,
         _ => {
             return Err(fail(
                 pc,
