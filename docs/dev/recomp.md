@@ -402,6 +402,40 @@ a metade alta do destino. Não há variante byte, LOCK ou REP habilitados.
 Há 32768 comparações do Rust gerado com CMOV físico no oráculo opcional,
 mais testes portáveis de condições, memória RO, faltas, aliases, FS/SIB, SP/ESP,
 snapshots e tempo. São 103 testes nativos em x86_64, com AOTC ainda v6.
-O próximo bloqueio real é BSR em `0x1657C`, seguido de JZ; tratar origem zero,
-ZF e a política de resultados indefinidos ao implementar. Detalhes:
+O bloqueio seguinte foi BSR em `0x1657C`, seguido de JZ, tratado no ADR-0030.
+Detalhes de CMOVcc:
 [ADR-0029](../adr/0029-cmovcc.md).
+
+## BSF/BSR — ADR-0030
+
+BSF/BSR suportam 16/32 bits e origem registrador/memória. Para origem não zero,
+gravam o índice do bit menos/mais significativo e limpam ZF. Em zero, marcam
+ZF e preservam o destino como política determinística do runtime. As demais
+flags aritméticas indefinidas são zeradas; IF/DF e demais bits são preservados.
+Não habilita TZCNT/LZCNT. AOTC permanece v6 e o tempo continua no perfil 1.
+
+O projeto gerado tem 110 testes em x86_64 (94 em outros hosts). As 262144
+comparações físicas conferem ZF e, em origem não zero, o destino; os valores
+indefinidos da CPU física não são usados como contrato. Outros testes cobrem
+word, memória RO/faltante, aliases, FS/SIB, SP/ESP, JZ, snapshots e tempo.
+
+A análise do fluxo atualmente descoberto do hello passa com 8725 instruções e
+blocos. Isso não garante todas as entradas de threads/callbacks nem serviços
+implementados. Contratos e resultado integrado:
+[ADR-0030](../adr/0030-bsf-bsr.md).
+
+## Funções de bloco e execução real — ADR-0031
+
+O primeiro binário do hello compilou, mas estourou a pilha host por concentrar
+milhares de blocos em uma função. Agora cada bloco é uma função não inlineada;
+o dispatcher seleciona um ponteiro de função e chama um bloco por passagem.
+Limite final: 32 instruções, aplicado depois da inferência de destinos.
+CALL/RET guest continuam em EIP/ESP/RAM, sem recursão nativa. Sequências longas
+podem ceder antes no orçamento de blocos, sem mudar tempo guest ou AOTC v6.
+
+Uma regressão executa 1000 ADDs lineares e 1000 pares ADD/JMP em pilha host
+solicitada de 128 KiB. O conjunto final tem 111 testes nativos em x86_64.
+Com `--entry 0x19110`, o hello real traduz 8769 instruções/blocos, compila e
+executa até NtCreateMutant (192), retorno reportado `0x18CFA`, argumentos
+`0x28EEC, 0, 0`. Sem essa raiz explícita, a execução recusa o destino do CALL
+em `0x209D2`. Reprodução e limites: [ADR-0031](../adr/0031-blocos-aot-pilha-host.md).

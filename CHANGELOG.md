@@ -10,6 +10,19 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT: BSF/BSR de 16/32 bits, com origem registrador/memória e ZF.
+  Política determinística: preservar destino em origem zero e zerar as demais
+  flags aritméticas indefinidas. Aliases, FS/SIB, SP/ESP, faltas, branches e
+  snapshots cobertos; 262144 comparações físicas dos resultados definidos.
+  AOTC continua v6; 110 testes nativos em x86_64. A análise do fluxo descoberto
+  do hello passa com 8725 instruções/blocos (ADR-0030).
+
+- Fase 3-AOT/alpha: blocos emitidos em funções não inlineadas, dispatcher com
+  chamada única e limite de 32 instruções por bloco, corrigindo o estouro de
+  pilha observado no hello real. Regressão com pilha host de 128 KiB; 111 testes
+  nativos. Com `--entry 0x19110`, 8769 instruções/blocos do hello compilam e
+  executam até NtCreateMutant (192), ainda não implementado (ADR-0031).
+
 - Fase 3-AOT: CMOVcc nas 16 condições, com origem registrador/memória de
   16/32 bits, leitura incondicional antes da condição e flags preservadas.
   Faltas, aliases, FS/SIB, SP/ESP, snapshots e tempo cobertos; 32768 comparações

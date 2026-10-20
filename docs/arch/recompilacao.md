@@ -88,8 +88,17 @@ de uma instrução REP, isolada de seu setup e de sua continuação.
 Com CALL/JMP indireto, todos os inícios de instrução decodificados viram blocos
 para admitir destinos dinâmicos internos. A granularidade do orçamento passa a
 uma instrução por bloco nesse programa, ou um elemento por passagem de REP.
-Sem CALL/JMP indireto, os blocos anteriores são preservados. A inferência não
+Sem CALL/JMP indireto, o agrupamento por fluxo é preservado até o limite final
+descrito abaixo. A inferência não
 varre dados, não cruza blocos/calls e não presume valores da memória gravável.
+
+Desde o ADR-0031, o particionamento final limita blocos a 32 instruções, depois
+da inferência de destinos. Cada bloco é uma função não inlineada; o dispatcher
+seleciona um ponteiro de função e faz uma chamada, que retorna antes da próxima.
+Isso corrige o estouro de pilha host do emissor monolítico. CALL/RET guest
+continuam explícitos em EIP/ESP/RAM, sem recursão de chamadas nativas. Orçamento
+continua em blocos; sequências longas passam a ceder mais cedo. AOTC permanece v6
+([ADR-0031](../adr/0031-blocos-aot-pilha-host.md)).
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
 e indicador de retorno. Guarda também FS, o Clock único da sessão AOT atual e
@@ -122,6 +131,10 @@ CMOVcc usa as 16 condições existentes e origem de 16/32 bits capturada antes
 da condição, mesmo se falsa. Flags e o destino em condição falsa são preservados;
 leituras faltantes continuam falhando. Word preserva a metade alta do registrador.
 Não há estado novo ([ADR-0029](../adr/0029-cmovcc.md)).
+BSF/BSR calculam índices em origem de 16/32 bits e definem ZF. O perfil preserva
+o destino em origem zero e normaliza CF/PF/AF/SF/OF para zero, pois são indefinidos
+na referência clássica. IF/DF são preservados; uma leitura faltante não altera
+CPU. AOTC continua v6 ([ADR-0030](../adr/0030-bsf-bsr.md)).
 Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro

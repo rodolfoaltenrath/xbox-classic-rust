@@ -71,9 +71,12 @@ seguinte foi CLI/HLT no caminho de assert do SDK, agora implementados no
 ADR-0026. INT3 em `0x20D6C`, no preenchimento após a chamada a exit em abort,
 agora tem fronteira #BP (ADR-0027). SFENCE em `0x12A43` chama a barreira do bus
 síncrono exclusivo (ADR-0028). CMOVNE em `0x13B88` está coberto pelas 16 condições
-CMOVcc de 16/32 bits (ADR-0029). O bloqueio atual é **BSR em `0x1657C`**.
-A análise estática não prova execução dessas regiões nem oferece a lista completa
-da ISA necessária.
+CMOVcc de 16/32 bits (ADR-0029). BSF/BSR destravaram o fluxo descoberto (ADR-0030).
+Separar funções de bloco corrigiu a pilha host do primeiro executável real.
+Com `--entry 0x19110`, o hello traduz 8769 instruções/blocos e executa até
+**NtCreateMutant (192)**, retorno reportado `0x18CFA`, argumentos `0x28EEC, 0, 0`
+(ADR-0031). A análise estática não oferece a lista completa da ISA necessária
+para futuros callbacks/threads.
 
 ## Infraestrutura implementada
 
@@ -135,6 +138,22 @@ faltas e efeitos de leitura do bus. Suporta word/dword, registrador/memória,
 FS/SIB e destinos SP/ESP, sem alterar flags. AOTC permanece v6; 32768 casos
 comparados com CPU física no oráculo opcional
 ([ADR-0029](../adr/0029-cmovcc.md)).
+
+BSF/BSR definem ZF; o perfil preserva destino em origem zero e zera as demais
+flags aritméticas indefinidas. O código gerado usa funções por bloco, com até
+32 instruções, e preserva a pilha guest em RAM. AOTC continua v6. Reprodução em
+diretório novo/vazio:
+
+```powershell
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --out target/alpha-hello
+cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
+```
+
+Sem essa entrada explícita, a execução para em `UnknownTarget` no CALL de
+`0x209D2` para `0x19110`. Com ela, o erro é o serviço NtCreateMutant ainda
+não implementado. Isso demonstra execução inicial real, não o hello funcional
+com framebuffer. Contratos/evidências: [ADR-0030](../adr/0030-bsf-bsr.md) e
+[ADR-0031](../adr/0031-blocos-aot-pilha-host.md).
 
 ## Referências públicas
 

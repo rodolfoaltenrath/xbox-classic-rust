@@ -4,6 +4,7 @@ use std::path::Path;
 use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
+mod blocks;
 mod breakpoint;
 mod conditional;
 mod control;
@@ -14,6 +15,7 @@ mod kernel;
 mod muldiv;
 mod ordering;
 mod rotations;
+mod scan;
 mod shifts;
 mod strings;
 mod timing;
@@ -60,6 +62,8 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&breakpoint::sources(output));
     main.push_str(&ordering::sources(output));
     main.push_str(&conditional::sources(output));
+    main.push_str(&scan::sources(output));
+    main.push_str(&blocks::sources(output));
 }
 
 fn structural_images(output: &Path) {

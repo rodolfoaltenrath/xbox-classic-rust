@@ -8,12 +8,16 @@ use iced_x86::{
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
 pub use crate::ir::{
-    Binary, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift,
-    StringOp, Unary, Width,
+    Binary, BitScan, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate,
+    Shift, StringOp, Unary, Width,
 };
 use crate::{Error, Result};
 
 mod targets;
+
+/// Limita o trabalho/local storage de cada função de bloco gerada. A inferência
+/// conserva os blocos originais; o particionamento só ocorre no programa final.
+pub const MAX_BLOCK_INSTRUCTIONS: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Insn {
@@ -90,13 +94,23 @@ pub fn analyze_with_entries(bytes: &[u8], entries: &[u32]) -> Result<Program> {
     {
         graph.leaders.extend(graph.instructions.keys());
     }
-    let blocks = build_blocks(&graph.instructions, &graph.leaders)?;
+    let blocks = bounded_blocks(build_blocks(&graph.instructions, &graph.leaders)?);
     Ok(Program {
         entry: xbe.entry_point,
         instructions: graph.instructions,
         blocks,
         kernel_imports,
     })
+}
+
+fn bounded_blocks(blocks: BTreeMap<u32, Vec<Insn>>) -> BTreeMap<u32, Vec<Insn>> {
+    let mut bounded = BTreeMap::new();
+    for block in blocks.into_values() {
+        for chunk in block.chunks(MAX_BLOCK_INSTRUCTIONS) {
+            bounded.insert(chunk[0].pc, chunk.to_vec());
+        }
+    }
+    bounded
 }
 
 #[derive(Debug, Default)]
@@ -505,6 +519,25 @@ fn lower_multiply_divide(i: &Instruction) -> Result<Option<Operation>> {
 }
 
 fn lower_bit_motion(i: &Instruction) -> Result<Option<Operation>> {
+    let scan = match i.mnemonic() {
+        Mnemonic::Bsf => Some(BitScan::Forward),
+        Mnemonic::Bsr => Some(BitScan::Reverse),
+        _ => None,
+    };
+    if let Some(kind) = scan {
+        let dst = operand(i, 0)?;
+        let src = operand(i, 1)?;
+        if i.op0_kind() != OpKind::Register
+            || !matches!(dst.width(), Some(Width::Word | Width::Dword))
+            || src.width() != dst.width()
+        {
+            return Err(fail(
+                i.ip32(),
+                "BSF/BSR exigem destino registrador e origem r/m de 16/32 bits",
+            ));
+        }
+        return Ok(Some(Operation::BitScan { kind, dst, src }));
+    }
     let shift = match i.mnemonic() {
         Mnemonic::Shl => Some(Shift::Shl),
         Mnemonic::Shr => Some(Shift::Shr),

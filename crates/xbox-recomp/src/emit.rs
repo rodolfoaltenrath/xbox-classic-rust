@@ -4,8 +4,8 @@ use std::fmt::Write;
 
 use crate::analysis::Program;
 use crate::ir::{
-    Binary, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift, StringOp, Unary,
-    Width,
+    Binary, BitScan, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift, StringOp,
+    Unary, Width,
 };
 
 mod strings;
@@ -25,7 +25,7 @@ use xbox_mem::{Bus, GuestVirt, Contexto};\n\
 pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
     if let Some(exit) = s.stopped_exit() { return Ok(exit); }\n\
     for _ in 0..blocks {\n\
-        match s.eip {\n",
+        let block: fn(&mut State, &mut Bus) -> Result<()> = match s.eip {\n",
     );
     for export in &program.kernel_imports {
         let ordinal = export.ordinal;
@@ -37,8 +37,17 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
             ),
         );
     }
+    for start in program.blocks.keys() {
+        line(&mut out, &format!("0x{start:08X} => block_{start:08X},"));
+    }
+    out.push_str("            pc => return Err(Error::UnknownBlock(pc)),\n        };\n        block(s, bus)?;\n        if let Some(exit) = s.stopped_exit() { return Ok(exit); }\n    }\n    Ok(Exit::Budget)\n}\n");
     for (start, instructions) in &program.blocks {
-        line(&mut out, &format!("0x{start:08X} => {{"));
+        // Sem inlining: o frame nativo depende deste bloco limitado, não do
+        // total de locais temporários de milhares de braços do dispatcher.
+        let _ = writeln!(
+            out,
+            "\n#[inline(never)]\n#[allow(unused_variables, non_snake_case)]\nfn block_{start:08X}(s: &mut State, bus: &mut Bus) -> Result<()> {{"
+        );
         for i in instructions {
             line(&mut out, &format!("s.eip = 0x{:08X};", i.pc));
             line(&mut out, "s.check_time_step()?;");
@@ -63,13 +72,8 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
                 line(&mut out, "s.retired = s.retired.wrapping_add(1);");
             }
         }
-        line(
-            &mut out,
-            "if let Some(exit) = s.stopped_exit() { return Ok(exit); }",
-        );
-        line(&mut out, "}");
+        out.push_str("    Ok(())\n}\n");
     }
-    out.push_str("            pc => return Err(Error::UnknownBlock(pc)),\n        }\n    }\n    Ok(Exit::Budget)\n}\n");
     if program
         .instructions
         .values()
@@ -118,6 +122,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             dst,
             src,
         } => emit_conditional_move(out, *condition, dst, src),
+        Operation::BitScan { kind, dst, src } => emit_bit_scan(out, *kind, dst, src),
         Operation::Unary(op, dst) => emit_unary(out, *op, dst),
         Operation::Shift(op, dst, count) => emit_shift(out, *op, dst, count),
         Operation::Rotate(op, dst, count) => emit_rotate(out, *op, dst, count),
@@ -223,6 +228,28 @@ fn emit_return(out: &mut String, bytes: u16) {
     );
     line(out, "s.eip = target;");
     line(out, "s.returned = target == RETURN_SENTINEL;");
+}
+
+fn emit_bit_scan(out: &mut String, kind: BitScan, dst: &Operand, src: &Operand) {
+    // Capturar a origem (e qualquer falta) antes de alterar destino ou flags.
+    // Word já é mascarado pela leitura do operando; nenhum scan de zero é feito.
+    line(out, &format!("let value = {};", read(src)));
+    line(out, "if value != 0 {");
+    line(
+        out,
+        match kind {
+            BitScan::Forward => "let result = value.trailing_zeros();",
+            BitScan::Reverse => "let result = 31 - value.leading_zeros();",
+        },
+    );
+    write_operand(out, dst, "result");
+    line(out, "}");
+    // Política explícita: preservar destino em zero e zerar CF/PF/AF/SF/OF,
+    // indefinidos na referência clássica. Somente ZF tem valor definido pela ISA.
+    line(
+        out,
+        "s.eflags = (s.eflags & !0x8D5u32) | if value == 0 { 0x40 } else { 0 };",
+    );
 }
 
 fn emit_conditional_move(

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`6b08704`** e nas alterações
-locais do **ADR-0029**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`e7de1c3`** e nas alterações
+locais dos **ADRs 0030/0031**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -32,8 +32,10 @@ controle de execução pelo host e apresentação do framebuffer produzido pelo
 homebrew. Não há compromisso de executar jogos comerciais neste primeiro alpha.
 Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 
-**Estado atual:** a demonstração própria já executa Rust recompilado, mas o
-`hello` completo do nxdk e os jogos comerciais **ainda não executam**.
+**Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
+descoberto do hello traduz e inicia nativamente até NtCreateMutant (192).
+A execução integrada completa e o framebuffer ainda estão pendentes.
+Jogos comerciais ainda não executam.
 
 ## As seis entregas e o estado das duas já trabalhadas
 
@@ -42,8 +44,8 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados e dispatcher concluídos; 1/69 serviços** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | CMOVcc, SFENCE, INT3, CLI/HLT, RDTSC/Clock, CMPXCHG/LOCK e SETcc implementados; BSR pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Pendente; há demonstração e fronteiras de execução reutilizáveis | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 5 | Execução integrada | Execução inicial real até NtCreateMutant; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há **duas entregas de implementação registradas em commits**, mas isso não
@@ -152,7 +154,8 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Primeiro bloqueio atual do AOT | `BSR` em `0x1657C`, em tempo de tradução |
+| Análise AOT atual | 8725 instruções/blocos; 8769 com `--entry 0x19110`; sem recusa de ISA nesse fluxo |
+| Primeiro bloqueio de execução | NtCreateMutant (192), retorno reportado `0x18CFA`; argumentos `0x28EEC, 0, 0` |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -238,8 +241,10 @@ parava em `LOCK CMPXCHG` em `0x209C3`. O ADR-0024 implementou essa operação e 
 o alvo passou a parar em RDTSC (`0x2055B`). O ADR-0025 implementou RDTSC com
 Clock guest. O ADR-0026 implementou CLI/HLT e o ADR-0027 modelou a fronteira #BP
 de INT3. O ADR-0028 implementou SFENCE no bus síncrono exclusivo; o bloqueio
-seguinte foi CMOVNE (`0x13B88`). O ADR-0029 implementou CMOVcc; o bloqueio atual
-é BSR (`0x1657C`), antes da execução do homebrew.
+seguinte foi CMOVNE (`0x13B88`). O ADR-0029 implementou CMOVcc e encontrou BSR
+(`0x1657C`). O ADR-0030 implementou BSF/BSR e permitiu traduzir o fluxo descoberto
+(8725 instruções/blocos). Após corrigir a pilha host e incluir um callback
+explícito, a execução real chega a NtCreateMutant (ADR-0031), sem concluir o alpha.
 
 Trabalho restante:
 
@@ -325,10 +330,36 @@ fixo em registradores locais e flags mascaradas; não recebe endereços guest.
 São 32768 comparações físicas e 103 testes gerados em x86_64. Não há estado novo:
 AOTC permanece v6 e o perfil de tempo permanece 1.
 
-O primeiro bloqueio observado agora é **BSR em `0x1657C`**, bytes `0F BD CB`
-(EBX → ECX), seguido de JZ em `0x1657F`. Implementar varredura de bits e validar
-origem zero/ZF, incluindo a política para destinos/flags indefinidos.
-Outros bloqueios ainda podem aparecer.
+O [ADR-0030](docs/adr/0030-bsf-bsr.md) implementou BSF/BSR de 16/32 bits,
+com origem registrador/memória e ZF definido. Para zero, o runtime preserva o
+destino; normaliza CF/PF/AF/SF/OF para zero, como política para os indefinidos da
+referência clássica. Word usa só os 16 bits baixos e preserva a metade alta do
+destino. AOTC permanece v6, perfil de tempo 1. O novo unsafe está só no oráculo
+físico opcional; AOT/runtime/bus continuam sem novo unsafe.
+
+São 262144 comparações físicas dos campos definidos (em zero, somente ZF),
+mais testes portáveis de flags/zero, RO/faltas, aliases, FS/SIB, SP/ESP, branches,
+snapshots e tempo. O projeto gerado tem 110 casos em x86_64 (94 em outros hosts).
+A análise real do fluxo descoberto do hello **passa com 8725 instruções e blocos**.
+Isso não garante novos destinos de threads/callbacks, todos os serviços nem
+execução completa: implementar/descobrir novos caminhos pode revelar mais ISA.
+
+O [ADR-0031](docs/adr/0031-blocos-aot-pilha-host.md) corrigiu um estouro de pilha
+host no primeiro executável real: cada bloco agora é função não inlineada, com
+até 32 instruções. O dispatcher seleciona o ponteiro de função e faz uma chamada
+por passagem; CALL/RET guest não geram recursão nativa. A inferência de destinos
+ocorre antes de limitar os blocos. Orçamento de sequências longas fica mais fino,
+sem alterar Clock ou AOTC v6. Há regressão em pilha host solicitada de 128 KiB.
+O total final é 111 testes gerados em x86_64 (95 em outros hosts).
+
+A execução revelou `UnknownTarget` no CALL `0x209D2 → 0x19110`. Essa raiz de
+callback é adicionada explicitamente com `--entry 0x19110`; sem ela o erro deve
+continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
+**NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
+argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
+O próximo trabalho é modelar handles/objetos e mutant com estado real, incluindo
+a escrita do handle guest e planejamento de ownership/espera. Não retornar
+sucesso fictício; o dispatcher deve continuar recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
 
@@ -403,12 +434,14 @@ No Windows usado como referência:
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-homebrew.sh
 cargo run --offline -p ordinal-report -- target/homebrew/hello.xbe
 cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --out target/alpha-hello
+cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Na referência atual, `check-memory` passa; `translate` falha em **BSR no PC
-`0x1657C`**. Os três dados, CMPXCHG, SETcc, RDTSC, CLI/HLT, INT3, SFENCE e CMOVcc já não são os bloqueios. Isso ainda
-não significa execução completa nem serviços suficientes. A tradução exige
+Na referência atual, `check-memory` e `translate` passam. Com a entrada explícita,
+o binário nativo para em **NtCreateMutant (192)**, sem framebuffer. Sem ela,
+para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
+completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
 
@@ -430,7 +463,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 103 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 111 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -459,10 +492,14 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
 > snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
 > termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é BSR em 0x1657C, seguido de JZ. SFENCE chama a barreira do bus síncrono exclusivo,
+> atual é NtCreateMutant (192), retorno 0x18CFA, argumentos 0x28EEC, 0, 0.
+> O hello real traduz/compila/inicia com --entry 0x19110 (callback observado em
+> 0x209D2). Funções de bloco limitadas corrigiram a pilha host; são 8769 blocos.
+> SFENCE chama a barreira do bus síncrono exclusivo,
 > sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
 > CMOVcc já cobre as 16 condições em 16/32 bits e lê a origem mesmo se falsa.
-> Implemente varredura de bits com origem zero/ZF e política de indefinidos e
+> BSF/BSR também estão implementados, com ZF e política determinística para zero.
+> Implemente handles/objetos e NtCreateMutant com estado real e
 > continue intercalando ISA, serviços e threads conforme os bloqueios reais.
 > Reutilize o AOT em Rust, o bus e o estado explícito. Não use
 > respostas genéricas de sucesso ou testes próprios como prova de execução do

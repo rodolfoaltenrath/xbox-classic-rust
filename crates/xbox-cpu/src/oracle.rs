@@ -9,6 +9,7 @@ pub use double::{DoubleShift, DoubleWidth, execute_double_shift};
 pub mod conditional;
 pub mod exchange;
 pub mod muldiv;
+pub mod scan;
 pub mod strings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

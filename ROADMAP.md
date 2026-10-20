@@ -1126,6 +1126,8 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | INT3 e fronteira #BP guest (ADR-0027) | — | Exceção persistente, EIP seguinte, descoberta terminal e diagnóstico; AOTC v6 e 92 casos nativos; próximo bloqueio real: SFENCE em 0x12A43 |
 | 2026-10-20 | 3-AOT | SFENCE e ordenação do bus (ADR-0028) | — | Perfil síncrono exclusivo sem filas a drenar; 96 casos nativos e contrato de alias/físico/DMA sob Miri; AOTC continua v6; próximo bloqueio real: CMOVNE em 0x13B88 |
 | 2026-10-20 | 3-AOT | CMOVcc de 16/32 bits (ADR-0029) | — | 16 condições, origem lida mesmo se falsa; aliases/FS/SIB/SP/ESP, faltas e snapshots; 32768 comparações físicas e 103 testes nativos; próximo bloqueio real: BSR em 0x1657C |
+| 2026-10-20 | 3-AOT | BSF/BSR de 16/32 bits (ADR-0030) | — | ZF e política de indefinidos; 262144 comparações físicas; fluxo descoberto do hello traduz com 8725 instruções/blocos |
+| 2026-10-20 | 3-AOT / 4 | Pilha host limitada e primeira execução nativa do hello (ADR-0031) | — | Funções por bloco, limite de 32 instruções, regressão em 128 KiB; 111 casos nativos; com --entry 0x19110, 8769 blocos executam até NtCreateMutant (192), retorno 0x18CFA |
 
 ---
 
@@ -1135,12 +1137,13 @@ Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
    (ADR-0022) e o dispatcher existe com `1/69` serviços (ADR-0023). Faltam os serviços
-   de inicialização e o modelo de threads do nxdk hello. **O próximo bloqueio é de ISA,
-   em tempo de tradução:** `BSR` em `0x1657C`, após implementar CMOVcc no
-   ADR-0029. Validar origem zero/ZF e a política para destinos/flags indefinidos
-   na varredura de bits.
-   Manter o tempo sintético distinto de latências físicas. Sendo AOT, instrução
-   faltante bloqueia antes de qualquer serviço ser exercitado.
+   de inicialização e o modelo de threads do nxdk hello. **O bloqueio atual é
+   NtCreateMutant (192), em execução**, retorno reportado `0x18CFA`, argumentos
+   `0x28EEC, 0, 0`. BSF/BSR destravaram a tradução; separar blocos corrigiu a
+   pilha host. Com `--entry 0x19110`, 8769 blocos compilam e iniciam nativamente
+   (ADRs 0030/0031). Modelar handles/objetos e mutant com estado real; não
+   retornar sucesso genérico. Novas raízes de callbacks/threads podem revelar
+   mais ISA. O framebuffer e o aceite integrado ainda estão pendentes.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.
 3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de

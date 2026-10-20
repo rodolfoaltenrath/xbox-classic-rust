@@ -84,6 +84,12 @@ pub enum Unary {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BitScan {
+    Forward,
+    Reverse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shift {
     Shl,
     Shr,
@@ -165,6 +171,11 @@ pub enum Operation {
     },
     ConditionalMove {
         condition: Condition,
+        dst: Operand,
+        src: Operand,
+    },
+    BitScan {
+        kind: BitScan,
         dst: Operand,
         src: Operand,
     },
