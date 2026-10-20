@@ -26,7 +26,7 @@ mod mutants;
 mod nvram;
 mod sha;
 use mutants::Mutants;
-pub use mutants::{INITIAL_THREAD, MAX_MUTANTS, Mutant};
+pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 
@@ -37,6 +37,8 @@ use crate::loader::Result as LoaderResult;
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
+pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
+pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
@@ -44,6 +46,16 @@ pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
 pub const STATUS_SUCCESS: u32 = 0;
 pub const STATUS_ACCESS_VIOLATION: u32 = 0xC000_0005;
 pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
+pub const STATUS_INVALID_HANDLE: u32 = 0xC000_0008;
+/// Estouro da contagem de recursão de um mutant.
+pub const STATUS_MUTANT_LIMIT_EXCEEDED: u32 = 0xC000_0191;
+/// Liberação pedida por quem não é o proprietário do mutant.
+pub const STATUS_MUTANT_NOT_OWNED: u32 = 0xC000_0046;
+/// Espera satisfeita pelo objeto de índice zero.
+///
+/// Numericamente igual a [`STATUS_SUCCESS`], mas com significado próprio: é o valor
+/// que o `mtx_lock` do nxdk compara para decidir se o lock foi adquirido.
+pub const STATUS_WAIT_0: u32 = 0;
 
 /// Ordinais cujo serviço está implementado.
 ///
@@ -53,6 +65,8 @@ pub const STATUS_INSUFFICIENT_RESOURCES: u32 = 0xC000_009A;
 pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_NT_CREATE_MUTANT,
+    ORDINAL_NT_RELEASE_MUTANT,
+    ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
     ORDINAL_RTL_INIT_ANSI_STRING,
     ORDINAL_XC_SHA_INIT,
     ORDINAL_XC_SHA_UPDATE,
@@ -186,6 +200,8 @@ impl Dispatcher {
         let resultado = match export.ordinal {
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
+            ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
+            ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             ORDINAL_XC_SHA_INIT => sha::init(bus, &call),
             ORDINAL_XC_SHA_UPDATE => sha::update(bus, &call),
@@ -207,6 +223,97 @@ impl Dispatcher {
             self.recusadas = self.recusadas.saturating_add(1);
         }
         resultado
+    }
+
+    /// `NTSTATUS NtWaitForSingleObject(HANDLE, BOOLEAN Alertable, PLARGE_INTEGER Timeout)`
+    ///
+    /// Só sabe esperar em mutant, que é o único objeto que este kernel cria. A espera
+    /// **nunca bloqueia a thread do host**: com uma thread guest, ou a aquisição é
+    /// imediata, ou o estado é um que este perfil não representa e vira erro
+    /// identificável. É assim que o `mtx_lock` do nxdk chega aqui — handle, `FALSE`,
+    /// timeout nulo — esperando `STATUS_WAIT_0`.
+    fn nt_wait_for_single_object(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        let handle = call.argument(bus, 0)?;
+        // BOOLEAN ocupa uma palavra na ABI, mas só o byte baixo importa.
+        let alertable = call.argument(bus, 1)? as u8 != 0;
+        let timeout = call.argument(bus, 2)?;
+
+        let variante = |detalhe| {
+            Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe,
+                argumentos: descrever_argumentos(bus, call),
+            })
+        };
+
+        if alertable {
+            // Espera alertável exige entrega de APC, que não existe.
+            return variante("espera alertável exige APCs, ainda não modeladas");
+        }
+        if timeout != 0 {
+            // `mtx_timedlock`/`mtx_trylock` passam intervalo; exige relógio de espera.
+            return variante("espera com timeout ainda não modelada");
+        }
+
+        // Todo handle existente neste kernel vem de `NtCreateMutant`; nenhum outro
+        // serviço cria objeto. Então handle fora da tabela é genuinamente inválido, e
+        // não "objeto de tipo que não modelamos" — se outro tipo passar a existir, este
+        // caminho precisa distinguir os dois casos.
+        let Some(aquisicao) = self.mutants.acquire(handle, INITIAL_THREAD) else {
+            return Ok(Atendimento {
+                eax: STATUS_INVALID_HANDLE,
+            });
+        };
+
+        match aquisicao {
+            Aquisicao::Adquirido(_) => Ok(Atendimento { eax: STATUS_WAIT_0 }),
+            Aquisicao::LimiteDeRecursao => Ok(Atendimento {
+                eax: STATUS_MUTANT_LIMIT_EXCEEDED,
+            }),
+            // Inalcançável com uma thread só. Se acontecer, é bug nosso ou feature
+            // nova: relatar, nunca bloquear o host nem devolver sucesso.
+            Aquisicao::OutroProprietario(_) => {
+                variante("espera bloqueante exige scheduler de threads guest")
+            }
+        }
+    }
+
+    /// `NTSTATUS NtReleaseMutant(HANDLE MutantHandle, PLONG PreviousCount)`
+    ///
+    /// Par do serviço acima: é por aqui que o `mtx_unlock` do nxdk passa, com o handle
+    /// e `PreviousCount` nulo.
+    fn nt_release_mutant(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        let handle = call.argument(bus, 0)?;
+        let previous_count = call.argument(bus, 1)?;
+
+        if previous_count != 0 {
+            // `PreviousCount` devolve o estado de sinal anterior do mutant, que não é a
+            // contagem de recursão: a convenção do kernel relaciona os dois, e não
+            // temos como verificar a relação exata com o alvo atual, que passa nulo.
+            // Escrever um valor derivado de suposição seria resultado errado em
+            // silêncio — o pior caso. Recusar a variante mantém o erro visível.
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "PreviousCount exige a convenção de estado de sinal, não verificada",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        }
+
+        let Some(liberacao) = self.mutants.release(handle, INITIAL_THREAD) else {
+            return Ok(Atendimento {
+                eax: STATUS_INVALID_HANDLE,
+            });
+        };
+        Ok(Atendimento {
+            eax: match liberacao {
+                Liberacao::Liberado { .. } => STATUS_SUCCESS,
+                Liberacao::NaoEraProprietario => STATUS_MUTANT_NOT_OWNED,
+            },
+        })
     }
 
     fn nt_create_mutant(&mut self, bus: &mut Bus, call: &Call) -> Resultado {

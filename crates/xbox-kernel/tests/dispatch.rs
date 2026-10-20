@@ -8,8 +8,12 @@ use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::fixtures::xbe_com_imports;
 use xbox_kernel::dispatch::{Dispatcher, Erro, IMPLEMENTADOS, ORDINAL_RTL_INIT_ANSI_STRING};
 use xbox_kernel::dispatch::{
-    INITIAL_THREAD, MAX_MUTANTS, ORDINAL_NT_CREATE_MUTANT, STATUS_ACCESS_VIOLATION,
+    INITIAL_THREAD, MAX_MUTANTS, MAX_RECURSION, ORDINAL_NT_CREATE_MUTANT, STATUS_ACCESS_VIOLATION,
     STATUS_INSUFFICIENT_RESOURCES, STATUS_SUCCESS,
+};
+use xbox_kernel::dispatch::{
+    ORDINAL_NT_RELEASE_MUTANT, ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT, STATUS_INVALID_HANDLE,
+    STATUS_MUTANT_LIMIT_EXCEEDED, STATUS_MUTANT_NOT_OWNED, STATUS_WAIT_0,
 };
 use xbox_kernel::imports::{self, Kind};
 use xbox_kernel::loader::{Image, STACK_BASE, STACK_SIZE};
@@ -421,4 +425,231 @@ fn snapshot_malformado_nao_injeta_handles_ou_proprietarios_invalidos() {
             .load(&mut SnapshotReader::new(&valid[..valid.len() - 1]).unwrap())
             .is_err()
     );
+}
+
+// ─── Espera e liberação de mutant (ADR-0035) ──────────────────────────────────────
+
+/// Imagem com vários imports: devolve o bus, os trampolins na ordem pedida e os
+/// registradores. Permite encadear criar → esperar → liberar no mesmo estado.
+fn chamadas(ordinais: &[u32], palavras: u32) -> (Bus, Vec<u32>, [u32; 8]) {
+    let bytes = xbe_com_imports(&[0xC3], ordinais).unwrap();
+    let startup = Image::prepare_aot(&bytes).unwrap();
+    let mut bus = startup.image.bus;
+    let esp = STACK_BASE + STACK_SIZE - 0x100 - palavras * 4;
+    bus.escrever_u32(GuestVirt(esp), RETORNO).unwrap();
+    let mut regs = [0u32; 8];
+    regs[4] = esp;
+    let pcs = ordinais.iter().map(|o| imports::trampoline(*o)).collect();
+    (bus, pcs, regs)
+}
+
+/// Cria um mutant livre e devolve o handle.
+fn criar_livre(d: &mut Dispatcher, bus: &mut Bus, pc: u32, regs: &[u32; 8]) -> u32 {
+    argumento(bus, regs, 0, 0x12010);
+    argumento(bus, regs, 1, 0);
+    argumento(bus, regs, 2, 0);
+    assert_eq!(d.atender(bus, pc, regs).unwrap().eax, STATUS_SUCCESS);
+    bus.ler_u32(GuestVirt(0x12010)).unwrap()
+}
+
+#[test]
+fn espera_adquire_mutex_livre_recursa_e_liberacao_devolve_a_posse() {
+    // É o ciclo que `mtx_lock`/`mtx_unlock` do nxdk produz.
+    let (mut bus, pcs, regs) = chamadas(
+        &[
+            ORDINAL_NT_CREATE_MUTANT,
+            ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
+            ORDINAL_NT_RELEASE_MUTANT,
+        ],
+        3,
+    );
+    let mut d = Dispatcher::new();
+    let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
+    assert_eq!(d.mutant(handle).unwrap().owner, None);
+
+    // Primeira aquisição: passa a ser da thread inicial, contagem 1.
+    argumento(&mut bus, &regs, 0, handle);
+    argumento(&mut bus, &regs, 1, 0);
+    argumento(&mut bus, &regs, 2, 0);
+    assert_eq!(
+        d.atender(&mut bus, pcs[1], &regs).unwrap().eax,
+        STATUS_WAIT_0
+    );
+    assert_eq!(d.mutant(handle).unwrap().owner, Some(INITIAL_THREAD));
+    assert_eq!(d.mutant(handle).unwrap().recursion, 1);
+
+    // Mutant é recursivo: a mesma thread adquire de novo e a contagem sobe.
+    assert_eq!(
+        d.atender(&mut bus, pcs[1], &regs).unwrap().eax,
+        STATUS_WAIT_0
+    );
+    assert_eq!(d.mutant(handle).unwrap().recursion, 2);
+
+    // Liberar um nível mantém a posse.
+    argumento(&mut bus, &regs, 1, 0);
+    assert_eq!(
+        d.atender(&mut bus, pcs[2], &regs).unwrap().eax,
+        STATUS_SUCCESS
+    );
+    assert_eq!(d.mutant(handle).unwrap().owner, Some(INITIAL_THREAD));
+    assert_eq!(d.mutant(handle).unwrap().recursion, 1);
+
+    // O último nível devolve o mutex ao estado livre.
+    assert_eq!(
+        d.atender(&mut bus, pcs[2], &regs).unwrap().eax,
+        STATUS_SUCCESS
+    );
+    assert_eq!(d.mutant(handle).unwrap().owner, None);
+    assert_eq!(d.mutant(handle).unwrap().recursion, 0);
+}
+
+#[test]
+fn espera_recusa_variantes_sem_alterar_o_objeto() {
+    let (mut bus, pcs, regs) = chamadas(
+        &[ORDINAL_NT_CREATE_MUTANT, ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT],
+        3,
+    );
+    let mut d = Dispatcher::new();
+    let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
+
+    for (alertable, timeout, trecho) in [(1u32, 0u32, "alertável"), (0, 0x12020, "timeout")] {
+        argumento(&mut bus, &regs, 0, handle);
+        argumento(&mut bus, &regs, 1, alertable);
+        argumento(&mut bus, &regs, 2, timeout);
+        let erro = d.atender(&mut bus, pcs[1], &regs).unwrap_err();
+        assert!(
+            matches!(erro, Erro::VarianteNaoImplementada { .. }),
+            "veio {erro:?}"
+        );
+        assert!(erro.to_string().contains(trecho), "{erro}");
+        // A recusa não pode adquirir nada.
+        assert_eq!(d.mutant(handle).unwrap().owner, None);
+        assert_eq!(d.mutant(handle).unwrap().recursion, 0);
+    }
+    // BOOLEAN usa só os oito bits baixos: 0x100 é FALSE.
+    argumento(&mut bus, &regs, 1, 0x100);
+    argumento(&mut bus, &regs, 2, 0);
+    assert_eq!(
+        d.atender(&mut bus, pcs[1], &regs).unwrap().eax,
+        STATUS_WAIT_0
+    );
+}
+
+#[test]
+fn espera_e_liberacao_em_handle_inexistente_devolvem_invalid_handle() {
+    let (mut bus, pcs, regs) = chamadas(
+        &[ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT, ORDINAL_NT_RELEASE_MUTANT],
+        3,
+    );
+    let mut d = Dispatcher::new();
+    for (indice, pc) in pcs.iter().enumerate() {
+        argumento(&mut bus, &regs, 0, 0x40);
+        argumento(&mut bus, &regs, 1, 0);
+        argumento(&mut bus, &regs, 2, 0);
+        assert_eq!(
+            d.atender(&mut bus, *pc, &regs).unwrap().eax,
+            STATUS_INVALID_HANDLE,
+            "chamada {indice}"
+        );
+    }
+}
+
+#[test]
+fn liberar_sem_posse_devolve_mutant_not_owned_sem_mexer_na_contagem() {
+    let (mut bus, pcs, regs) = chamadas(&[ORDINAL_NT_CREATE_MUTANT, ORDINAL_NT_RELEASE_MUTANT], 3);
+    let mut d = Dispatcher::new();
+    let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
+
+    argumento(&mut bus, &regs, 0, handle);
+    argumento(&mut bus, &regs, 1, 0);
+    assert_eq!(
+        d.atender(&mut bus, pcs[1], &regs).unwrap().eax,
+        STATUS_MUTANT_NOT_OWNED
+    );
+    assert_eq!(d.mutant(handle).unwrap().owner, None);
+    assert_eq!(d.mutant(handle).unwrap().recursion, 0);
+}
+
+#[test]
+fn previous_count_nao_nulo_recusa_variante_em_vez_de_escrever_valor_suposto() {
+    // Escrever um valor derivado de suposição seria resultado errado em silêncio.
+    let (mut bus, pcs, regs) = chamadas(&[ORDINAL_NT_CREATE_MUTANT, ORDINAL_NT_RELEASE_MUTANT], 3);
+    let mut d = Dispatcher::new();
+    let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
+
+    argumento(&mut bus, &regs, 0, handle);
+    argumento(&mut bus, &regs, 1, 0x12020);
+    let erro = d.atender(&mut bus, pcs[1], &regs).unwrap_err();
+    assert!(
+        matches!(erro, Erro::VarianteNaoImplementada { .. }),
+        "veio {erro:?}"
+    );
+    assert!(erro.to_string().contains("PreviousCount"), "{erro}");
+}
+
+#[test]
+fn snapshot_preserva_recursao_acima_de_um_e_migra_a_versao_antiga() {
+    let (mut bus, pcs, regs) = chamadas(
+        &[ORDINAL_NT_CREATE_MUTANT, ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT],
+        3,
+    );
+    let mut d = Dispatcher::new();
+    let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
+    argumento(&mut bus, &regs, 0, handle);
+    argumento(&mut bus, &regs, 1, 0);
+    argumento(&mut bus, &regs, 2, 0);
+    for _ in 0..3 {
+        d.atender(&mut bus, pcs[1], &regs).unwrap();
+    }
+    assert_eq!(d.mutant(handle).unwrap().recursion, 3);
+
+    // KMUT v1 não representava recursão acima de 1; v2 representa e sobrevive.
+    let bytes = salvo(&d);
+    let mut restaurado = Dispatcher::new();
+    restaurado
+        .load(&mut SnapshotReader::new(&bytes).unwrap())
+        .unwrap();
+    assert_eq!(restaurado.mutant(handle).unwrap().recursion, 3);
+    assert_eq!(
+        restaurado.mutant(handle).unwrap().owner,
+        Some(INITIAL_THREAD)
+    );
+    assert_eq!(
+        salvo(&restaurado),
+        bytes,
+        "snapshot instável após ida e volta"
+    );
+}
+
+#[test]
+fn limite_de_recursao_devolve_status_proprio_em_vez_de_dar_wrap() {
+    // Snapshot artesanal com a contagem no limite. Chegar lá por chamadas exigiria
+    // dois bilhões de aquisições; o que importa é o comportamento na fronteira.
+    let mut out = SnapshotWriter::new();
+    out.section("KRNL", 1);
+    out.u64(0);
+    out.u64(0);
+    out.section("KMUT", 2);
+    out.u32(8);
+    out.u32(1);
+    out.u32(4);
+    out.u32(INITIAL_THREAD);
+    out.u32(MAX_RECURSION);
+    let bytes = out.finish();
+
+    let mut d = Dispatcher::new();
+    d.load(&mut SnapshotReader::new(&bytes).unwrap())
+        .expect("KMUT v2 aceita recursão no limite");
+    assert_eq!(d.mutant(4).unwrap().recursion, MAX_RECURSION);
+
+    let (mut bus, pcs, regs) = chamadas(&[ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT], 3);
+    argumento(&mut bus, &regs, 0, 4);
+    argumento(&mut bus, &regs, 1, 0);
+    argumento(&mut bus, &regs, 2, 0);
+    assert_eq!(
+        d.atender(&mut bus, pcs[0], &regs).unwrap().eax,
+        STATUS_MUTANT_LIMIT_EXCEEDED
+    );
+    // A contagem não pode ter dado wrap nem subido além do limite.
+    assert_eq!(d.mutant(4).unwrap().recursion, MAX_RECURSION);
 }

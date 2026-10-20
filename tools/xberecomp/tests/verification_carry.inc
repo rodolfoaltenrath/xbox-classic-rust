@@ -9,6 +9,7 @@
 #[cfg(test)] mod sbb_load;
 #[cfg(test)] mod adc_readonly;
 #[cfg(test)] mod sbb_readonly;
+#[cfg(test)] mod flag_ops;
 
 #[cfg(test)]
 mod carry_verification {
@@ -101,5 +102,37 @@ mod carry_verification {
             assert_eq!(s.state, before);
             assert_eq!(s.bus.ler_u32(GuestVirt(0x11000)).unwrap(), code);
         }
+    }
+}
+
+#[cfg(test)]
+mod flag_ops_verification {
+    use super::*;
+    use xbox_recomp::runtime::{Exit, Session};
+
+    /// `CLC`/`STC`/`CMC` mexem só em CF.
+    ///
+    /// `State::new` começa com EFLAGS = 2 (bit 1 reservado), então comparar o valor
+    /// inteiro prova que nenhuma outra flag foi tocada — não só que CF está certo.
+    #[test]
+    fn clc_stc_cmc_alteram_apenas_cf() {
+        let mut s = Session::load(include_bytes!("flag_ops.xbe")).unwrap();
+        assert_eq!(s.state.eflags, 2, "estado inicial sem CF");
+
+        // stc
+        assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
+        assert_eq!(s.state.eflags, 3);
+        // clc
+        assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
+        assert_eq!(s.state.eflags, 2);
+        // cmc com CF=0
+        assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
+        assert_eq!(s.state.eflags, 3);
+        // cmc com CF=1, depois ret
+        assert_eq!(
+            flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(),
+            Exit::Returned
+        );
+        assert_eq!(s.state.eflags, 2);
     }
 }

@@ -1131,6 +1131,9 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 | NtCreateMutant e snapshot integral da sessão (ADR-0032) | — | Mutexes sem nome com handles/propriedade guest, NTSTATUS e limites; Session possui kernel, snapshot AOTS/KRNL/KMUT; 271 testes workspace/doctests e 115 nativos debug/release; hello passa por criação e para em XcSHAInit (335), retorno 0x19140; 2/69 serviços com variantes limitadas |
 | 2026-10-20 | 4 | SHA-1 em contexto opaco guest (ADR-0033) | — | Init/Update/Final em Rust; estado HLE v1 de 116 bytes na RAM, cópia/snapshot e validação sem stores parciais; 288 testes workspace/doctests e 118 nativos debug/release; hello passa por SHAInit e para em ExQueryNonVolatileSetting (24), retorno 0x19176; 5/69 serviços |
 | 2026-10-20 | 4 | Consulta integral da EEPROM da sessão (ADR-0034) | — | Bytes/origem explícitos, perfil sintético existente, validação de todas as saídas; KRNL v2/EEPR v1 com migração v1; 301 testes workspace/doctests e 121 nativos debug/release; hello passa pela consulta e para em NtWaitForSingleObject (233), retorno 0x16B99, handle 4; 6/69 serviços |
+| 2026-10-20 | 4 | Espera/liberação de mutant sem scheduler (ADR-0035) | — | Aquisição, recursão e liberação reais; `Alertable`, `Timeout`, outra thread e `PreviousCount` recusados como variantes; KMUT v2 com migração da v1; 8/69 serviços |
+| 2026-10-20 | 3-AOT | CLC/STC/CMC e raiz do construtor global (ADR-0036) | — | Três flag ops com teste que compara EFLAGS inteiro; entram no braço que não invalida o rastreamento de destinos; `--entry 0x145E0` cobre a tabela de inicializadores do CRT; 8769 → 8791 blocos |
+| 2026-10-20 | 4 / 5 | Hello avança até seções críticas | — | 308 testes workspace/doctests e 122 nativos debug/release; o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em `RtlInitializeCriticalSection` (291), objeto `0x2810C` |
 
 ---
 
@@ -1139,13 +1142,16 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `6/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `8/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
    (ADR-0033), e a consulta integral usa a EEPROM explícita da sessão (ADR-0034).
-   **O bloqueio atual é NtWaitForSingleObject (233), em execução**, retorno
-   reportado `0x16B99`, argumentos `4, 0, 0`, no caminho de aquisição de mutex.
+   Espera e liberação de mutant estão implementadas sem bloquear o host (ADR-0035).
+   **O bloqueio atual é `RtlInitializeCriticalSection` (291), em execução**, retorno
+   `0x11063`, com o objeto em `0x2810C`, chamado por um construtor global. Seções
+   críticas são família (`291`, `277`, `294`, `306`) e exigem estrutura própria em
+   memória guest. A tradução precisa de `--entry 0x19110 --entry 0x145E0`.
    BSF/BSR destravaram a tradução; separar blocos corrigiu a
    pilha host. Com `--entry 0x19110`, 8769 blocos compilam e iniciam nativamente
    (ADRs 0030/0031). Modelar aquisição/espera sobre o mutex existente; não

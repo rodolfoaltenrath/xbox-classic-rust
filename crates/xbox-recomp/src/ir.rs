@@ -127,6 +127,21 @@ pub enum StringOp {
     Scas,
 }
 
+/// Operação sobre CF sem operando.
+///
+/// O fluxo descoberto do homebrew usa `CLC`; `STC` e `CMC` entram junto porque são a
+/// mesma família de decodificação e têm semântica mecânica e sem ambiguidade — a mesma
+/// razão pela qual as 16 condições de `SETcc` foram feitas de uma vez.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CarryOp {
+    /// `CLC`: CF = 0.
+    Clear,
+    /// `STC`: CF = 1.
+    Set,
+    /// `CMC`: CF = !CF.
+    Complement,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Repeat {
     None,
@@ -229,6 +244,8 @@ pub enum Operation {
         repeat: Repeat,
     },
     Direction(bool),
+    /// `CLC`/`STC`/`CMC`: manipulação direta de CF, sem operando.
+    Carry(CarryOp),
     Call(u32),
     Indirect {
         call: bool,

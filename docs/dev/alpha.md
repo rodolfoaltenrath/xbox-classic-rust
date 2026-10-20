@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | dados, dispatcher, criação de mutexes, SHA-1 e leitura de EEPROM (ADR-0034); 6/69 serviços com variantes limitadas | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | fluxo descoberto traduz; 8769 instruções com callback explícito; novas entradas podem exigir mais ISA | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | hello inicia nativamente e para em NtWaitForSingleObject (233); aceite aberto | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 3. Kernel mínimo | dados, dispatcher, mutex com espera/liberação, SHA-1 e EEPROM (ADR-0022 a 0035); 8/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 4. ISA necessária | CLI/HLT, RDTSC, CMPXCHG/LOCK, SETcc, CMOVcc, BSF/BSR e CLC/STC/CMC; bloqueio atual é de serviço, não de ISA | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 5. Execução integrada | executa até `RtlInitializeCriticalSection`; orçamento/logs/interrupção pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.

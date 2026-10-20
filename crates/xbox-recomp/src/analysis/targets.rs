@@ -26,7 +26,9 @@ pub(super) fn discover(xbe: &Xbe<'_>, blocks: &BTreeMap<u32, Vec<Insn>>) -> BTre
                 } => {
                     regs[*dst] = address(operand, &regs);
                 }
-                Operation::Nop | Operation::Direction(_) => {}
+                // CLC/STC/CMC não tocam registrador: entram aqui para não invalidar
+                // o rastreamento e com isso perder destinos descobertos.
+                Operation::Nop | Operation::Direction(_) | Operation::Carry(_) => {}
                 // Invalidar tudo é deliberadamente conservador. Não há pressuposto
                 // de preservação de registradores por ABI ou por operações novas.
                 _ => regs.fill(None),

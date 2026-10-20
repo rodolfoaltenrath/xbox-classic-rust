@@ -150,6 +150,17 @@ fn carry_images(output: &Path) {
         // A leitura de código RX funciona; a escrita deve falhar antes de FLAGS.
         ("adc_readonly", &[0x11, 0x0D, 0, 0x10, 1, 0, 0xC3][..]),
         ("sbb_readonly", &[0x19, 0x0D, 0, 0x10, 1, 0, 0xC3][..]),
+        // CLC/STC/CMC com fronteira de bloco entre cada uma, para observar CF passo a
+        // passo e provar que nenhuma outra flag é tocada.
+        (
+            "flag_ops",
+            &[
+                0xF9, 0xEB, 0, // stc; fronteira
+                0xF8, 0xEB, 0, // clc; fronteira
+                0xF5, 0xEB, 0, // cmc; fronteira
+                0xF5, 0xC3, // cmc; ret
+            ][..],
+        ),
     ] {
         image(output, name, code);
     }

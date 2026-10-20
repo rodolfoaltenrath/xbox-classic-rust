@@ -4,8 +4,8 @@ use std::fmt::Write;
 
 use crate::analysis::Program;
 use crate::ir::{
-    Binary, BitScan, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift, StringOp,
-    Unary, Width,
+    Binary, BitScan, CarryOp, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift,
+    StringOp, Unary, Width,
 };
 
 mod strings;
@@ -183,6 +183,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
                 },
             );
         }
+        Operation::Carry(op) => line(out, carry_statement(*op)),
         Operation::Call(target) => {
             line(out, "let esp = s.regs[4].wrapping_sub(4);");
             line(
@@ -812,4 +813,16 @@ fn emit_indirect(out: &mut String, call: bool, target: &Operand, next: u32) {
         line(out, "s.regs[4] = esp;");
     }
     line(out, "s.eip = target;");
+}
+
+/// Statement de `CLC`/`STC`/`CMC`.
+///
+/// CF é o bit 0 de EFLAGS, e as três operações não afetam nenhuma outra flag — por isso
+/// manipulam o bit direto em vez de passar pelas funções de flag aritmética.
+const fn carry_statement(op: CarryOp) -> &'static str {
+    match op {
+        CarryOp::Clear => "s.eflags &= !1;",
+        CarryOp::Set => "s.eflags |= 1;",
+        CarryOp::Complement => "s.eflags ^= 1;",
+    }
 }

@@ -10,6 +10,24 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: espera e liberação de mutant (`NtWaitForSingleObject` 233 e
+  `NtReleaseMutant` 221) sobre o objeto existente, **sem bloquear a thread do host**:
+  com uma thread guest cada caso tem resposta definida, e `Alertable`, `Timeout`,
+  "mutant de outra thread" e `PreviousCount` não nulo são recusados como variantes em
+  vez de receberem valor suposto. `KMUT` foi para a v2, porque a v1 só representava os
+  estados de criação e a espera produz recursão acima de 1 (ADR-0035).
+- `CLC`, `STC` e `CMC` traduzidos. As três entraram no mesmo braço de
+  `analysis::targets` que `Nop`/`Direction` para não invalidar o rastreamento de
+  registradores — sem isso um `CLC` antes de uma transferência indireta perderia um
+  destino descoberto (ADR-0036).
+- Raiz explícita `--entry 0x145E0`: construtor global alcançado pelo laço que percorre
+  a tabela de ponteiros de inicialização do CRT em `.rdata`. A análise não infere porque
+  o ponteiro passa por slot de pilha. A tradução foi de 8769 para 8791 blocos.
+- O homebrew real passa por mutex, SHA, EEPROM e construtores globais e para em
+  `RtlInitializeCriticalSection` (291), com o objeto em `0x2810C`. 308 testes
+  workspace/doctests e 122 casos gerados em debug/release. **8/69 serviços** — não é
+  percentual de compatibilidade.
+
 - Fase 4/alpha: consulta integral `ExQueryNonVolatileSetting` usa EEPROM explícita
   da sessão, com origem sintética/fornecida, bytes preservados e saídas validadas
   antes de escrever. KRNL v2/EEPR v1 preserva a imagem; migração v1 usa o perfil

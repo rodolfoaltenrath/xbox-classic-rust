@@ -8,8 +8,8 @@ use iced_x86::{
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
 pub use crate::ir::{
-    Binary, BitScan, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate,
-    Shift, StringOp, Unary, Width,
+    Binary, BitScan, CarryOp, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat,
+    Rotate, Shift, StringOp, Unary, Width,
 };
 use crate::{Error, Result};
 
@@ -594,6 +594,9 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         });
     }
     Ok(match i.code() {
+        Code::Clc => Operation::Carry(CarryOp::Clear),
+        Code::Stc => Operation::Carry(CarryOp::Set),
+        Code::Cmc => Operation::Carry(CarryOp::Complement),
         Code::Cld => Operation::Direction(false),
         Code::Std => Operation::Direction(true),
         Code::Nopd | Code::Nopw => Operation::Nop,

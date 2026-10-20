@@ -35,7 +35,7 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335) e pela consulta da EEPROM. Agora para em
-NtWaitForSingleObject (233), retorno `0x16B99`, handle `4`, no caminho de mutex.
+RtlInitializeCriticalSection (291), retorno `0x11063`, com o objeto em `0x2810C`, chamado por um construtor global.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
@@ -45,9 +45,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, criação de mutexes, SHA-1 e consulta de EEPROM; 6/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutexes com espera/liberação, SHA-1 e consulta de EEPROM; 8/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Execução inicial real até NtWaitForSingleObject; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Execução inicial real até RtlInitializeCriticalSection; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há **duas entregas de implementação registradas em commits**, mas isso não
@@ -156,8 +156,8 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Análise AOT atual | 8725 instruções/blocos; 8769 com `--entry 0x19110`; sem recusa de ISA nesse fluxo |
-| Bloqueio de execução atual | NtWaitForSingleObject (233), retorno reportado `0x16B99`; argumentos `4, 0, 0`; consulta integral da EEPROM já atendida |
+| Análise AOT atual | 8769 com `--entry 0x19110`; **8791 com `--entry 0x145E0` também**; CLC implementado nesse fluxo |
+| Bloqueio de execução atual | RtlInitializeCriticalSection (291), retorno `0x11063`, objeto `0x2810C`; mutex e EEPROM já atendidos |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -320,19 +320,46 @@ Consulta devolve cópia; `ExSave`, persistência e índices individuais ainda fa
 
 Snapshot agora usa **KRNL v2 + EEPR v1**, guardando imagem e origem. A carga
 preserva os bytes salvos, independentemente da sessão de destino; KRNL v1 migra
-explicitamente para a EEPROM sintética padrão. AOTS v1, KMUT v1 e AOTC v6 permanecem.
+explicitamente para a EEPROM sintética padrão. AOTS v1 e AOTC v6 permanecem;
+**KMUT foi para a v2** (ver abaixo).
 
-O hello real passou pela consulta de EEPROM e parou em **NtWaitForSingleObject
-(233)**, retorno `0x16B99`, argumentos `4, 0, 0`, usados por `mtx_lock` do nxdk.
-Próximo trabalho: aquisição/espera real sobre o objeto do handle 4, sem sucesso
-genérico ou bloquear a thread host. Examinar propriedade/recursão e o caminho
-efetivamente usado. KMUT v1 só aceita estados iniciais 0/1; ampliar/versionar
-essa seção quando acrescentar recursão/espera, sem perder compatibilidade.
+### Espera/liberação de mutex e CLC (ADR-0035, ADR-0036)
 
-Registro atual: **6/69 serviços**, 3/3 dados; **301 testes workspace/doctests** e
-**121 casos gerados em debug/release** (105 nos demais hosts), Clippy, fmt e loader.
-Detalhes e logs: [ADR-0034](docs/adr/0034-consulta-eeprom-sessao.md). Kernel mínimo,
-threads, execução integrada completa e framebuffer continuam pendentes.
+`NtWaitForSingleObject` (233) e `NtReleaseMutant` (221) estão implementados sobre o
+mutant existente. A espera **nunca bloqueia a thread do host**: com uma thread guest,
+cada caso tem resposta definida — adquire, recursa, `STATUS_INVALID_HANDLE`,
+`STATUS_MUTANT_LIMIT_EXCEEDED`, ou erro de variante para `Alertable`, `Timeout` e
+"mutant de outra thread" (que exigiria scheduler). `PreviousCount` não nulo é recusado:
+ele devolve o estado de sinal anterior, cuja relação com a contagem de recursão não foi
+verificada, e escrever valor suposto na memória do título seria erro silencioso.
+
+**`KMUT` foi para a v2**, porque a v1 só representava os estados de criação (`0/0` e
+`1/1`) e a espera produz contagem acima de 1. A v1 continua carregando com sua
+validação restrita. `MAX_RECURSION` é `i32::MAX`, porque o campo no kernel é `LONG`.
+
+Depois disso o fluxo exigiu **mais uma raiz explícita**: `--entry 0x145E0`. O endereço
+é um construtor global alcançado por `call [eax]` em `0x18E23`, dentro do laço que o CRT
+usa para percorrer a tabela de ponteiros de inicialização em `.rdata` (próxima a
+`0x26B5C`). A análise não infere porque o ponteiro passa por um slot de pilha. A tabela
+tem outros candidatos (`0x139B0`, `0x205E0`, `0x16DE0`), que podem exigir raízes
+próprias conforme o caminho avançar.
+
+Com essa raiz apareceu `CLC`, implementado junto com `STC`/`CMC`. As três entraram no
+mesmo braço de `analysis::targets` que `Nop`/`Direction` para **não invalidar** o
+rastreamento de registradores — sem isso, um `CLC` entre o carregamento de um ponteiro e
+uma transferência indireta perderia um destino descoberto.
+
+O hello real agora passa por mutex, SHA, EEPROM e os construtores globais, e para em
+**`RtlInitializeCriticalSection` (291)**, retorno `0x11063`, com o objeto em `0x2810C` —
+o mesmo endereço que o construtor em `0x145E0` carrega com `lea`. As seções críticas são
+uma família (`291`, `277`, `294`, `306`) e exigem estrutura própria em memória guest;
+merecem ADR próprio, como o contexto de SHA.
+
+Registro atual: **8/69 serviços**, 3/3 dados; **308 testes workspace/doctests** e
+**122 casos gerados em debug/release** (106 nos demais hosts), Clippy, fmt e loader.
+Detalhes e logs: [ADR-0035](docs/adr/0035-espera-liberacao-mutant.md) e
+[ADR-0036](docs/adr/0036-clc-stc-cmc.md). Kernel mínimo, threads, execução integrada
+completa e framebuffer continuam pendentes.
 
 Trabalho restante:
 
@@ -522,12 +549,12 @@ No Windows usado como referência:
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-homebrew.sh
 cargo run --offline -p ordinal-report -- target/homebrew/hello.xbe
 cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Na referência atual, `check-memory` e `translate` passam. Com a entrada explícita,
-o binário nativo passa por mutex/SHAInit/consulta EEPROM e para em **NtWaitForSingleObject (233)**,
+o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em **RtlInitializeCriticalSection (291)**,
 sem framebuffer. Sem ela,
 para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
 completa nem serviços suficientes. A tradução exige
@@ -577,7 +604,7 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > tem aceite local; a entrega 2 possui infraestrutura TLS/ABI testada, mas seu
 > aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
 > RtlInitAnsiString, NtCreateMutant sem nome, SHA-1 Init/Update/Final e consulta
-> integral da EEPROM já existem (6/69 serviços). SHA usa contexto opaco de 116
+> integral da EEPROM já existem, além de espera/liberação de mutex (8/69 serviços). SHA usa contexto opaco de 116
 > bytes na RAM, com formato HLE v1,
 > não layout comprovado do hardware. Final preserva a origem por política local.
 > Session possui o dispatcher; atender_kernel() não recebe argumento. Snapshot
