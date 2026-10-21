@@ -1,12 +1,13 @@
 # Recompilação estática em Rust
 
-Estado: subconjunto inteiro ampliado da Fase 3-AOT, conforme ADRs 0013–0017. Não executa jogos
-comerciais nem implementa o kernel, renderização ou áudio.
+Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
+ADRs 0013–0037. O hello nxdk inicia nativamente com TLS/imports e 12 serviços;
+o próximo construtor exige RDMSR. Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
 
 `Xbe::parse` → validação de layout → descoberta de instruções alcançáveis pelo entry
-point, branches e calls diretas → IR → blocos Rust → projeto Cargo → rustc → programa
+point, branches, calls e raízes indiretas descobertas/declaradas → IR → blocos Rust → projeto Cargo → rustc → programa
 nativo. A biblioteca é `crates/xbox-recomp`; a ferramenta é `tools/xberecomp`.
 
 O decoder `iced-x86` é escrito em Rust e usado somente na análise. Não há C++, FFI
@@ -69,8 +70,9 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
   determinam índices e contador, preservando metades altas no modo de 16 bits.
   Cada elemento repetido é uma passagem limitada de um bloco próprio (ADR-0018).
 
-LOCK, overrides de segmento, endereçamento geral de 16 bits, CALL/RET de
-16 bits, CALL/JMP far, INS/OUTS, REPNE fora de CMPS/SCAS, x87/MMX/SSE e
+LOCK fora de CMPXCHG, overrides de segmento fora do perfil FS, endereçamento geral
+de 16 bits, CALL/RET de 16 bits, CALL/JMP far, INS/OUTS, REPNE fora de CMPS/SCAS,
+RDMSR, x87/MMX/SSE (exceto SFENCE) e
 outras instruções são recusados com PC e diagnóstico.
 Jumps para o meio de uma instrução, sobreposição de instruções/seções, alvos fora
 de bytes executáveis, código truncado e código gravável também são erros. A análise
@@ -145,9 +147,9 @@ empilhar; o runtime também confere permissão de execução do destino conhecid
 Zero repetições não acessa memória. O bus valida todas as
 páginas de uma escrita antes de alterar RAM, evitando store parcial na falta.
 
-O runtime não consulta relógio de parede. O contador `retired` não alimenta o relógio
-virtual como se fosse contagem de ciclos: essa integração precisa de um modelo de
-tempo explícito em etapa posterior.
+O runtime não consulta relógio de parede. Instruções/elementos REP concluídos
+avançam o Clock pelo custo sintético do perfil, independentemente de `retired`.
+Integrar o scheduler do core ao mesmo Clock continua pendente.
 
 ## Loader experimental
 
@@ -170,7 +172,7 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v6, memória e estado `KRNL`/`KMUT` v1, com handles, propriedade e
+inclui `AOTC` v6, memória e estado `KRNL` v2 / `KMUT` v2 / `EEPR` v1, com handles, propriedade e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -190,6 +192,17 @@ cópia em RAM, validando todas as saídas antes de publicar. `KRNL` v2 acrescent
 `EEPR` v1 e migra KRNL v1 para a imagem padrão. Persistência/escrita e índices
 individuais seguem pendentes. [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
 
+Mutants admitem aquisição/recursão/liberação imediatas, sem scheduler; espera
+bloqueante/APCs/timeout e `PreviousCount` não nulo são variantes recusadas
+([ADR-0035](../adr/0035-espera-liberacao-mutant.md)). As seções críticas
+Init/Enter/Leave/TryEnter operam sobre os 28 bytes públicos Xbox em RAM guest:
+evento embutido, LockCount, RecursionCount e OwningThread. O proprietário 1 é
+identidade sintética do perfil, sem KTHREAD físico. TryEnter de outro proprietário
+retorna FALSE; Enter bloqueante, esperadores e overflow recusam sem efeitos.
+Toda a faixa é validada como RAM antes de escrever. Seu estado não precisa de
+tabela host nem seção nova no snapshot. Contrato e limites:
+[ADR-0037](../adr/0037-secoes-criticas-guest.md).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que
@@ -197,7 +210,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 64 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 125 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

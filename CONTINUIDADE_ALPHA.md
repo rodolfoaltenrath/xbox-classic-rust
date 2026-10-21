@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`888b423`** e nas alterações
-locais do **ADR-0034**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`8145562`** e nas alterações
+locais do **ADR-0037**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -34,8 +34,10 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
-e por XcSHAInit (335) e pela consulta da EEPROM. Agora para em
-RtlInitializeCriticalSection (291), retorno `0x11063`, com o objeto em `0x2810C`, chamado por um construtor global.
+e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
+Com as duas raízes anteriores, agora para no construtor `0x205E0` ainda não
+traduzido (`UnknownTarget`, CALL em `0x18E23`). Acrescentar essa raiz revela
+**RDMSR em `0x207C6`**, com `ECX=0x2A`, na inicialização da frequência de CPU.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
@@ -45,9 +47,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutexes com espera/liberação, SHA-1 e consulta de EEPROM; 8/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas; 12/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Execução inicial real até RtlInitializeCriticalSection; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Passa por Init da seção crítica; nova raiz de construtor exige RDMSR; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há **duas entregas de implementação registradas em commits**, mas isso não
@@ -156,8 +158,8 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Análise AOT atual | 8769 com `--entry 0x19110`; **8791 com `--entry 0x145E0` também**; CLC implementado nesse fluxo |
-| Bloqueio de execução atual | RtlInitializeCriticalSection (291), retorno `0x11063`, objeto `0x2810C`; mutex e EEPROM já atendidos |
+| Análise AOT atual | 8791 com `--entry 0x19110 --entry 0x145E0`; incluir `--entry 0x205E0` revela RDMSR em `0x207C6` |
+| Bloqueio de execução atual | UnknownTarget: CALL `0x18E23` → construtor `0x205E0`; Init da seção crítica já atendido |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -349,17 +351,50 @@ mesmo braço de `analysis::targets` que `Nop`/`Direction` para **não invalidar*
 rastreamento de registradores — sem isso, um `CLC` entre o carregamento de um ponteiro e
 uma transferência indireta perderia um destino descoberto.
 
-O hello real agora passa por mutex, SHA, EEPROM e os construtores globais, e para em
+Na entrega dos ADRs 0035/0036, o hello passou por mutex, SHA, EEPROM e construtores e parou em
 **`RtlInitializeCriticalSection` (291)**, retorno `0x11063`, com o objeto em `0x2810C` —
-o mesmo endereço que o construtor em `0x145E0` carrega com `lea`. As seções críticas são
-uma família (`291`, `277`, `294`, `306`) e exigem estrutura própria em memória guest;
-merecem ADR próprio, como o contexto de SHA.
+o mesmo endereço que o construtor em `0x145E0` carrega com `lea`. Essa família foi
+implementada na entrega seguinte, descrita abaixo.
 
-Registro atual: **8/69 serviços**, 3/3 dados; **308 testes workspace/doctests** e
+Registro nessa entrega: **8/69 serviços**, 3/3 dados; **308 testes workspace/doctests** e
 **122 casos gerados em debug/release** (106 nos demais hosts), Clippy, fmt e loader.
 Detalhes e logs: [ADR-0035](docs/adr/0035-espera-liberacao-mutant.md) e
 [ADR-0036](docs/adr/0036-clc-stc-cmc.md). Kernel mínimo, threads, execução integrada
 completa e framebuffer continuam pendentes.
+
+### Seções críticas e retomada no Linux (ADR-0037)
+
+Init/Enter/Leave/TryEnter (`291/277/294/306`) operam sobre os 28 bytes da estrutura
+Xbox na RAM guest. Aquisição recursiva, liberação final e TryEnter têm efeitos
+observáveis. A identidade 1 continua sintética, não KTHREAD; evento, contagens e
+ponteiros internos seguem o perfil documentado no ADR. Contenção bloqueante,
+esperadores e overflow recusam como variantes, sem bloquear o host ou alterar RAM.
+Ponteiros, permissões e toda a faixa são validados antes de escrever.
+Estado/snapshot: AOTS v1, AOTC v6, KRNL v2, KMUT v2, EEPR v1; nenhum estado host novo.
+
+O SDK foi reconstruído neste Linux/Fedora 44 com Clang/LLD 22.1.8 e os mesmos
+hashes de PE/XBE da referência Windows/WSL. Com as duas raízes anteriores,
+o hello passa pelo serviço 291 e chega a `UnknownTarget` em `0x18E23 → 0x205E0`.
+Traduzir com a terceira raiz recusa RDMSR em `0x207C6`; o disassembly carrega
+`ECX=0x2A`. O fonte público `lib/winapi/profiling.c` identifica `tsc_freq_init`
+e `get_cpu_multiplier`: consulta EBL_CR_POWERON e potencialmente PCI. A próxima
+entrega precisa modelar CPU/MSRs guest em conjunto com o Clock, sem usar RDMSR
+host ou valores escolhidos só para desviar do caminho.
+
+Registro atual: **12/69 serviços**, 3/3 dados; **317 testes workspace/doctests**,
+**125 casos nativos debug/release** (109 nos demais hosts). Nove testes novos de
+kernel e três gerados cobrem layout, recursão, faltas, ABI, retry e snapshot.
+O Clippy Linux também exigiu conversão verificada de `usize` para `i64` antes de
+criar/dimensionar o memfd; o caminho Windows não exercitava essa conversão.
+Detalhes: [ADR-0037](docs/adr/0037-secoes-criticas-guest.md).
+
+Ambiente local: o Rust do sistema é 1.99; o **1.98.1 fixado** está em
+`~/.cache/obsidian/rust-1.98.1/bin` e deve preceder `/usr/bin` no PATH para os
+checks do projeto. As ferramentas nxdk estão extraídas, sem instalação de sistema,
+em `~/.cache/obsidian/toolchain/usr`; comandos em `docs/dev/homebrew.md`.
+Esses caches são locais, não acompanham o Git. Logs desta entrega têm prefixo
+`target/critical-`; o projeto hello executável está em
+`target/alpha-hello-critical-20261020`.
 
 Trabalho restante:
 
@@ -472,9 +507,9 @@ callback é adicionada explicitamente com `--entry 0x19110`; sem ela o erro deve
 continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
-O próximo trabalho é modelar handles/objetos e mutant com estado real, incluindo
-a escrita do handle guest e planejamento de ownership/espera. Não retornar
-sucesso fictício; o dispatcher deve continuar recusando serviços ausentes.
+Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
+0032/0035. O bloqueio atual de MSR está descrito no ADR-0037. O dispatcher
+continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
 
@@ -553,10 +588,11 @@ cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Na referência atual, `check-memory` e `translate` passam. Com a entrada explícita,
-o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em **RtlInitializeCriticalSection (291)**,
-sem framebuffer. Sem ela,
-para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
+Na referência atual, `check-memory` e `translate` com as duas raízes passam.
+O binário passa por mutex, SHA, EEPROM e Init da seção crítica e para em
+`UnknownTarget` para o construtor `0x205E0`, sem framebuffer. Acrescentar
+`--entry 0x205E0` revela RDMSR em `0x207C6` durante a tradução.
+Sem a primeira raiz, para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
 completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
@@ -579,7 +615,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 121 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 125 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -599,33 +635,29 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue o projeto Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o estado
-> atual do Git e leia os arquivos indicados antes de alterar código. A entrega 1
-> tem aceite local; a entrega 2 possui infraestrutura TLS/ABI testada, mas seu
-> aceite com o homebrew depende do kernel. Os três dados, o dispatcher e
-> RtlInitAnsiString, NtCreateMutant sem nome, SHA-1 Init/Update/Final e consulta
-> integral da EEPROM já existem, além de espera/liberação de mutex (8/69 serviços). SHA usa contexto opaco de 116
-> bytes na RAM, com formato HLE v1,
-> não layout comprovado do hardware. Final preserva a origem por política local.
-> Session possui o dispatcher; atender_kernel() não recebe argumento. Snapshot
-> integral AOTS v1 inclui CPU, bus, KRNL v2/KMUT v1/EEPR v1; CPU/bus isolados não
-> bastam. EEPROM tem bytes/origem explícitos; padrão sintético NTSC-M/português.
-> CMPXCHG/LOCK em RAM e SETcc passaram nos testes;
-> RDTSC também passou, com Clock guest e custo sintético explícito. CLI/HLT têm
-> controle/parada guest. INT3 gera #BP com PC/EIP seguinte, polls sem efeitos e
-> snapshot AOTC v6; ainda não há IRQ/NMI, IDT/SEH ou retomada automática. A descoberta
-> termina o caminho na exceção, preservando branches/raízes explícitas. O bloqueio
-> atual é NtWaitForSingleObject (233), retorno 0x16B99, argumentos 4, 0, 0.
-> O hello passou pela consulta da EEPROM; agora exige semântica de mutex/espera.
-> O hello real traduz/compila/inicia com --entry 0x19110 (callback observado em
-> 0x209D2). Funções de bloco limitadas corrigiram a pilha host; são 8769 blocos.
-> SFENCE chama a barreira do bus síncrono exclusivo,
-> sem fila pendente nem conclusão de GPU; filas futuras exigem ampliar o protocolo.
-> CMOVcc já cobre as 16 condições em 16/32 bits e lê a origem mesmo se falsa.
-> BSF/BSR também estão implementados, com ZF e política determinística para zero.
-> Implemente aquisição/espera de mutex com estado real para o handle existente e
-> continue intercalando ISA, serviços e threads conforme os bloqueios reais.
-> Reutilize o AOT em Rust, o bus e o estado explícito. Não use
-> respostas genéricas de sucesso ou testes próprios como prova de execução do
-> homebrew real. Registre o que implementou, como verificou e o que permanece
-> pendente nas seis entregas.
+> Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
+> alterar código. Base documentada: 8145562 + alterações locais do ADR-0037.
+> A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
+> concluir o hello real. O kernel tem 12/69 serviços com variantes limitadas:
+> RtlInitAnsiString, criação/espera/liberação de mutant, SHA-1, EEPROM integral
+> e Init/Enter/Leave/TryEnter de seção crítica. Não há scheduler ou KTHREAD real;
+> a identidade inicial é 1. Seções críticas têm 28 bytes na RAM guest; bloqueio,
+> esperadores e exceções continuam recusados. SHA usa contexto opaco HLE próprio.
+> Session possui o dispatcher e atender_kernel() não recebe argumento.
+> Snapshot integral: AOTS v1, AOTC v6, KRNL v2, KMUT v2, EEPR v1. Preservar CPU,
+> bus, kernel e chamada pendente; CPU/bus isolados não bastam.
+> O hello reconstruído no Linux tem o mesmo hash da referência nxdk fixada.
+> Traduz/compila/inicia com --entry 0x19110 --entry 0x145E0 (8791 blocos), passa
+> por Init da seção crítica e para no CALL 0x18E23 → construtor 0x205E0.
+> Acrescentar --entry 0x205E0 revela RDMSR em 0x207C6, ECX=0x2A.
+> O fonte nxdk lib/winapi/profiling.c consulta EBL_CR_POWERON para calcular
+> frequência de CPU; pode exigir PCI em seguida. Próximo passo: contrato explícito
+> de MSRs/CPU guest coerente com o Clock. Não executar RDMSR host nem escolher
+> valor apenas para contornar código. Novas raízes podem revelar mais ISA.
+> CLI/HLT, INT3/#BP, RDTSC, SFENCE, CMPXCHG/LOCK, SETcc, CMOVcc, BSF/BSR e
+> CLC/STC/CMC existem. Ainda não há IRQ/NMI, IDT/SEH ou retomada automática.
+> Use Rust 1.98.1, fixado no projeto; neste PC está no cache do usuário.
+> Registro atual: 317 testes workspace/doctests e 125 casos nativos debug/release.
+> Preserve o AOT em Rust, o bus e estado explícito. Não use sucesso genérico ou
+> fixtures como prova do hello funcional. Atualize continuidade, alpha, roadmap,
+> changelog e evidências; threads, execução completa e framebuffer seguem abertos.

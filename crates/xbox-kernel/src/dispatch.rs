@@ -22,9 +22,11 @@ use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
+mod critical;
 mod mutants;
 mod nvram;
 mod sha;
+pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 use mutants::Mutants;
 pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
@@ -35,6 +37,10 @@ use crate::loader::Result as LoaderResult;
 
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
+pub const ORDINAL_RTL_ENTER_CRITICAL_SECTION: u32 = 277;
+pub const ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION: u32 = 291;
+pub const ORDINAL_RTL_LEAVE_CRITICAL_SECTION: u32 = 294;
+pub const ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION: u32 = 306;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
@@ -67,7 +73,11 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
+    ORDINAL_RTL_ENTER_CRITICAL_SECTION,
     ORDINAL_RTL_INIT_ANSI_STRING,
+    ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION,
+    ORDINAL_RTL_LEAVE_CRITICAL_SECTION,
+    ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION,
     ORDINAL_XC_SHA_INIT,
     ORDINAL_XC_SHA_UPDATE,
     ORDINAL_XC_SHA_FINAL,
@@ -203,6 +213,10 @@ impl Dispatcher {
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
+            ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION => critical::initialize(bus, &call),
+            ORDINAL_RTL_ENTER_CRITICAL_SECTION => critical::enter(bus, &call, false),
+            ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION => critical::enter(bus, &call, true),
+            ORDINAL_RTL_LEAVE_CRITICAL_SECTION => critical::leave(bus, &call),
             ORDINAL_XC_SHA_INIT => sha::init(bus, &call),
             ORDINAL_XC_SHA_UPDATE => sha::update(bus, &call),
             ORDINAL_XC_SHA_FINAL => sha::finish(bus, &call),

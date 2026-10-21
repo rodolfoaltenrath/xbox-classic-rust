@@ -7,7 +7,7 @@ Alvo: `samples/hello` do nxdk, revisão
 do versionamento. O runtime e o recompilador do Obsidian continuam em Rust;
 o sample C é uma entrada externa para testar compatibilidade.
 
-No host Windows atual, a compilação foi feita no WSL `FedoraLinux-44`:
+A referência Windows foi compilada no WSL `FedoraLinux-44`:
 
 ```powershell
 wsl -d FedoraLinux-44 -- bash -lc 'dnf install -y clang lld llvm make cmake bison flex gcc-c++ git python3'
@@ -22,6 +22,18 @@ cache; revisão diferente ou alterações em arquivos rastreados causam erro.
 `BUILD_JOBS` controla o paralelismo. Não há instalação automática de pacotes pelo
 script. Clang/LLD, llvm-dlltool, GNU make, GCC/G++, CMake, flex, bison, Git e Python
 precisam estar disponíveis.
+
+Neste PC Linux, as ferramentas faltantes foram extraídas de RPMs no cache do
+usuário. O Rust 1.98.1 oficial também foi preparado no cache, com SHA-256 conferido.
+Para reutilizar este ambiente local (essas pastas não acompanham o Git):
+
+```sh
+export PATH="$HOME/.cache/obsidian/rust-1.98.1/bin:$HOME/.cache/obsidian/toolchain/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.cache/obsidian/toolchain/usr/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export BISON_PKGDATADIR="$HOME/.cache/obsidian/toolchain/usr/share/bison"
+export M4="$HOME/.cache/obsidian/toolchain/usr/bin/m4"
+bash scripts/build-homebrew.sh
+```
 
 Saídas em `target/homebrew`: `hello.exe`, `hello-raw.xbe`, `hello.xbe`,
 `build.log`, `build-manifest.txt` e `SHA256SUMS`. O manifesto registra ferramentas
@@ -60,8 +72,9 @@ TLS do alvo: template `0x2A000..0x2A110` (272 bytes), zero-fill 0, índice
 em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
 O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
-SHA-1 Init/Update/Final (335/336/337) e consulta integral de EEPROM (24):
-**6/69 serviços implementados**, com variantes limitadas,
+espera/liberação de mutant (233/221), SHA-1 Init/Update/Final (335/336/337),
+consulta integral de EEPROM (24) e seções críticas (291/277/294/306):
+**12/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -82,11 +95,16 @@ snapshot integral. Nessa entrega a execução passou por ela e parou em
 **XcSHAInit (335)**, retorno `0x19140`, argumento `0x28EF0`, em `init_rand_s`.
 O ADR-0033 implementou a família SHA-1 com contexto opaco
 HLE de 116 bytes na RAM. SHAInit foi atendido no hello; Update/Final foram
-validados em testes. O bloqueio observado agora é **ExQueryNonVolatileSetting
+validados em testes. O bloqueio observado nessa etapa foi **ExQueryNonVolatileSetting
 (24)**, retorno `0x19176`, consulta de EEPROM de 256 bytes com índice `0xFFFF`,
 na referência do ADR-0033. O ADR-0034 implementou essa consulta usando a imagem
-da sessão, e a execução real agora para em **NtWaitForSingleObject (233)**,
-retorno `0x16B99`, argumentos `4, 0, 0`.
+da sessão; nessa entrega a execução parou em **NtWaitForSingleObject (233)**,
+retorno `0x16B99`, argumentos `4, 0, 0`. Espera/liberação de mutant foram
+implementadas no ADR-0035, e o construtor global `0x145E0` exigiu raiz adicional
+e CLC/STC/CMC (ADR-0036). Init de seção crítica foi atendido no ADR-0037.
+Agora o CALL em `0x18E23` chega ao construtor `0x205E0`, ainda fora dos alvos
+traduzidos. Incluí-lo revela RDMSR em `0x207C6`, `ECX=0x2A`, no cálculo da
+frequência de CPU em `lib/winapi/profiling.c`.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -157,14 +175,23 @@ flags aritméticas indefinidas. O código gerado usa funções por bloco, com at
 diretório novo/vazio:
 
 ```powershell
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Sem essa entrada explícita, a execução para em `UnknownTarget` no CALL de
-`0x209D2` para `0x19110`. Com ela, o erro é o serviço NtWaitForSingleObject ainda
-não implementado. Isso demonstra execução inicial real, não o hello funcional
-com framebuffer. Contratos/evidências: [ADR-0030](../adr/0030-bsf-bsr.md) e
+Sem a primeira entrada explícita, a execução para em `UnknownTarget` no CALL de
+`0x209D2` para `0x19110`. Com ambas são 8791 blocos, que executam até
+`UnknownTarget { pc: 0x18E23, target: 0x205E0 }`, após Init da seção crítica.
+Para reproduzir o novo bloqueio de tradução, use outro diretório novo:
+
+```sh
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --out target/alpha-hello-msr
+```
+
+O erro esperado é RDMSR em `0x207C6`. Isso ainda é execução inicial, sem
+framebuffer; não executar o MSR do host nem saltar o construtor para avançar.
+Contrato/evidência atual: [ADR-0037](../adr/0037-secoes-criticas-guest.md).
+Referências das etapas anteriores: [ADR-0030](../adr/0030-bsf-bsr.md) e
 [ADR-0031](../adr/0031-blocos-aot-pilha-host.md) e
 [ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
 
@@ -184,6 +211,13 @@ Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por
 `Snapshot` (`AOTS` v1), e não só `state`/`bus`. O snapshot CPU continua `AOTC`
 v6. Regenerar projetos antigos que passavam um dispatcher externo.
 
+Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem registro
+host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
+KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
+esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
+AOTS v1/AOTC v6/KRNL v2/KMUT v2/EEPR v1 permanecem. Detalhes:
+[ADR-0037](../adr/0037-secoes-criticas-guest.md).
+
 ## Referências públicas
 
 - [Export declarations nxdk (CC0-1.0)](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/lib/xboxkrnl/xboxkrnl.exe.def):
@@ -195,6 +229,11 @@ v6. Regenerar projetos antigos que passavam um dispatcher externo.
   cálculo do índice e uso de FS:[4].
 - [Inicialização da thread nxdk](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/lib/winapi/thread.c):
   alinhamento, slot autorreferente, cópia e zero-fill.
+- [Estrutura de seção crítica Xbox (CC0)](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/lib/xboxkrnl/xboxdef.h)
+  e [assinaturas de kernel (CC0)](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/lib/xboxkrnl/xboxkrnl.h):
+  layout de 28 bytes e retorno VOID/BOOLEAN.
+- [Construtor da frequência de CPU nxdk](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/lib/winapi/profiling.c):
+  leitura do MSR 0x2A e possível consulta PCI no próximo caminho a modelar.
 - [cxbe](https://github.com/XboxDev/nxdk/blob/14d5ee97e73347c973f1f57b68b79ec08c9e77f2/tools/cxbe/Xbe.cpp):
   timestamps e biblioteca placeholder usados na normalização de metadata.
 

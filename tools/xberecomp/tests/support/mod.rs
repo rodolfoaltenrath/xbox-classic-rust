@@ -8,6 +8,7 @@ mod blocks;
 mod breakpoint;
 mod conditional;
 mod control;
+mod critical;
 mod double_shifts;
 mod exchange;
 mod indirect;
@@ -58,6 +59,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&strings::sources(output));
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
+    main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));
     main.push_str(&nvram::sources(output));
     main.push_str(&exchange::sources(output));

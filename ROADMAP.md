@@ -1134,6 +1134,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 | Espera/liberação de mutant sem scheduler (ADR-0035) | — | Aquisição, recursão e liberação reais; `Alertable`, `Timeout`, outra thread e `PreviousCount` recusados como variantes; KMUT v2 com migração da v1; 8/69 serviços |
 | 2026-10-20 | 3-AOT | CLC/STC/CMC e raiz do construtor global (ADR-0036) | — | Três flag ops com teste que compara EFLAGS inteiro; entram no braço que não invalida o rastreamento de destinos; `--entry 0x145E0` cobre a tabela de inicializadores do CRT; 8769 → 8791 blocos |
 | 2026-10-20 | 4 / 5 | Hello avança até seções críticas | — | 308 testes workspace/doctests e 122 nativos debug/release; o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em `RtlInitializeCriticalSection` (291), objeto `0x2810C` |
+| 2026-10-20 | 4 / 3-AOT | Seções críticas guest e retomada Linux (ADR-0037) | — | Init/Enter/Leave/TryEnter, 28 bytes em RAM, recursão e snapshot sem estado host; 12/69 serviços, 317 testes workspace/doctests e 125 nativos debug/release; hello passa por Init, chega ao construtor 0x205E0; essa raiz revela RDMSR em 0x207C6 |
 
 ---
 
@@ -1142,20 +1143,22 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `8/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `12/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
    (ADR-0033), e a consulta integral usa a EEPROM explícita da sessão (ADR-0034).
    Espera e liberação de mutant estão implementadas sem bloquear o host (ADR-0035).
-   **O bloqueio atual é `RtlInitializeCriticalSection` (291), em execução**, retorno
-   `0x11063`, com o objeto em `0x2810C`, chamado por um construtor global. Seções
-   críticas são família (`291`, `277`, `294`, `306`) e exigem estrutura própria em
-   memória guest. A tradução precisa de `--entry 0x19110 --entry 0x145E0`.
-   BSF/BSR destravaram a tradução; separar blocos corrigiu a
-   pilha host. Com `--entry 0x19110`, 8769 blocos compilam e iniciam nativamente
-   (ADRs 0030/0031). Modelar aquisição/espera sobre o mutex existente; não
-   retornar sucesso genérico. Novas raízes de callbacks/threads podem revelar
+   Seções críticas (`291`, `277`, `294`, `306`) agora têm estrutura de 28 bytes
+   na RAM guest, recursão, liberação e TryEnter; contenção bloqueante recusa
+   (ADR-0037). Com `--entry 0x19110 --entry 0x145E0`, 8791 blocos executam além
+   de Init até o CALL `0x18E23` → construtor `0x205E0` não traduzido.
+   **Acrescentar `--entry 0x205E0` revela RDMSR em `0x207C6`**, `ECX=0x2A`,
+   usado em `lib/winapi/profiling.c` do nxdk para determinar a frequência da CPU.
+   Próximo trabalho: contrato de CPU/MSRs guest coerente com o Clock, sem executar
+   RDMSR host ou devolver valor apenas para evitar o caminho. BSF/BSR destravaram
+   a tradução anterior; separar blocos corrigiu a pilha host (ADRs 0030/0031).
+   Novas raízes de callbacks/threads podem revelar
    mais ISA. O framebuffer e o aceite integrado ainda estão pendentes.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.

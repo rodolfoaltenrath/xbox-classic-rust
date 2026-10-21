@@ -7,8 +7,9 @@
 //! (ADR-0032). SHA-1 Init/Update/Final usa contexto opaco na RAM (ADR-0033):
 //! A consulta integral de EEPROM usa a imagem explícita da sessão (ADR-0034):
 //! Espera e liberação de mutant, sem bloquear o host (ADR-0035):
-//! **8 de 69** serviços implementados, com variantes limitadas.
-//! Scheduler, seções críticas e o resto dos serviços continuam pendentes.
+//! Seções críticas recursivas em RAM guest (ADR-0037):
+//! **12 de 69** serviços implementados, com variantes limitadas.
+//! Scheduler e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;
 pub mod imports;

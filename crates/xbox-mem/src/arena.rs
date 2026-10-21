@@ -302,14 +302,15 @@ pub mod backing {
         }
 
         pub(super) fn criar(tamanho: usize) -> Option<(NonNull<u8>, Objeto)> {
+            let tamanho_fd = i64::try_from(tamanho).ok()?;
             let nome = c"obsidian-arena";
             // SAFETY: `nome` é um literal C terminado em NUL e vivo durante a chamada.
             let fd = unsafe { memfd_create(nome.as_ptr(), MFD_CLOEXEC) };
             if fd < 0 {
                 return None;
             }
-            // SAFETY: `fd` é válido (checado acima); `tamanho` cabe em i64.
-            if unsafe { ftruncate(fd, tamanho as i64) } != 0 {
+            // SAFETY: `fd` é válido (checado acima); tamanho convertido sem overflow.
+            if unsafe { ftruncate(fd, tamanho_fd) } != 0 {
                 // SAFETY: fd válido, fechado uma vez só.
                 unsafe { close(fd) };
                 return None;

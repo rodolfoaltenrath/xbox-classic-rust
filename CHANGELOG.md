@@ -10,6 +10,17 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: família de seções críticas (291/277/294/306), com estrutura Xbox
+  de 28 bytes na RAM guest, aquisição recursiva, liberação e TryEnter com BOOLEAN.
+  Contenção bloqueante/esperadores/exceções recusam explicitamente; validação integral
+  evita stores parciais. Sem estado host novo ou mudança de snapshot. 317 testes
+  workspace/doctests e 125 casos nativos debug/release; 12/69 serviços. O hello
+  reconstruído no Linux mantém o hash da referência, passa por Init e encontra o
+  construtor `0x205E0`; incluir essa raiz revela RDMSR em `0x207C6` (ADR-0037).
+  Na retomada Linux, a arena compartilhável também passou a verificar a conversão
+  `usize` → `i64` antes de criar/dimensionar o memfd, mantendo Clippy limpo no
+  Rust 1.98.1 fixado; sem mudança no caminho Windows ou novo unsafe.
+
 - Fase 4/alpha: espera e liberação de mutant (`NtWaitForSingleObject` 233 e
   `NtReleaseMutant` 221) sobre o objeto existente, **sem bloquear a thread do host**:
   com uma thread guest cada caso tem resposta definida, e `Alertable`, `Timeout`,
