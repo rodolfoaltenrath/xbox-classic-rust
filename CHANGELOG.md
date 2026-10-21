@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: HalReadWritePCISpace (46) lê o PLL do controlador DRAM e suas
+  subfaixas em RAM guest, com validação integral. CPU/MSRs e PCI compartilham
+  configuração nominal; escritas e áreas desconhecidas recusam explicitamente.
+  KRNL v3/PCIC v1 preserva o perfil e migra v1/v2. 331 testes workspace/doctests
+  e 135 casos nativos debug/release. O hello calcula 733333333 Hz e avança até
+  InterlockedExchange (54), retorno 0x19DC7; 13/69 serviços (ADR-0039).
+
 - Fase 3-AOT/alpha: RDMSR com perfil guest explícito de CPU, leitura de TSC pelo
   mesmo Clock de RDTSC e configuração nominal EBL_CR_POWERON em 0x2A. Outros MSRs
   recusam com PC/índice, sem efeitos; sem instrução privilegiada host ou novo unsafe.

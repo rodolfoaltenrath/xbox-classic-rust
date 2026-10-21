@@ -8,7 +8,8 @@
 //! A consulta integral de EEPROM usa a imagem explícita da sessão (ADR-0034):
 //! Espera e liberação de mutant, sem bloquear o host (ADR-0035):
 //! Seções críticas recursivas em RAM guest (ADR-0037):
-//! **12 de 69** serviços implementados, com variantes limitadas.
+//! Leitura da configuração PCI de clock (ADR-0039):
+//! **13 de 69** serviços implementados, com variantes limitadas.
 //! Scheduler e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;

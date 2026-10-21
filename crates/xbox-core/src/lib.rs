@@ -9,6 +9,7 @@
 //! - [`error`] — tipos de erro compartilhados.
 //! - [`snapshot`] — serialização determinística de estado emulado (ROADMAP §4.4).
 //! - [`time`] — relógio virtual em ciclos do guest e agendador de eventos.
+//! - [`hardware`] — configuração nominal de clock compartilhada por CPU/chipset.
 //! - [`config`] — configuração do emulador (TOML).
 //! - [`log`] — inicialização do `tracing`.
 //!
@@ -16,6 +17,7 @@
 
 pub mod config;
 pub mod error;
+pub mod hardware;
 pub mod log;
 pub mod snapshot;
 pub mod time;

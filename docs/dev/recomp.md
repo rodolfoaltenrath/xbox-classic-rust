@@ -523,7 +523,7 @@ MSR 0x10 lê o mesmo Clock de RDTSC; 0x2A devolve a configuração nominal
 Xbox. Outros índices dão erro com PC/índice sem efeitos ou cobrança do passo.
 WRMSR/CPL/CR4/#GP via IDT continuam pendentes; não há RDMSR host.
 
-O snapshot integral atual é AOTS v1 com **AOTC v7**, bus, KRNL v2, KMUT v2 e
+Na entrega do ADR-0038, o snapshot integral era AOTS v1 com **AOTC v7**, bus, KRNL v2, KMUT v2 e
 EEPR v1. AOTC v7 acrescenta o perfil de CPU e migra v1–v6 explicitamente para
 o perfil 1; Clock continua único, com custo sintético do perfil de tempo 1.
 IDs desconhecidos, versão zero e truncamentos são recusados.
@@ -540,3 +540,26 @@ preservação, TSC de 64 bits, erro/retry, tempo/orçamento/polls, snapshot inte
 e falta de store posterior à leitura. Próximo passo: configuração PCI guest e
 clock do chipset para atender o serviço 46. Threads/execução completa/framebuffer
 permanecem abertos. Contrato e fontes: [ADR-0038](../adr/0038-rdmsr-perfil-cpu-guest.md).
+
+## Configuração PCI de clock — ADR-0039
+
+HalReadWritePCISpace (46) atende somente o PLL do controlador DRAM: bus 0,
+slot NT 0x60 (device 0/function 3), offsets 0x6C..0x70. O valor público
+0x01230801 tem divisor 1/multiplicador 8. Subleituras retornam fatias little-endian;
+o destino inteiro é validado como RAM gravável antes de escrever. Escritas,
+outras funções e regiões recusam explicitamente. VOID retorna EAX=0 por convenção.
+
+`xbox_core::hardware::RetailClockV1` centraliza EBL_CR_POWERON/PLL. A frequência
+derivada é 733333333 Hz, coerente com Clock; outros efeitos dos campos não são
+modelados. `PciConfig` pertence ao dispatcher. **KRNL v3/PCIC v1** salva o perfil;
+KRNL v1/v2 migram para ele preservando o estado anterior. AOTS v1/AOTC v7/KMUT v2/
+EEPR v1 permanecem. PCI/MMIO futuros devem usar a mesma autoridade de estado.
+
+O hello mantém as quatro raízes/9027 blocos e passa pela consulta PCI. Uma
+verificação local do XBE real confirmou `tsc_freq=733333333` em 0x27D10/0x27D14.
+O próximo bloqueio é **InterlockedExchange (54)**, retorno 0x19DC7, argumentos
+0x29158 e 1, FASTCALL/8 (ECX/EDX). Troca e valor anterior precisam de efeitos
+reais na RAM, sem sucesso genérico. **331 testes workspace/doctests e 135 casos
+nativos debug/release**, mais a verificação local do hello; 13/69 serviços com
+variantes limitadas. Fontes, snapshot, limites e logs:
+[ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).

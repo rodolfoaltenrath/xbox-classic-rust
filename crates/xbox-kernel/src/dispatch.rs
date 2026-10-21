@@ -15,7 +15,7 @@
 //!
 //! ## Estado
 //!
-//! [`Dispatcher`] guarda contadores, EEPROM e mutexes guest serializáveis. A sessão AOT é
+//! [`Dispatcher`] guarda contadores, EEPROM, perfil PCI e mutexes guest serializáveis. A sessão AOT é
 //! dona deste estado; salvar só CPU/RAM não preserva os objetos de kernel.
 
 use xbox_core::error::SnapshotError;
@@ -25,11 +25,13 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 mod critical;
 mod mutants;
 mod nvram;
+mod pci;
 mod sha;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 use mutants::Mutants;
 pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
+pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 
 use crate::imports::{Abi, Call, Kind};
@@ -46,6 +48,7 @@ pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
 pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
+pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -70,6 +73,7 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
+    ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
@@ -158,6 +162,7 @@ pub struct Dispatcher {
     recusadas: u64,
     mutants: Mutants,
     eeprom: EepromState,
+    pci: PciConfig,
 }
 
 impl Dispatcher {
@@ -176,6 +181,10 @@ impl Dispatcher {
 
     pub const fn eeprom(&self) -> &EepromState {
         &self.eeprom
+    }
+
+    pub const fn pci(&self) -> &PciConfig {
+        &self.pci
     }
 
     /// Chamadas atendidas por um serviço implementado.
@@ -209,6 +218,7 @@ impl Dispatcher {
 
         let resultado = match export.ordinal {
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
+            ORDINAL_HAL_READ_WRITE_PCI_SPACE => self.pci.transfer(bus, &call),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
@@ -389,15 +399,16 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 2);
+        out.section("KRNL", 3);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
         self.eeprom.save(out);
+        self.pci.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 2)?;
+        let version = inp.section("KRNL", 3)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -414,11 +425,16 @@ impl Snapshot for Dispatcher {
         if version >= 2 {
             eeprom.load(inp)?;
         }
+        let mut pci = PciConfig::default();
+        if version >= 3 {
+            pci.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
             mutants,
             eeprom,
+            pci,
         };
         Ok(())
     }

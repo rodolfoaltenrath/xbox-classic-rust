@@ -1136,6 +1136,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 / 5 | Hello avança até seções críticas | — | 308 testes workspace/doctests e 122 nativos debug/release; o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em `RtlInitializeCriticalSection` (291), objeto `0x2810C` |
 | 2026-10-20 | 4 / 3-AOT | Seções críticas guest e retomada Linux (ADR-0037) | — | Init/Enter/Leave/TryEnter, 28 bytes em RAM, recursão e snapshot sem estado host; 12/69 serviços, 317 testes workspace/doctests e 125 nativos debug/release; hello passa por Init, chega ao construtor 0x205E0; essa raiz revela RDMSR em 0x207C6 |
 | 2026-10-20 | 3-AOT / 5 | RDMSR e perfil de CPU guest (ADR-0038) | — | TSC compartilhado com RDTSC, EBL_CR_POWERON nominal, erros sem efeitos e AOTC v7 com migração; 322 testes workspace/doctests e 131 nativos debug/release; quatro raízes traduzem 9027 blocos e o hello chega a HalReadWritePCISpace (46) |
+| 2026-10-20 | 4 / 5 | Leitura PCI do clock guest (ADR-0039) | — | PLL 0:0:3 e subleituras, configuração compartilhada com CPU/MSRs, KRNL v3/PCIC v1 com migração; 331 testes workspace/doctests e 135 nativos debug/release; hello calcula 733333333 Hz e chega a InterlockedExchange (54); 13/69 serviços |
 
 ---
 
@@ -1144,7 +1145,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `12/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `13/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
@@ -1156,10 +1157,13 @@ Em ordem:
    0x10 compartilha o Clock com RDTSC, 0x2A informa bus/razão nominais,
    índices sem modelo recusam sem efeitos. AOTC v7 salva o perfil (ADR-0038).
    Com raízes `0x19110`, `0x145E0`, `0x205E0` e `0x20889`, **9027 blocos**
-   executam até **HalReadWritePCISpace (46)**, retorno `0x2064D`, argumentos
-   `0, 0x60, 0x6C, 0x7000FE9C, 4, 0`, no construtor de frequência nxdk.
-   Próximo trabalho: configuração PCI guest/clock do chipset e atendimento dessa
-   leitura, sem escrever valor escolhido apenas para evitar o cálculo.
+   passam por HalReadWritePCISpace (46); o PLL usa configuração pública no perfil
+   de clock compartilhado e o hello calcula 733333333 Hz. KRNL v3 salva PCIC v1;
+   leituras desconhecidas e escritas recusam (ADR-0039).
+   **O próximo bloqueio é InterlockedExchange (54)**, retorno `0x19DC7`, argumentos
+   `0x29158, 1`, FASTCALL/8 (ECX/EDX). Modelar troca real em RAM guest, retorno do
+   valor anterior, proteção e atomicidade sob Bus exclusivo; não retornar sucesso
+   sem o efeito. Outros membros da família podem ser necessários conforme o fluxo.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
    (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar

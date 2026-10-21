@@ -17,6 +17,7 @@ mod msr;
 mod muldiv;
 mod nvram;
 mod ordering;
+mod pci;
 mod rotations;
 mod scan;
 mod sha;
@@ -63,6 +64,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));
     main.push_str(&nvram::sources(output));
+    main.push_str(&pci::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
     main.push_str(&msr::sources(output));

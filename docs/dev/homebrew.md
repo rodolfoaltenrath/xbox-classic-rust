@@ -73,8 +73,9 @@ em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 `ordinal-report` inspeciona esses campos e todas as importações sem execução.
 O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
 espera/liberação de mutant (233/221), SHA-1 Init/Update/Final (335/336/337),
-consulta integral de EEPROM (24) e seções críticas (291/277/294/306):
-**12/69 serviços implementados**, com variantes limitadas,
+consulta integral de EEPROM (24), seções críticas (291/277/294/306) e
+leitura do PLL PCI (46):
+**13/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -106,8 +107,10 @@ Nessa etapa o CALL em `0x18E23` chegou ao construtor `0x205E0`; incluí-lo
 revelou RDMSR em `0x207C6`, `ECX=0x2A`, no cálculo de frequência de CPU em
 `lib/winapi/profiling.c`. O ADR-0038 implementou RDMSR/perfil de CPU e
 incluiu o case observado do multiplicador (`0x20889`). Com quatro raízes,
-o hello executa até HalReadWritePCISpace (46), retorno `0x2064D`, argumentos
-`0, 0x60, 0x6C, 0x7000FE9C, 4, 0`. Configuração PCI guest ainda falta.
+nessa entrega o hello chegou a HalReadWritePCISpace (46), retorno `0x2064D`.
+O ADR-0039 atende essa consulta com configuração PCI de clock explícita;
+o hello calcula 733333333 Hz e avança até InterlockedExchange (54), retorno
+`0x19DC7`, argumentos `0x29158, 1`. O próximo passo é a troca atômica guest.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -185,9 +188,10 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
 Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
 o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
-são **9027 blocos** e o bloqueio real é **HalReadWritePCISpace (46)**, leitura
-de quatro bytes no offset `0x6C`. Isso ainda é execução inicial, sem framebuffer.
-Contrato/evidência atual: [ADR-0038](../adr/0038-rdmsr-perfil-cpu-guest.md).
+são **9027 blocos** e o bloqueio real é **InterlockedExchange (54)**, retorno
+`0x19DC7`, argumentos `0x29158, 1`, depois de calcular a frequência por PCI.
+Isso ainda é execução inicial, sem framebuffer.
+Contrato/evidência atual: [ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
@@ -195,7 +199,7 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v2/EEPR v1 no snapshot.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v3/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
@@ -209,7 +213,7 @@ Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem r
 host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
 KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-AOTS v1/KRNL v2/KMUT v2/EEPR v1 permanecem; AOTC foi para v7 no ADR-0038. Detalhes:
+O formato atual é AOTS v1/AOTC v7/KRNL v3/KMUT v2/EEPR v1/PCIC v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
@@ -217,8 +221,16 @@ registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x0104000
 (bus 133⅓ MHz × razão 5,5; demais campos sintéticos) e 0x10 como o mesmo Clock
 de RDTSC. Não há RDMSR host. MSR sem modelo dá erro de suporte, sem #GP/IDT
 implícito, efeitos ou cobrança do passo; WRMSR continua recusado. AOTC v7 salva
-ID de perfil 1; v1–v6 migram para ele. Evidência: 322 testes workspace/doctests e
+ID de perfil 1; v1–v6 migram para ele. Evidência nessa entrega: 322 testes workspace/doctests e
 131 casos nativos debug/release, Rust 1.98.1 (ADR-0038).
+
+HalReadWritePCISpace lê o registro PLL 0:0:3, 0x6C..0x70, incluindo subleituras;
+escritas e áreas desconhecidas recusam. `RetailClockV1` do core centraliza CPU/PLL,
+com readback público 0x01230801 (divisor 1/multiplicador 8). KRNL v3/PCIC v1
+salva o perfil; v1/v2 migram preservando estado anterior. O hello real teve
+`tsc_freq=733333333 Hz` conferido em RAM. Validação atual: 331 testes workspace/
+doctests e 135 casos nativos debug/release, mais a verificação local do XBE.
+Detalhes: [ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).
 
 ## Referências públicas
 

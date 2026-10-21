@@ -1,8 +1,8 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0038. O hello nxdk inicia nativamente com TLS/imports, 12 serviços
-e perfil de CPU/MSRs guest; a execução chega à leitura PCI de frequência.
+ADRs 0013–0039. O hello nxdk inicia nativamente com TLS/imports, 13 serviços
+e perfil de CPU/PCI guest; passa pelo cálculo de frequência e chega a InterlockedExchange.
 Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
@@ -182,7 +182,7 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v7, memória e estado `KRNL` v2 / `KMUT` v2 / `EEPR` v1, com handles, propriedade e
+inclui `AOTC` v7, memória e estado `KRNL` v3 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1, com handles, propriedade e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -213,6 +213,15 @@ Toda a faixa é validada como RAM antes de escrever. Seu estado não precisa de
 tabela host nem seção nova no snapshot. Contrato e limites:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
+O dispatcher possui também `PciConfig`, perfil somente leitura do registro PLL
+0:0:3 (slot NT 0x60), offsets 0x6C..0x70 e subfaixas. CPU/MSRs e PCI compartilham
+as constantes de `RetailClockV1` no core, com frequência derivada conferida contra
+Clock. Áreas desconhecidas/escritas recusam; saída passa por validação integral
+como RAM antes do commit. Não há acesso a portas host. KRNL v3 acrescenta PCIC v1
+com perfil ID 1; v1/v2 migram explicitamente, preservando estado anterior.
+Portas/dispositivos futuros devem usar essa mesma autoridade de configuração
+([ADR-0039](../adr/0039-configuracao-pci-clock-guest.md)).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que
@@ -220,7 +229,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 131 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 135 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

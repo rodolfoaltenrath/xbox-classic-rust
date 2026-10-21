@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`0365320`** e nas alterações
-locais do **ADR-0038**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`163021a`** e nas alterações
+locais do **ADR-0039**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -35,9 +35,10 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
-RDMSR e o perfil nominal de CPU/MSRs já estão implementados. Com quatro raízes
-explícitas, **9027 blocos** executam até **HalReadWritePCISpace (46)**, retorno
-`0x2064D`, leitura de quatro bytes no offset PCI `0x6C` (bus 0, slot `0x60`).
+RDMSR e a leitura PCI do PLL já estão implementados. Com quatro raízes explícitas,
+**9027 blocos** executam até **InterlockedExchange (54)**, retorno `0x19DC7`,
+argumentos `0x29158, 1`. A frequência calculada pelo hello foi conferida em RAM:
+**733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
@@ -47,9 +48,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas; 12/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas e leitura PCI de clock; 13/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa por RDMSR/cálculo do multiplicador; para em HalReadWritePCISpace (46); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Passa pela leitura PCI/cálculo de frequência; para em InterlockedExchange (54); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -159,7 +160,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
-| Bloqueio de execução atual | HalReadWritePCISpace (46), retorno 0x2064D; leitura 0, 0x60, 0x6C, 0x7000FE9C, 4, 0 |
+| Bloqueio de execução atual | InterlockedExchange (54), fastcall/8, retorno 0x19DC7, argumentos 0x29158 e 1 |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -419,11 +420,50 @@ observado com `--entry 0x20889` traduz 9027 blocos. O erro real passa a ser
 configuração PCI guest/clock do chipset necessária a essa leitura, sem inventar
 um valor para desviar do cálculo.
 
-Registro atual: **12/69 serviços**, 3/3 dados; **322 testes workspace/doctests** e
+Registro nessa entrega: **12/69 serviços**, 3/3 dados; **322 testes workspace/doctests** e
 **131 casos nativos debug/release** (115 fora de x86_64), no Rust 1.98.1. Cinco
 novos testes do recompilador/runtime e seis gerados cobrem efeitos, limites,
 retry e migração/snapshot. Evidências: [ADR-0038](docs/adr/0038-rdmsr-perfil-cpu-guest.md),
 logs `target/msr-*`. Projeto de execução atual: `target/alpha-hello-msr-ratio-20261020`.
+
+### Leitura PCI do clock e próximo serviço atômico (ADR-0039)
+
+HalReadWritePCISpace (46) atende o registro PLL do controlador DRAM, bus 0,
+slot NT 0x60 (device 0, function 3), offsets 0x6C..0x70, incluindo subleituras.
+O valor público 0x01230801 tem divisor 1/multiplicador 8. Escritas e outras
+funções/regiões recusam; não existe tabela PCI genérica cheia de zeros.
+Buffer é validado integralmente em RAM antes de escrever; função VOID usa
+EAX=0 por convenção. BOOLEAN usa byte baixo. Faixa vazia não acessa Buffer.
+
+`xbox_core::hardware::RetailClockV1` agora centraliza a configuração de CPU/PLL;
+0x2A conserva exatamente seu valor do ADR-0038. A equação do nxdk dá 733333333 Hz,
+verificada contra CPU_HZ por asserção de compilação e por testes. Nenhum acesso
+a portas PCI host ou dump privado. Os demais efeitos dos campos do PLL não
+estão implementados; escritas exigirão rever clock/dispositivo em conjunto.
+
+**KRNL agora é v3**, acrescentando PCIC v1 (ID de perfil PCI 1); KRNL v1/v2
+migram explicitamente preservando objetos/EEPROM/contadores. AOTS v1/AOTC v7/
+KMUT v2/EEPR v1 permanecem. O dispatcher publica a carga apenas após validar
+todas as seções. PCI/MMIO futuros devem compartilhar essa autoridade de estado.
+
+O hello mantém 9027 blocos/quatro raízes e passa pela leitura PCI. O próximo
+bloqueio real é **InterlockedExchange (54)**, retorno `0x19DC7`, argumentos
+`0x29158, 1`. É FASTCALL/8 (ECX/EDX), conforme catálogo/header nxdk. Modelar
+RMW real de RAM guest, retorno do valor anterior e efeitos indivisíveis sob a
+posse exclusiva do Bus; não retornar sucesso sem trocar. A família pode exigir
+outros membros conforme o caminho avançar.
+
+O teste local adicional sobre o XBE real conferiu `tsc_freq` em 0x27D10/0x27D14:
+733333333, parte alta zero, antes do ordinal 54. Está no artefato ignorado
+`target/alpha-hello-msr-ratio-20261020/tests/pci_clock.rs`, log
+`target/pci-hello-clock-test.log`. Não é fixture do repositório.
+
+Registro atual: **13/69 serviços**, 3/3 dados; **331 testes workspace/doctests** e
+**135 casos nativos debug/release** (119 fora de x86_64), no Rust 1.98.1. Nove
+novos testes de kernel e quatro gerados cobrem leitura, cálculo guest, variantes,
+ABI, faltas, migração e snapshot. Detalhes/fontes: [ADR-0039](docs/adr/0039-configuracao-pci-clock-guest.md).
+Logs desta entrega usam prefixo `target/pci-`. Threads, execução completa e
+framebuffer continuam abertos.
 
 Trabalho restante:
 
@@ -537,7 +577,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. RDMSR foi implementado no ADR-0038; o bloqueio atual é PCI. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é InterlockedExchange. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -618,8 +658,8 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
-O binário passa por mutex, SHA, EEPROM, Init da seção crítica e RDMSR e para em
-HalReadWritePCISpace (46), sem framebuffer. Com três raízes, falta o case
+O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
+PCI e para em InterlockedExchange (54), sem framebuffer. Com três raízes, falta o case
 `0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
 execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
@@ -643,7 +683,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 131 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 135 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -664,30 +704,25 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 0365320 + alterações locais do ADR-0038.
+> alterar código. Base documentada: 163021a + alterações locais do ADR-0039.
 > A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
-> concluir o hello real. O kernel tem 12/69 serviços com variantes limitadas:
-> RtlInitAnsiString, criação/espera/liberação de mutant, SHA-1, EEPROM integral
-> e Init/Enter/Leave/TryEnter de seção crítica. Não há scheduler ou KTHREAD real;
-> a identidade inicial é 1. Seções críticas têm 28 bytes na RAM guest; bloqueio,
-> esperadores e exceções continuam recusados. SHA usa contexto opaco HLE próprio.
-> Session possui o dispatcher e atender_kernel() não recebe argumento.
-> Snapshot integral: AOTS v1, AOTC v7, KRNL v2, KMUT v2, EEPR v1. AOTC v7 guarda
-> CpuProfile::XboxRetailV1 (ID 1); v1–v6 migram explicitamente. MSR 0x10 e RDTSC
-> compartilham o Clock. 0x2A devolve 0x01040000: configuração nominal de bus
-> 133⅓ MHz × razão 5,5; outros bits são zero por política sintética, não dump.
-> RDMSR não usa host e índices sem modelo recusam sem efeitos; WRMSR/CPL/#GP
-> ainda faltam. Tempo continua sintético, um ciclo por passo, perfil de tempo 1.
-> O hello tem o mesmo hash nxdk fixado. Traduz 9027 blocos e executa com
-> --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
-> A última raiz é o case do multiplicador; a tabela passa por slot de pilha.
-> O bloqueio real é HalReadWritePCISpace (46), retorno 0x2064D, argumentos
-> 0, 0x60, 0x6C, 0x7000FE9C, 4, 0, chamado por tsc_freq_init do nxdk.
-> Próximo passo: configuração PCI guest/clock do chipset e essa leitura, sem
-> escrever um valor escolhido só para evitar o cálculo. Novas raízes podem
-> revelar mais ISA/serviços. Ainda faltam threads, execução completa e framebuffer.
-> Use Rust 1.98.1, fixado no projeto; neste PC está no cache do usuário.
-> Registro atual: 322 testes workspace/doctests e 131 casos nativos debug/release.
-> Preserve AOT em Rust, bus e estado explícito. Atualize continuidade, alpha,
-> roadmap, changelog e evidências. Não use sucesso genérico ou fixtures como
-> prova do hello funcional.
+> concluir o hello. O kernel tem 13/69 serviços com variantes limitadas:
+> RtlInitAnsiString, mutants, SHA-1, EEPROM integral, seções críticas e leitura
+> PCI do PLL 0:0:3, offsets 0x6C..0x70. Não há scheduler ou KTHREAD real.
+> Snapshot integral: AOTS v1, AOTC v7, KRNL v3, KMUT v2, EEPR v1, PCIC v1.
+> KRNL v1/v2 migram para o perfil PCI 1. AOTC v1–v6 migram para o perfil de CPU 1.
+> MSR 0x10 e RDTSC compartilham Clock. 0x2A mantém 0x01040000; PCI 0x6C lê
+> 0x01230801 (divisor 1, multiplicador 8). RetailClockV1 no core centraliza a
+> configuração nominal de CPU/chipset; frequência 733333333 Hz coerente com Clock.
+> Escritas PCI/áreas desconhecidas recusam; não há I/O host ou tabela fictícia.
+> O hello traduz 9027 blocos e executa com --entry 0x19110 --entry 0x145E0
+> --entry 0x205E0 --entry 0x20889. A quarta raiz é o case do multiplicador.
+> Passa pela consulta PCI e chega a InterlockedExchange (54), retorno 0x19DC7,
+> argumentos 0x29158, 1. FASTCALL/8, ECX/EDX. Próximo passo: RMW real de RAM
+> guest, retorno do valor anterior, atomicidade sob Bus exclusivo, proteção e
+> snapshot. Não trocar por sucesso genérico. Outros membros podem ser necessários.
+> O teste local do XBE real confirmou tsc_freq=733333333 em 0x27D10/0x27D14.
+> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 331 testes
+> workspace/doctests e 135 casos nativos debug/release. Threads/execução completa/
+> framebuffer seguem pendentes. Preserve AOT/bus/estado explícito e atualize
+> continuidade, alpha, roadmap, changelog e evidências ao avançar.
