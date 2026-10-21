@@ -204,10 +204,10 @@ consulta de settings e blanking; AvGetSavedDataAddress usa o perfil cold boot
 sem imagem herdada. MmAllocateContiguousMemoryEx (166) já aloca 1.228.800 bytes
 fisicamente contíguos para 640×480×32, com VA 0x80050000/PA 0x50000. O guest zera
 a região e configura o modo NTSC-M 640×480/60, formato 0x12/pitch 2560.
-O runtime lê as linhas BGRA por DMA. O próximo bloqueio é **AvSendTVEncoderOption
-(2), opção 11, retorno 0x12DFA**, Param=5: filtro de cintilação. Ainda sem saída
+O runtime lê as linhas BGRA por DMA e registra flicker=5/soften=false. O próximo
+bloqueio é o **DAC gamma por MMIO, escrita em 0xFD6813C8**. Ainda sem saída
 habilitada, imagem apresentada ou execução completa. Contrato/evidência atual:
-[ADR-0049](../adr/0049-modo-video-framebuffer.md).
+[ADR-0050](../adr/0050-pedidos-filtros-encoder.md).
 
 Na retomada Windows de 2026-10-21, incluir também as entradas de thread
 `0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
@@ -237,7 +237,7 @@ host por endereço. `OwningThread` é a identidade guest ativa (pai 1, filha 2),
 não um ponteiro KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
 O formato atual é AOTS v2/AOTC v7/KRNL v10/KMUT v3/THRD v1/TCXT v1, além de
-EEPR/PCIC/STIM/IRQL/VMEM/SYML/CMEM v1 e AVST v2. Detalhes das seções críticas:
+EEPR/PCIC/STIM/IRQL/VMEM/SYML/CMEM v1 e AVST v3. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 O bootstrap de uma filha preserva registradores/flags/FS do pai; Clock/retired,
@@ -291,11 +291,27 @@ mesmo com saída desabilitada. AVST v2 salva o modo e cruza EEPROM/CMEM; v1 migr
 sem modo, preservando enabled. KRNL permanece v10. Não há scanout/vblank ou
 janela de apresentação nessa entrega.
 
-Validação atual: **394 testes workspace/doctests e 174 nativos debug/release**
+Validação da entrega de modo de vídeo: **394 testes workspace/doctests e 174 nativos debug/release**
 (158 fora de x86_64). O teste com hello real conferiu 480 linhas pretas,
 modo/pitch/PA e snapshot integral com replay idêntico na opção 11 do encoder:
 **17213045 retired/ciclos e 40 chamadas atendidas**. Logs `target/display-*`,
 teste local ignorado `target/alpha-hello-crt-case-20261021/tests/display_mode.rs`.
+
+O ADR-0050 acrescenta os pedidos do encoder: flicker (opção 11, nível 0..7) e
+soften (14, BOOL canônico), ambos com Result nulo. Guarda intenção sem aplicar
+filtros analógicos à RAM. AVST v3 persiste os dois pedidos opcionais; v1/v2
+migram sem pedidos, preservando seus campos existentes. KRNL continua v10 e
+a contagem de serviços fica em 27/69, pois são variantes de um ordinal existente.
+O próximo acesso do hello é o DAC gamma em 0xFD6813C8, sem mapeamento/modelo;
+mapear sobre o MMIO genérico atual descartaria as escritas. Rampa gamma,
+habilitação/apresentação e Sleep continuam pendentes.
+
+Validação atual: **398 testes workspace/doctests e 177 nativos debug/release**
+(161 fora de x86_64). O teste real confirmou os retornos 0x12DFA/0x12E63 dos
+pedidos 5/false e a falta NaoMapeado no DAC, PC=0x12EEB, **17232328 retired/ciclos
+e 42 chamadas atendidas**, com saída desabilitada. Snapshot integral e repetição
+da falta preservam os bytes/CPU/tempo. Logs `target/encoder-filters-*`; teste
+local ignorado `target/alpha-hello-crt-case-20261021/tests/encoder_filters.rs`.
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
 registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000

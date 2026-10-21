@@ -53,7 +53,8 @@ pub use system_time::SystemTimeReference;
 pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
 pub use video::{
     AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTSC_M,
-    VIDEO_BASE, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_VIDEOENABLE, VideoState,
+    VIDEO_BASE, VIDEO_ENC_FLICKERFILTER, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_SOFTEN_FILTER,
+    VIDEO_ENC_VIDEOENABLE, VideoState,
 };
 pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,

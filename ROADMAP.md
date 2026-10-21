@@ -1150,6 +1150,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 4 / alpha | Encoder e perfil de vídeo cold boot (ADR-0047) | — | GET_SETTINGS derivado da EEPROM/cabo padrão, VIDEOENABLE com estado de blanking e ausência explícita de framebuffer herdado; KRNL v9/AVST v1; hello pede 1.228.800 bytes para 640×480×32 em MmAllocateContiguousMemoryEx (166), retorno 0x12C01; 380 testes workspace/doctests e 168 nativos debug/release; 25/69 serviços |
 | 2026-10-21 | 4 / alpha | Framebuffer em memória física contígua (ADR-0048) | — | MmAllocateContiguousMemoryEx, frames vizinhos reais, janela guest restrita RW e coerência DMA; KRNL v10/CMEM v1; hello aloca/zera 300 páginas e chega a AvSetDisplayMode (3), retorno 0x12CA4; 388 testes workspace/doctests e 171 nativos debug/release; 26/69 serviços |
 | 2026-10-21 | 4 / alpha | Modo de vídeo e leitura do framebuffer (ADR-0049) | — | AvSetDisplayMode configura NTSC-M 640×480/60 A8R8G8B8 sobre CMEM; visão BGRA por DMA sem compartilhar arena; AVST v2 migra v1; hello para na opção 11 do encoder, retorno 0x12DFA, ainda sem apresentação; 394 testes workspace/doctests e 174 nativos debug/release; 27/69 serviços |
+| 2026-10-21 | 4 / alpha | Pedidos de filtros do encoder (ADR-0050) | — | Flicker 0..7/soften 0..1, estado opcional e recusa explícita; AVST v3 migra v1/v2 sem pedidos; hello passa por 5/false e para na escrita do DAC gamma em 0xFD6813C8, PC 0x12EEB, ainda sem mapeamento/modelo; 398 testes workspace/doctests e 177 nativos debug/release; mantém 27/69 serviços |
 
 ---
 
@@ -1203,10 +1204,13 @@ Em ordem:
    1.228.800 bytes para 640×480×32; KRNL v10/CMEM v1 confere posse e aliases.
    AvSetDisplayMode já configura o modo 0x04010101 (NTSC-M 640×480/60), formato
    0x12/pitch 2560 e PA real; o runtime lê linhas BGRA por DMA. AVST v2 persiste
-   o modo e migra v1 sem modo, mantendo KRNL v10 (ADR-0049). Próximo bloqueio:
-   **AvSendTVEncoderOption (2), opção 11**, retorno 0x12DFA, Param=5, filtro de
-   cintilação. Modelar ajustes do encoder, rampa gamma MMIO e apresentação;
-   a saída ainda está desabilitada. Espera na filha terminada
+   o modo e migra v1 sem modo, mantendo KRNL v10 (ADR-0049). Os pedidos de filtros
+   11/flicker=5 e 14/soften=false já ficam no estado lógico; AVST v3 migra v1/v2
+   sem pedidos, sem aplicar filtros analógicos aos pixels (ADR-0050). Próximo
+   bloqueio: escrita de um byte no **DAC gamma, VA=0xFD6813C8, PC=0x12EEB**,
+   ainda sem mapeamento/modelo. Modelar índice/dados RGB e snapshot do dispositivo;
+   não abrir MMIO sobre o destino genérico que descarta escritas. Depois habilitar
+   e apresentar o framebuffer; a saída ainda está desabilitada. Espera na filha terminada
    funciona; espera viva, yield/Sleep, preempção, múltiplas filhas, NtClose de mutant/thread e
    liberação ainda faltam (ADR-0045). Os recursos são retidos nesta versão.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host

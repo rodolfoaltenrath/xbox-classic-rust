@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: pedidos de filtros no encoder HLE, opções 11/flicker (0..7) e
+  14/soften (0/1), com Result nulo e validação antes dos efeitos. Valores
+  independentes preservam modo/blanking/RAM/Clock; cold boot distingue ausência
+  de pedido de zero explícito. AVST v3 persiste pedidos e migra v1/v2 sem herdar
+  configuração; KRNL continua v10, registro permanece 27/69 serviços. Não aplica
+  filtros visuais ao framebuffer. O hello passa pelos pedidos 5/false e para
+  na escrita do DAC gamma em 0xFD6813C8, PC=0x12EEB, ainda sem mapeamento/modelo.
+  398 testes workspace/doctests e 177 nativos debug/release (ADR-0050).
+
 - Fase 4/alpha: AvSetDisplayMode (3), perfil NTSC-M 640×480/60 Hz, A8R8G8B8,
   com pitch/PA validados contra o recurso físico contíguo e a EEPROM (27/69
   serviços). Visão emprestada das linhas BGRA por DMA, sem compartilhar a arena

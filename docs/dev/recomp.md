@@ -751,7 +751,7 @@ chegou a **AvSetDisplayMode (3), retorno 0x12CA4**: modo 0x04010101, formato 0x1
 pitch 2560 e PA real. Ainda sem programação/apresentação da imagem. Perfil,
 fontes e reprodução no [ADR-0048](../adr/0048-memoria-fisica-contigua.md).
 
-### Modo HLE e leitura do framebuffer (ADR-0049, estado atual)
+### Modo HLE e leitura do framebuffer (ADR-0049)
 
 AvSetDisplayMode (3), stdcall/24, aceita Step=0 e NTSC-M 640×480/60,
 modo 0x04010101, A8R8G8B8. Pitch/PA devem cobrir 480 linhas dentro de um recurso
@@ -771,3 +771,22 @@ desabilitada e buffer preto zerado pelo guest; ajustes de encoder, gamma MMIO
 e apresentação faltam. Validação: 394 testes workspace/doctests e 174 nativos
 debug/release (158 fora de x86_64). Perfil, fontes e reprodução:
 [ADR-0049](../adr/0049-modo-video-framebuffer.md).
+
+### Pedidos de filtros do encoder (ADR-0050, estado atual)
+
+AvSendTVEncoderOption (2), stdcall/16, aceita flicker (11, nível 0..7) e soften
+(14, 0/1), com a base NV2A e Result nulo. Guarda cada pedido independentemente,
+preservando modo, blanking, RAM e Clock. Ausência de pedido no cold boot é None,
+distinta de zero explícito. Parâmetros inválidos recusam sem mascaramento.
+Isso não simula o filtro analógico nem transforma os bytes do framebuffer.
+
+AVST v3 acrescenta dois bytes canônicos após o modo opcional; v1/v2 migram sem
+pedidos e não herdam os valores do destino. V2 mantém o modo; v1 mantém a
+migração anterior sem modo. KRNL continua v10, contador fica em 27/69 serviços.
+O próximo bloqueio é a escrita do DAC gamma em 0xFD6813C8, sem mapeamento/modelo;
+a saída permanece desabilitada. Não mapear MMIO sobre um destino que descarte
+essas escritas. O hello chegou a PC=0x12EEB, com 17232328 retired/ciclos e 42
+chamadas atendidas; snapshot e repetição da falta foram conferidos. Validação:
+398 testes workspace/doctests e 177 nativos debug/release (161 fora de x86_64).
+Perfil, fontes e reprodução:
+[ADR-0050](../adr/0050-pedidos-filtros-encoder.md).

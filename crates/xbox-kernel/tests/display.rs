@@ -211,10 +211,17 @@ fn configurar_modo_preserva_blanking_e_reconfiguracao_troca_buffer() {
     call(&mut bus, &mut d, &regs, 2, &[0xFD000000, 9, 0, 0]).unwrap();
     configure(&mut bus, &mut d, &regs);
     assert!(d.framebuffer(&bus).unwrap().unwrap().enabled());
+    let mode = d.video().mode();
+    call(&mut bus, &mut d, &regs, 2, &[0xFD000000, 11, 5, 0]).unwrap();
+    call(&mut bus, &mut d, &regs, 2, &[0xFD000000, 14, 0, 0]).unwrap();
+    assert_eq!(d.video().mode(), mode);
+    assert!(d.framebuffer(&bus).unwrap().unwrap().enabled());
     let mut a = args();
     a[5] += 0x1000;
     assert_eq!(call(&mut bus, &mut d, &regs, 3, &a).unwrap(), 0);
     assert_eq!(d.video().mode().unwrap().framebuffer(), GuestPhys(0x21000));
     call(&mut bus, &mut d, &regs, 2, &[0xFD000000, 9, 1, 0]).unwrap();
     assert!(!d.framebuffer(&bus).unwrap().unwrap().enabled());
+    assert_eq!(d.video().flicker_filter(), Some(5));
+    assert_eq!(d.video().soften_filter(), Some(false));
 }

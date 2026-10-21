@@ -1,10 +1,11 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0049. O hello nxdk inicia nativamente com TLS/imports, 27 serviços
+ADRs 0013–0050. O hello nxdk inicia nativamente com TLS/imports, 27 serviços
 e perfil de CPU/PCI guest; executa o bootstrap de uma filha e configura o modo
 de vídeo sobre memória física contígua. A leitura das linhas está disponível;
-ajustes de encoder/MMIO, execução completa, apresentação e áudio pendem.
+o encoder registra os pedidos de filtros. Rampa gamma/MMIO, execução completa,
+apresentação e áudio pendem.
 
 ## Pipeline implementado
 
@@ -184,7 +185,7 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 
 `Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
 inclui `AOTC` v7, memória e estado `KRNL` v10 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v2 / `CMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v3 / `CMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -365,3 +366,11 @@ compartilhamento da arena ou pixels gerados pelo host. AVST v2 persiste o modo,
 migra v1 sem modo e cruza EEPROM/CMEM; KRNL continua v10. Scanout, vblank e
 apresentação ficam fora dessa entrega. O hello para no filtro de cintilação
 (opção 11 do encoder), com saída ainda desabilitada.
+
+O [ADR-0050](../adr/0050-pedidos-filtros-encoder.md) registra os pedidos de
+flicker (11, 0..7) e soften (14, 0/1) no VideoState. Valida base/Param/Result
+antes do efeito, preservando modo/blanking e a RAM original. São configurações
+lógicas, sem simulação dos filtros analógicos. AVST v3 acrescenta dois bytes
+opcionais, migrando v1/v2 sem pedidos; KRNL permanece v10. O próximo bloqueio é
+o DAC gamma por MMIO, ainda sem mapeamento/modelo. A visão do framebuffer
+continua emprestando os pixels guest sem transformá-los.

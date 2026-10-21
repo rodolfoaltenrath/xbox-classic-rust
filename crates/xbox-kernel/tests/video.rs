@@ -196,3 +196,120 @@ fn saved_data_ausente_no_cold_boot_nao_inventa_framebuffer_ou_toca_argumentos() 
     );
     assert!(d.video().enabled());
 }
+
+#[test]
+fn filtros_guardam_pedidos_independentes_sem_tocar_ram_ou_blanking() {
+    let (mut bus, mut d, regs) = setup();
+    assert_eq!(d.video().flicker_filter(), None);
+    assert_eq!(d.video().soften_filter(), None);
+    call(&mut bus, &mut d, &regs, [0xFD000000, 9, 0, 0]).unwrap();
+    bus.escrever_u32(GuestVirt(OUTPUT), 0xDEADBEEF).unwrap();
+    for level in 0..=7 {
+        assert_eq!(
+            call(&mut bus, &mut d, &regs, [0xFD000000, 11, level, 0]).unwrap(),
+            0
+        );
+        assert_eq!(d.video().flicker_filter(), Some(level as u8));
+        assert_eq!(d.video().soften_filter(), None);
+    }
+    for enabled in [0, 1, 1, 0] {
+        call(&mut bus, &mut d, &regs, [0xFD000000, 14, enabled, 0]).unwrap();
+        assert_eq!(d.video().soften_filter(), Some(enabled != 0));
+        assert_eq!(d.video().flicker_filter(), Some(7));
+    }
+    assert!(d.video().enabled());
+    assert!(d.video().mode().is_none());
+    assert_eq!(bus.ler_u32(GuestVirt(OUTPUT)).unwrap(), 0xDEADBEEF);
+}
+
+#[test]
+fn variantes_de_filtro_recusam_sem_truncar_parametro_ou_desreferenciar_result() {
+    let (mut bus, mut d, regs) = setup();
+    call(&mut bus, &mut d, &regs, [0xFD000000, 11, 5, 0]).unwrap();
+    call(&mut bus, &mut d, &regs, [0xFD000000, 14, 1, 0]).unwrap();
+    let video = d.video().clone();
+    bus.escrever_u32(GuestVirt(OUTPUT), 0x12345678).unwrap();
+    for args in [
+        [0xFD000000, 11, 8, 0],
+        [0xFD000000, 11, u32::MAX, 0],
+        [0xFD000000, 14, 2, 0],
+        [0xFD000000, 14, u32::MAX, 0],
+        [0xFD000000, 11, 0, OUTPUT],
+        [0xFD000000, 14, 0, 0x60000000],
+        [0, 11, 0, 0],
+        [0xFE000000, 14, 0, 0],
+        [0xFD000000, 12, 0, 0],
+    ] {
+        assert!(matches!(
+            call(&mut bus, &mut d, &regs, args),
+            Err(Erro::VarianteNaoImplementada { .. })
+        ));
+        assert_eq!(d.video(), &video);
+        assert_eq!(bus.ler_u32(GuestVirt(OUTPUT)).unwrap(), 0x12345678);
+    }
+}
+
+#[test]
+fn snapshot_de_filtros_preserva_ausencia_e_pedidos_e_carga_e_transacional() {
+    let (mut bus, mut d, regs) = setup();
+    for requests in [None, Some((0, 0)), Some((7, 1))] {
+        if let Some((flicker, soften)) = requests {
+            call(&mut bus, &mut d, &regs, [0xFD000000, 11, flicker, 0]).unwrap();
+            call(&mut bus, &mut d, &regs, [0xFD000000, 14, soften, 0]).unwrap();
+        }
+        let checkpoint = saved(&d);
+        let mut restored = Dispatcher::new();
+        Snapshot::load(
+            &mut restored,
+            &mut SnapshotReader::new(&checkpoint).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved(&restored), checkpoint);
+        assert_eq!(restored.video(), d.video());
+    }
+    let video = d.video().clone();
+    let bytes = saved(&video);
+    for (offset, value) in [(14, 8), (14, 0xFE), (15, 2), (15, 0xFE)] {
+        let mut bad = bytes.clone();
+        bad[offset] = value;
+        let mut destination = video.clone();
+        assert!(Snapshot::load(&mut destination, &mut SnapshotReader::new(&bad).unwrap()).is_err());
+        assert_eq!(destination, video);
+    }
+    for len in [14, 15] {
+        let mut destination = video.clone();
+        assert!(
+            Snapshot::load(
+                &mut destination,
+                &mut SnapshotReader::new(&bytes[..len]).unwrap()
+            )
+            .is_err()
+        );
+        assert_eq!(destination, video);
+    }
+}
+
+#[test]
+fn avst_v1_v2_nao_herdam_filtros_e_v2_preserva_modo_configurado() {
+    let (mut bus, mut d, regs) = setup();
+    call(&mut bus, &mut d, &regs, [0xFD000000, 11, 5, 0]).unwrap();
+    call(&mut bus, &mut d, &regs, [0xFD000000, 14, 1, 0]).unwrap();
+    for version in [1, 2] {
+        let mut state = d.video().clone();
+        let mut out = SnapshotWriter::new();
+        out.section("AVST", version);
+        out.u32(1);
+        out.bool(true);
+        if version == 2 {
+            out.bool(true);
+            for field in [0x04010101, 0x12, 2560, 0x50000] {
+                out.u32(field);
+            }
+        }
+        Snapshot::load(&mut state, &mut SnapshotReader::new(&out.finish()).unwrap()).unwrap();
+        assert!(state.enabled());
+        assert_eq!(state.mode().is_some(), version == 2);
+        assert_eq!(state.flicker_filter(), None);
+        assert_eq!(state.soften_filter(), None);
+    }
+}

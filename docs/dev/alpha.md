@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | alocação física contígua e modo de vídeo (ADR-0049); 27/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | memória contígua, modo e pedidos de filtros (ADR-0050); 27/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | modo configurado; para no filtro de cintilação do encoder; controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | modo/filtros configurados; para no DAC gamma por MMIO; controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | modo e leitura das linhas disponíveis; saída desabilitada, apresentação pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -62,10 +62,11 @@ fisicamente contíguas para 640×480×32**. O hello recebeu VA 0x80050000 e PA
 0x50000; o teste real sujou a região e comprovou que o memset guest a zerou.
 AvSetDisplayMode (3) agora configura o modo 0x04010101 (NTSC-M 640×480/60),
 formato 0x12/pitch 2560 e PA do recurso. O runtime lê as linhas BGRA por DMA,
-sem compartilhar a arena. O bloqueio atual é **AvSendTVEncoderOption (2), opção
-11**, retorno **0x12DFA**, Param=5: filtro de cintilação. A saída permanece
-desabilitada; ajustes de encoder/MMIO e apresentação ainda faltam
-([ADR-0049](../adr/0049-modo-video-framebuffer.md)).
+sem compartilhar a arena. AvSendTVEncoderOption já registra os pedidos
+flicker=5 e soften=false. O bloqueio atual é a escrita ao DAC gamma por MMIO,
+**0xFD6813C8**, ainda sem mapeamento/modelo. A saída permanece desabilitada;
+rampa gamma e apresentação ainda faltam
+([ADR-0050](../adr/0050-pedidos-filtros-encoder.md)).
 
 O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) guarda a continuação do pai
 sem copiar Clock/retired; término da filha restaura esse contexto. A filha roda
@@ -90,6 +91,11 @@ publicar o estado restaurado; AVST v1 migra sem modo, preservando enabled.
 KRNL continua v10. A visão empresta a RAM do Bus e expõe apenas pixels visíveis
 de cada linha, excluindo o padding. Ela permite inspeção com saída desabilitada;
 não implica scanout, vblank ou uma imagem já apresentada.
+
+AVST v3 acrescenta os pedidos de flicker (0..7) e soften (0/1), com None no cold
+boot e na migração de AVST v1/v2. Valores fora do perfil e Result não nulo
+recusam antes do efeito. O estado registra intenção do guest; não aplica um
+filtro analógico aos pixels nem altera a visão BGRA da RAM.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -134,8 +140,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **394 testes workspace/doctests** e **174 casos de
-Rust gerado em debug/release**, incluindo modo de vídeo, linhas BGRA, DMA e snapshots. O Rust
+A validação atual tem **398 testes workspace/doctests** e **177 casos de
+Rust gerado em debug/release**, incluindo pedidos de filtros, modo de vídeo, DMA e snapshots. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

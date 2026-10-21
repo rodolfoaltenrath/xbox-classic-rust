@@ -33,8 +33,15 @@ mod display_verification {
         let checkpoint=saved(&s);finish(&mut s);let complete=saved(&s);let mut restored=loaded();
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();assert!(saved(&restored)==checkpoint);
         pixels(&restored,false);finish(&mut restored);assert!(saved(&restored)==complete);
+        // AVST v2 já guardava o modo, mas não os pedidos dos filtros.
+        let mut v2=checkpoint;let av=v2.windows(4).rposition(|v|v==b"AVST").unwrap();
+        v2[av+4..av+8].copy_from_slice(&2u32.to_le_bytes());v2.drain(av+30..av+32);
+        Snapshot::load(&mut restored,&mut SnapshotReader::new(&v2).unwrap()).unwrap();
+        assert_eq!(restored.kernel.video().flicker_filter(),None);assert_eq!(restored.kernel.video().soften_filter(),None);
+        pixels(&restored,false);finish(&mut restored);assert!(saved(&restored)==complete);
         let mut old=legacy_base;let av=old.windows(4).rposition(|v|v==b"AVST").unwrap();
-        old[av+4..av+8].copy_from_slice(&1u32.to_le_bytes());old.remove(av+13); // v1 não tinha indicador de modo.
+        old[av+4..av+8].copy_from_slice(&1u32.to_le_bytes());old.drain(av+14..av+16); // v1 não tinha os dois pedidos de filtro.
+        old.remove(av+13); // v1 não tinha indicador de modo.
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.kernel.video().mode().is_none());
         handle(&mut restored,0);pixels(&restored,false);boundary(&mut restored,2);finish(&mut restored);assert!(saved(&restored)==complete);
     }

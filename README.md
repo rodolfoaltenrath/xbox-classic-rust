@@ -37,12 +37,13 @@ Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o 
 estacionado; há **27/69 serviços**, com variantes limitadas. Nove raízes explícitas
 no [guia do homebrew](docs/dev/homebrew.md) traduzem 10676 blocos. O hello já monta
 o link guest `D:` para seu diretório e chega à inicialização de vídeo. O bloqueio
-atual é a opção 11 de `AvSendTVEncoderOption` (2), filtro de cintilação. O programa
-já alocou e zerou a memória física contígua e configurou o modo 640×480×32 bits.
+atual é o acesso MMIO ao DAC da rampa gamma. O programa já alocou e zerou a
+memória física contígua, configurou o modo 640×480×32 bits e registrou os pedidos
+de filtros de cintilação e suavização no encoder lógico.
 O runtime consegue ler as linhas do framebuffer por DMA; a saída ainda está
-desabilitada. Ajustes de vídeo/MMIO, apresentação da imagem, escalonamento geral
+desabilitada. Rampa gamma/MMIO, apresentação da imagem, escalonamento geral
 e execução completa seguem pendentes
-([ADR-0049](docs/adr/0049-modo-video-framebuffer.md)).
+([ADR-0050](docs/adr/0050-pedidos-filtros-encoder.md)).
 
 ## Demonstração de recompilação
 

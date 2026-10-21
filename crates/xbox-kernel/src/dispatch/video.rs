@@ -10,6 +10,8 @@ pub use display::{COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTS
 pub const VIDEO_BASE: u32 = 0xFD00_0000;
 pub const VIDEO_ENC_GET_SETTINGS: u32 = 6;
 pub const VIDEO_ENC_VIDEOENABLE: u32 = 9;
+pub const VIDEO_ENC_FLICKERFILTER: u32 = 11;
+pub const VIDEO_ENC_SOFTEN_FILTER: u32 = 14;
 pub const AV_PACK_STANDARD: u32 = 1;
 const FLAGS: u32 = FlagsDeVideo::WIDESCREEN
     | FlagsDeVideo::MODO_480P
@@ -25,12 +27,23 @@ const FLAGS: u32 = FlagsDeVideo::WIDESCREEN
 pub struct VideoState {
     enabled: bool,
     mode: Option<DisplayMode>,
+    // Sem valor herdado de firmware no cold boot; só pedidos guest observados.
+    flicker_filter: Option<u8>,
+    soften_filter: Option<bool>,
 }
 impl VideoState {
     /// Cold boot sem framebuffer herdado. `AvSetSavedDataAddress` ainda recusa.
     pub const SAVED_DATA_ADDRESS: u32 = 0;
     pub const fn enabled(&self) -> bool {
         self.enabled
+    }
+    /// Nível de três bits solicitado pelo guest, sem simular o filtro analógico.
+    pub const fn flicker_filter(&self) -> Option<u8> {
+        self.flicker_filter
+    }
+    /// Pedido de suavização; None até o guest configurar explicitamente.
+    pub const fn soften_filter(&self) -> Option<bool> {
+        self.soften_filter
     }
     pub(super) fn encoder(
         &mut self,
@@ -44,6 +57,26 @@ impl VideoState {
         let output = call.argument(bus, 3)?;
         if base != VIDEO_BASE {
             return Err(variant(bus, call, "RegisterBase exige a base NV2A guest"));
+        }
+        if option == VIDEO_ENC_FLICKERFILTER || option == VIDEO_ENC_SOFTEN_FILTER {
+            let max = if option == VIDEO_ENC_FLICKERFILTER {
+                7
+            } else {
+                1
+            };
+            if parameter > max || output != 0 {
+                return Err(variant(
+                    bus,
+                    call,
+                    "flicker exige nível 0..7, soften exige 0/1, ambos com Result nulo",
+                ));
+            }
+            if option == VIDEO_ENC_FLICKERFILTER {
+                self.flicker_filter = Some(parameter as u8);
+            } else {
+                self.soften_filter = Some(parameter != 0);
+            }
+            return Ok(Atendimento { eax: 0 }); // VOID; pedido registrado no encoder.
         }
         if option == VIDEO_ENC_VIDEOENABLE {
             if parameter > 1 || output != 0 {
@@ -89,7 +122,7 @@ impl VideoState {
 }
 impl Snapshot for VideoState {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AVST", 2);
+        out.section("AVST", 3);
         out.u32(1); // StandardCableColdBootV1.
         out.bool(self.enabled);
         out.bool(self.mode.is_some());
@@ -99,14 +132,17 @@ impl Snapshot for VideoState {
             out.u32(mode.pitch);
             out.u32(mode.framebuffer.0);
         }
+        // 0xFF representa pedido ausente, sem inventar defaults do hardware.
+        out.u8(self.flicker_filter.unwrap_or(0xFF));
+        out.u8(self.soften_filter.map_or(0xFF, u8::from));
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
         let bad = |what| SnapshotError::BadValue {
             section: "AVST",
             what,
         };
-        let version = inp.section("AVST", 2)?;
-        if !matches!(version, 1 | 2) || inp.u32()? != 1 {
+        let version = inp.section("AVST", 3)?;
+        if !matches!(version, 1..=3) || inp.u32()? != 1 {
             return Err(bad("versão/perfil de encoder desconhecido"));
         }
         let enabled = match inp.u8()? {
@@ -134,7 +170,28 @@ impl Snapshot for VideoState {
         } else {
             None
         };
-        *self = Self { enabled, mode };
+        let (flicker_filter, soften_filter) = if version >= 3 {
+            let flicker = match inp.u8()? {
+                level @ 0..=7 => Some(level),
+                0xFF => None,
+                _ => return Err(bad("nível de flicker inválido")),
+            };
+            let soften = match inp.u8()? {
+                0 => Some(false),
+                1 => Some(true),
+                0xFF => None,
+                _ => return Err(bad("pedido de suavização inválido")),
+            };
+            (flicker, soften)
+        } else {
+            (None, None)
+        };
+        *self = Self {
+            enabled,
+            mode,
+            flicker_filter,
+            soften_filter,
+        };
         Ok(())
     }
 }
