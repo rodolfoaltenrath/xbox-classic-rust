@@ -12,6 +12,7 @@ mod critical;
 mod double_shifts;
 mod exchange;
 mod indirect;
+mod interlocked;
 mod kernel;
 mod msr;
 mod muldiv;
@@ -61,6 +62,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&strings::sources(output));
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
+    main.push_str(&interlocked::sources(output));
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));
     main.push_str(&nvram::sources(output));

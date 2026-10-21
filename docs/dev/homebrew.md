@@ -74,8 +74,8 @@ em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
 espera/liberação de mutant (233/221), SHA-1 Init/Update/Final (335/336/337),
 consulta integral de EEPROM (24), seções críticas (291/277/294/306) e
-leitura do PLL PCI (46):
-**13/69 serviços implementados**, com variantes limitadas,
+leitura do PLL PCI (46) e InterlockedExchange (54):
+**14/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -110,7 +110,9 @@ incluiu o case observado do multiplicador (`0x20889`). Com quatro raízes,
 nessa entrega o hello chegou a HalReadWritePCISpace (46), retorno `0x2064D`.
 O ADR-0039 atende essa consulta com configuração PCI de clock explícita;
 o hello calcula 733333333 Hz e avança até InterlockedExchange (54), retorno
-`0x19DC7`, argumentos `0x29158, 1`. O próximo passo é a troca atômica guest.
+`0x19DC7`, argumentos `0x29158, 1`. O ADR-0040 atende a troca com efeito em RAM
+e retorno anterior; o bloqueio atual é KeQuerySystemTime (128), retorno `0x20D8B`,
+argumento `0x7000FDD8`. Falta definir época/tempo guest e contexto de Clock para HLE.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -188,10 +190,10 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
 Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
 o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
-são **9027 blocos** e o bloqueio real é **InterlockedExchange (54)**, retorno
-`0x19DC7`, argumentos `0x29158, 1`, depois de calcular a frequência por PCI.
+são **9027 blocos** e o bloqueio real é **KeQuerySystemTime (128)**, retorno
+`0x20D8B`, argumento `0x7000FDD8`, depois da frequência PCI e da troca de LONG.
 Isso ainda é execução inicial, sem framebuffer.
-Contrato/evidência atual: [ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).
+Contrato/evidência atual: [ADR-0040](../adr/0040-interlocked-exchange-guest.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
@@ -228,9 +230,16 @@ HalReadWritePCISpace lê o registro PLL 0:0:3, 0x6C..0x70, incluindo subleituras
 escritas e áreas desconhecidas recusam. `RetailClockV1` do core centraliza CPU/PLL,
 com readback público 0x01230801 (divisor 1/multiplicador 8). KRNL v3/PCIC v1
 salva o perfil; v1/v2 migram preservando estado anterior. O hello real teve
-`tsc_freq=733333333 Hz` conferido em RAM. Validação atual: 331 testes workspace/
+`tsc_freq=733333333 Hz` conferido em RAM. Validação nessa entrega: 331 testes workspace/
 doctests e 135 casos nativos debug/release, mais a verificação local do XBE.
 Detalhes: [ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).
+
+InterlockedExchange (54) é FASTCALL/8, usa ECX/EDX, troca o LONG em RAM e
+retorna o valor anterior em EAX. Valida R/W antes do acesso; não há yield no
+Bus síncrono/exclusivo, MMIO ou atomicidade entre threads host. Snapshot não
+mudou. O hello real passou pela troca e chegou a KeQuerySystemTime. Validação
+atual: 336 testes workspace/doctests e 140 casos nativos debug/release, além do
+teste local sobre o XBE real. Detalhes: [ADR-0040](../adr/0040-interlocked-exchange-guest.md).
 
 ## Referências públicas
 

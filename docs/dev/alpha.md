@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | dados, dispatcher, mutants, SHA-1, EEPROM, seções críticas e PCI de clock (até ADR-0039); 13/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | dados, dispatcher, mutants, SHA-1, EEPROM, seções críticas, PCI de clock e InterlockedExchange (até ADR-0040); 14/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | CLI/HLT, RDTSC, CMPXCHG/LOCK, SETcc, CMOVcc, BSF/BSR e CLC/STC/CMC; RDMSR e perfil de CPU/MSRs disponíveis | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | passa por PCI e para em InterlockedExchange (54); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | passa pela troca e para em KeQuerySystemTime (128); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -35,9 +35,9 @@ inventário, hashes e limites estão em [`homebrew.md`](homebrew.md).
 
 A infraestrutura de uma thread inicial prepara TLS nxdk, aplica FS e transporta
 chamadas stdcall/cdecl/fastcall até o dispatcher. Os três dados exportados já têm
-representação guest. Os 13 serviços são RtlInitAnsiString, criação/espera/liberação
+representação guest. Os 14 serviços são RtlInitAnsiString, criação/espera/liberação
 de mutant, SHA-1 Init/Update/Final, consulta integral de EEPROM e a família
-Init/Enter/Leave/TryEnter de seção crítica e leitura PCI de clock. Há variantes recusadas explicitamente;
+Init/Enter/Leave/TryEnter de seção crítica, leitura PCI de clock e InterlockedExchange. Há variantes recusadas explicitamente;
 a contagem de serviços não mede compatibilidade.
 
 As seções críticas usam a estrutura pública Xbox de 28 bytes na RAM guest, com
@@ -49,10 +49,10 @@ preserva RAM, CPU, kernel e chamada pendente sem formato novo
 
 O hello real traduz **9027 instruções/blocos** com as raízes `0x19110`, `0x145E0`,
 `0x205E0` e `0x20889`. Passa por mutex, SHA, EEPROM, Init da seção crítica e
-RDMSR e leitura PCI; para em **InterlockedExchange (54)**, retorno `0x19DC7`,
-argumentos `0x29158, 1`, FASTCALL/8. O próximo passo é a troca atômica real de
-RAM e retorno do valor anterior. A quarta raiz é o case do multiplicador da CPU,
-ainda não inferido por passar pela pilha.
+RDMSR, leitura PCI e troca de LONG; para em **KeQuerySystemTime (128)**,
+retorno `0x20D8B`, argumento `0x7000FDD8`. O próximo passo é definir época e tempo
+de sistema guest derivados do Clock da sessão. A quarta raiz é o case do
+multiplicador da CPU, ainda não inferido por passar pela pilha.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -66,13 +66,19 @@ ou áreas sem modelo recusam. KRNL v3/PCIC v1 guarda o perfil, com migração de
 KRNL v1/v2; AOTC permanece v7. O hello real calcula **733333333 Hz**, conferidos
 na RAM após o construtor ([ADR-0039](../adr/0039-configuracao-pci-clock-guest.md)).
 
+InterlockedExchange usa ECX/EDX (FASTCALL/8), atualiza a RAM e devolve o valor
+anterior em EAX. Valida toda a faixa antes do efeito; não há yield entre load/store
+sob Bus exclusivo. Preserva snapshot/retorno capturado sem novo formato; outros
+serviços Interlocked continuam ausentes
+([ADR-0040](../adr/0040-interlocked-exchange-guest.md)).
+
 A ISA já inclui CMPXCHG/LOCK, SETcc, RDTSC, CLI/HLT, INT3/#BP, SFENCE, CMOVcc,
 BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pilha
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler ou retomada automática.
 
-A validação desta entrega tem **331 testes workspace/doctests** e **135 casos de
-Rust gerado em debug/release**, incluindo quatro novos para PCI/ABI/cálculo guest. O Rust
+A validação desta entrega tem **336 testes workspace/doctests** e **140 casos de
+Rust gerado em debug/release**, incluindo cinco novos para troca/fastcall/snapshot. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

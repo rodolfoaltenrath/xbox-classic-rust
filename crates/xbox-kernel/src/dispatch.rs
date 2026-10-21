@@ -23,6 +23,7 @@ use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod critical;
+mod interlocked;
 mod mutants;
 mod nvram;
 mod pci;
@@ -49,6 +50,7 @@ pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
 pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
+pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -74,6 +76,7 @@ pub const STATUS_WAIT_0: u32 = 0;
 pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
+    ORDINAL_INTERLOCKED_EXCHANGE,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
@@ -219,6 +222,7 @@ impl Dispatcher {
         let resultado = match export.ordinal {
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_HAL_READ_WRITE_PCI_SPACE => self.pci.transfer(bus, &call),
+            ORDINAL_INTERLOCKED_EXCHANGE => interlocked::exchange(bus, &call),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),

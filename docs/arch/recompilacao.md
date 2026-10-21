@@ -1,8 +1,8 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0039. O hello nxdk inicia nativamente com TLS/imports, 13 serviços
-e perfil de CPU/PCI guest; passa pelo cálculo de frequência e chega a InterlockedExchange.
+ADRs 0013–0040. O hello nxdk inicia nativamente com TLS/imports, 14 serviços
+e perfil de CPU/PCI guest; passa pela troca de LONG e chega a KeQuerySystemTime.
 Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
@@ -222,6 +222,14 @@ com perfil ID 1; v1/v2 migram explicitamente, preservando estado anterior.
 Portas/dispositivos futuros devem usar essa mesma autoridade de configuração
 ([ADR-0039](../adr/0039-configuracao-pci-clock-guest.md)).
 
+InterlockedExchange (54) captura Target/Value de ECX/EDX e valida RAM R/W antes
+de ler/trocar LONG. EAX recebe os bits anteriores, sem alterar flags. O serviço
+não cede no meio do RMW e usa a ordenação do Bus síncrono/exclusivo; não permite
+observadores host concorrentes ou MMIO. Nenhum estado host novo ou formato de
+snapshot é necessário. A continuação HLE capturada permite Target sobre o retorno;
+fastcall limpa somente as palavras efetivamente na pilha
+([ADR-0040](../adr/0040-interlocked-exchange-guest.md)).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que
@@ -229,7 +237,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 135 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 140 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

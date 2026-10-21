@@ -9,7 +9,8 @@
 //! Espera e liberação de mutant, sem bloquear o host (ADR-0035):
 //! Seções críticas recursivas em RAM guest (ADR-0037):
 //! Leitura da configuração PCI de clock (ADR-0039):
-//! **13 de 69** serviços implementados, com variantes limitadas.
+//! Troca de LONG em RAM guest por `InterlockedExchange` (ADR-0040):
+//! **14 de 69** serviços implementados, com variantes limitadas.
 //! Scheduler e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;

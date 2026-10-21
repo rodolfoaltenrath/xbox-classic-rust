@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: InterlockedExchange (54), FASTCALL/8, troca LONG em RAM guest e
+  retorna os bits anteriores; valida leitura/escrita antes do efeito e preserva
+  a atomicidade do Bus exclusivo. Sem estado host novo ou mudança de snapshot.
+  336 testes workspace/doctests e 140 casos nativos debug/release. O XBE real
+  passou pela troca e chegou a KeQuerySystemTime (128), retorno 0x20D8B;
+  14/69 serviços, com variantes limitadas (ADR-0040).
+
 - Fase 4/alpha: HalReadWritePCISpace (46) lê o PLL do controlador DRAM e suas
   subfaixas em RAM guest, com validação integral. CPU/MSRs e PCI compartilham
   configuração nominal; escritas e áreas desconhecidas recusam explicitamente.

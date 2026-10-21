@@ -563,3 +563,26 @@ reais na RAM, sem sucesso genérico. **331 testes workspace/doctests e 135 casos
 nativos debug/release**, mais a verificação local do hello; 13/69 serviços com
 variantes limitadas. Fontes, snapshot, limites e logs:
 [ADR-0039](../adr/0039-configuracao-pci-clock-guest.md).
+
+## InterlockedExchange em RAM — ADR-0040
+
+O ordinal 54 agora troca LONG de 32 bits e retorna os bits anteriores. Argumentos
+são ECX/EDX (FASTCALL/8); a retomada só remove os quatro bytes do retorno. O alvo
+inteiro precisa ser RAM RW, inclusive se o valor não mudar. Desalinhamento e
+páginas cruzadas seguem o Bus funcional; MMIO/RO/W sem R e faixas inválidas
+recusam antes de acessar o alvo. Não há yield entre load/store e a ordenação usa
+o contrato síncrono/exclusivo do Bus. Observadores concorrentes futuros exigem
+rever esse protocolo; não há CAS/fence físico host implícito.
+
+Sem estado host novo, AOTS v1/AOTC v7/KRNL v3/KMUT v2/EEPR v1/PCIC v1 permanecem.
+Snapshot preserva chamada pendente, troca concluída e efeitos na RAM. A sessão
+captura o retorno antes do serviço, incluindo Target sobre a pilha de retorno.
+Outros serviços Interlocked continuam ausentes; somente 54 é importado pelo hello.
+
+O XBE real mantém quatro raízes/9027 blocos, passa pela troca e para em
+**KeQuerySystemTime (128)**, retorno 0x20D8B, argumento 0x7000FDD8. Definir época
+guest e passagem do Clock ao dispatcher, com saída de 8 bytes e snapshot da
+referência temporal. Não usar hora host, retired ou resposta zero para avançar.
+Validação: **336 testes workspace/doctests e 140 nativos debug/release**, mais
+verificação local do efeito no XBE real; 14/69 serviços. Fonte/contratos/logs:
+[ADR-0040](../adr/0040-interlocked-exchange-guest.md).
