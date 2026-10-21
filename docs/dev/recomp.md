@@ -718,7 +718,7 @@ chamada de vídeo **AvSendTVEncoderOption (2), retorno 0x12769, opção 6**. Ain
 sem implementação desse serviço/framebuffer. Reprodução, perfil e evidência no
 [ADR-0046](../adr/0046-namespace-drive-d.md).
 
-### Encoder inicial de vídeo (ADR-0047, estado atual)
+### Encoder inicial de vídeo (ADR-0047)
 
 AvSendTVEncoderOption atende GET_SETTINGS (6) derivado da EEPROM e cabo padrão,
 e VIDEOENABLE (9) com estado lógico de blanking. AvGetSavedDataAddress usa cold
@@ -732,3 +732,21 @@ As mesmas nove raízes/10676 blocos agora chegam a **MmAllocateContiguousMemoryE
 (166), retorno 0x12C01**, pedido de 1.228.800 bytes/4 KiB/RW|WRITECOMBINE para
 640×480×32. Framebuffer, programação de modo/MMIO e apresentação ainda faltam.
 Reprodução/evidência no [ADR-0047](../adr/0047-encoder-video-cold-boot.md).
+
+### Memória fisicamente contígua (ADR-0048, estado atual)
+
+MmAllocateContiguousMemoryEx (166), stdcall/20, reserva frames consecutivos no
+bitmap do Bus, respeita limites físicos inclusivos/alinhamento e retorna
+VA=0x80000000|PA. Apenas o recurso ganha páginas RW, sem execução. O tamanho é
+arredondado a 4 KiB; OOM/fragmentação/faixa insuficiente retorna NULL sem efeito.
+Passive e proteção RW com WRITECOMBINE opcional são o perfil atual. A coerência
+virtual/física/DMA é síncrona; não há simulação de cache ou arena compartilhada.
+
+KRNL v10/CMEM v1 guarda PA/tamanho/alinhamento/proteção; Session cruza posse,
+traduções, permissões, bitmap e ausência de aliases/páginas órfãs na janela.
+KRNL v1–v9 migram sem recursos. Liberação/persistência ainda faltam.
+
+O hello alocou 300 páginas, VA=0x80050000/PA=0x50000, zerou o framebuffer e
+chegou a **AvSetDisplayMode (3), retorno 0x12CA4**: modo 0x04010101, formato 0x12,
+pitch 2560 e PA real. Ainda sem programação/apresentação da imagem. Perfil,
+fontes e reprodução no [ADR-0048](../adr/0048-memoria-fisica-contigua.md).

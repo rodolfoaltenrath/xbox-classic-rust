@@ -7,6 +7,7 @@ use xbox_recomp::{analysis, emit};
 mod blocks;
 mod breakpoint;
 mod conditional;
+mod contiguous;
 mod control;
 mod critical;
 mod double_shifts;
@@ -73,6 +74,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&interlocked::sources(output));
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
+    main.push_str(&contiguous::sources(output));
     main.push_str(&video::sources(output));
     main.push_str(&system_time::sources(output));
     main.push_str(&critical::sources(output));

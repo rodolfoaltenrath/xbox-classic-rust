@@ -201,10 +201,11 @@ pela execução, main_wrapper=0x18C90 e inicializador=0x139B0, elevam para **104
 blocos**. Incluir também o case do CRT `0x14F14` produz **10676 blocos** e revela
 a montagem de D:, agora modelada pelo namespace guest. O encoder já atende
 consulta de settings e blanking; AvGetSavedDataAddress usa o perfil cold boot
-sem imagem herdada. O bloqueio atual é **MmAllocateContiguousMemoryEx (166)**,
-retorno 0x12C01, pedido de 1.228.800 bytes para 640×480×32. Ainda sem framebuffer
-ou execução completa. Contrato/evidência atual:
-[ADR-0047](../adr/0047-encoder-video-cold-boot.md).
+sem imagem herdada. MmAllocateContiguousMemoryEx (166) já aloca 1.228.800 bytes
+fisicamente contíguos para 640×480×32, com VA 0x80050000/PA 0x50000. O guest zera
+a região e chega a **AvSetDisplayMode (3), retorno 0x12CA4**. Ainda sem modo
+programado/apresentação ou execução completa. Contrato/evidência atual:
+[ADR-0048](../adr/0048-memoria-fisica-contigua.md).
 
 Na retomada Windows de 2026-10-21, incluir também as entradas de thread
 `0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
@@ -219,7 +220,7 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v9/EEPR v1 no snapshot atual.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v10/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
@@ -233,8 +234,8 @@ Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem r
 host por endereço. `OwningThread` é a identidade guest ativa (pai 1, filha 2),
 não um ponteiro KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-O formato atual é AOTS v2/AOTC v7/KRNL v9/KMUT v3/THRD v1/TCXT v1, além de
-EEPR/PCIC/STIM/IRQL/VMEM/SYML/AVST v1. Detalhes das seções críticas:
+O formato atual é AOTS v2/AOTC v7/KRNL v10/KMUT v3/THRD v1/TCXT v1, além de
+EEPR/PCIC/STIM/IRQL/VMEM/SYML/AVST/CMEM v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 O bootstrap de uma filha preserva registradores/flags/FS do pai; Clock/retired,
@@ -261,10 +262,24 @@ scanout, vblank ou imagem está implícito. KRNL v9/AVST v1 preserva perfil/esta
 enabled; v1–v8 migram com saída desabilitada. O próximo contrato é memória
 fisicamente contígua para o framebuffer, não reserva virtual fragmentada.
 
-Validação atual: **380 testes workspace/doctests e 168 casos nativos
+Validação da entrega do encoder: **380 testes workspace/doctests e 168 casos nativos
 debug/release** (152 fora de x86_64). No hello real, settings=0x00480101, saída
 desabilitada, 9777 retired e 38 atendimentos na fronteira de alocação;
 snapshot integral restaurado com bytes idênticos. Logs `target/video-*`.
+
+O ADR-0048 acrescenta memória fisicamente contígua: first-fit entre limites
+inclusivos/alinhamento do pedido, frames vizinhos no bitmap e VA=0x80000000|PA.
+Só o recurso recebe páginas RW; sem alias geral da RAM, sem execução e sem
+identidade baixa nova. Zero inicial é política local, e WRITECOMBINE segue o
+Bus síncrono/SFENCE. NULL por OOM/fragmentação não publica recursos; outras
+proteções/alinhamentos fora do perfil recusam. KRNL v10/CMEM v1 salva recursos e
+valida Bus/MMU/bitmap/aliases sem A/D. Versões anteriores migram sem recursos;
+páginas órfãs na janela recusam. Liberação e persistência seguem pendentes.
+
+Validação atual: **388 testes workspace/doctests e 171 nativos debug/release**
+(155 fora de x86_64). O teste real conferiu o memset guest após sujar todo o
+buffer e o PA passado ao vídeo, além de replay integral do snapshot na fronteira
+AvSetDisplayMode. Logs `target/contiguous-*`.
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
 registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000

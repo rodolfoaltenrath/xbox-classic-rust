@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: MmAllocateContiguousMemoryEx (166), com frames consecutivos reais,
+  limites físicos inclusivos, alinhamento e janela guest restrita a páginas RW
+  possuídas (26/69 serviços). RAM virtual/física/DMA coerente; KRNL v10/CMEM v1
+  guarda recursos e confere bitmap, traduções, permissões e aliases. O hello
+  aloca/zera 300 páginas para 640×480×32 e chega a AvSetDisplayMode (3), retorno
+  0x12CA4. 388 testes workspace/doctests e 171 nativos debug/release;
+  programação do modo e apresentação pendentes (ADR-0048).
+
 - Fase 4/alpha: encoder de vídeo com GET_SETTINGS derivado da EEPROM e perfil de
   cabo padrão, VIDEOENABLE/blanking com estado explícito e AvGetSavedDataAddress
   no cold boot sem framebuffer herdado (25/69 serviços). KRNL v9/AVST v1 guarda

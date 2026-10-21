@@ -24,6 +24,7 @@ use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
+mod contiguous;
 mod critical;
 mod interlocked;
 mod irql;
@@ -36,6 +37,10 @@ mod system_time;
 mod threads;
 mod video;
 mod virtual_memory;
+pub use contiguous::{
+    CONTIGUOUS_WINDOW, ContiguousAllocation, ContiguousMemory, MAX_CONTIGUOUS_ALLOCATIONS,
+    PAGE_WRITECOMBINE,
+};
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use irql::Irql;
 pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
@@ -61,6 +66,7 @@ use crate::loader::Result as LoaderResult;
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
+pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
@@ -104,6 +110,7 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
@@ -153,6 +160,8 @@ pub struct Atendimento {
 /// Falha ao atender uma chamada de kernel.
 #[derive(Debug, thiserror::Error)]
 pub enum Erro {
+    #[error("estado de memória contígua guest inconsistente: {0}")]
+    MemoriaContigua(&'static str),
     #[error("estado de thread guest inconsistente: {0}")]
     ThreadState(&'static str),
     #[error("estado de memória virtual guest inconsistente: {0}")]
@@ -221,6 +230,7 @@ pub struct Dispatcher {
     threads: threads::Threads,
     links: links::Links,
     video: VideoState,
+    contiguous: ContiguousMemory,
 }
 
 impl Dispatcher {
@@ -239,6 +249,9 @@ impl Dispatcher {
 
     pub const fn virtual_memory(&self) -> &VirtualMemory {
         &self.virtual_memory
+    }
+    pub const fn contiguous_memory(&self) -> &ContiguousMemory {
+        &self.contiguous
     }
 
     /// Destino guest de D:, sem montagem ou acesso a caminhos do host.
@@ -259,7 +272,13 @@ impl Dispatcher {
     ) -> Result<(), SnapshotError> {
         self.virtual_memory.restore_context(original, bus)?;
         self.threads
-            .validate(&self.mutants, &self.virtual_memory, Some(bus))
+            .validate(&self.mutants, &self.virtual_memory, Some(bus))?;
+        self.contiguous
+            .validate_bus(bus)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "CMEM",
+                what,
+            })
     }
 
     pub fn current_thread(&self) -> u32 {
@@ -390,6 +409,9 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX => {
+                self.contiguous.allocate(bus, &call, self.irql)
+            }
             ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {
                 eax: VideoState::SAVED_DATA_ADDRESS,
             }),
@@ -634,7 +656,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 9);
+        out.section("KRNL", 10);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -646,10 +668,11 @@ impl Snapshot for Dispatcher {
         self.threads.save(out);
         self.links.save(out);
         self.video.save(out);
+        self.contiguous.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 9)?;
+        let version = inp.section("KRNL", 10)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -700,6 +723,10 @@ impl Snapshot for Dispatcher {
         if version >= 9 {
             video.load(inp)?;
         }
+        let mut contiguous = ContiguousMemory::default();
+        if version >= 10 {
+            contiguous.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
@@ -712,6 +739,7 @@ impl Snapshot for Dispatcher {
             threads,
             links,
             video,
+            contiguous,
         };
         Ok(())
     }

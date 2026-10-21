@@ -34,13 +34,13 @@ inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
 SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
 Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o pai
-estacionado; há **25/69 serviços**, com variantes limitadas. Nove raízes explícitas
+estacionado; há **26/69 serviços**, com variantes limitadas. Nove raízes explícitas
 no [guia do homebrew](docs/dev/homebrew.md) traduzem 10676 blocos. O hello já monta
 o link guest `D:` para seu diretório e chega à inicialização de vídeo. O bloqueio
-atual é `MmAllocateContiguousMemoryEx` (166): o programa já consultou as opções
-de vídeo e pediu memória para um framebuffer de 640×480×32 bits.
+atual é `AvSetDisplayMode` (3): o programa já alocou e zerou a memória física
+contígua para um framebuffer de 640×480×32 bits, acessível por CPU e DMA.
 Escalonamento geral, execução completa e framebuffer seguem pendentes
-([ADR-0047](docs/adr/0047-encoder-video-cold-boot.md)).
+([ADR-0048](docs/adr/0048-memoria-fisica-contigua.md)).
 
 ## Demonstração de recompilação
 

@@ -12,10 +12,10 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | serviços anteriores, bootstrap, namespace D: e perfil inicial do encoder (ADR-0047); 25/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | serviços anteriores e alocação física contígua do framebuffer (ADR-0048); 26/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | configurações de vídeo consultadas; para na alocação do framebuffer, MmAllocateContiguousMemoryEx (166); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
-| 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
+| 5. Execução integrada | framebuffer alocado/zerado; para em AvSetDisplayMode (3); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 6. Framebuffer | memória disponível, programação/apresentação pendentes | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
 Dependências reais de kernel/ISA só serão conhecidas após compilar o alvo.
@@ -57,10 +57,12 @@ e open/close operam sobre handles reais. Isso não conecta mídia à VFS.
 AvSendTVEncoderOption (2) agora responde GET_SETTINGS com padrão/flags da EEPROM
 e cabo padrão, resultado 0x00480101 no perfil inicial. VIDEOENABLE guarda o
 blanking; AvGetSavedDataAddress retorna NULL no cold boot sem imagem herdada.
-O bloqueio atual é **MmAllocateContiguousMemoryEx (166)**, retorno **0x12C01**:
-pedido de **1.228.800 bytes para 640×480×32**, alinhamento 4 KiB/RW|WRITECOMBINE.
-Ainda sem framebuffer alocado ou imagem. Teste real confirmou settings, blanking,
-D:/TLS e replay integral ([ADR-0047](../adr/0047-encoder-video-cold-boot.md)).
+MmAllocateContiguousMemoryEx (166) agora entrega **1.228.800 bytes/300 páginas
+fisicamente contíguas para 640×480×32**. O hello recebeu VA 0x80050000 e PA
+0x50000; o teste real sujou a região e comprovou que o memset guest a zerou.
+O bloqueio atual é **AvSetDisplayMode (3)**, retorno **0x12CA4**, modo 0x04010101,
+formato 0x12/pitch 2560 e PA do recurso. Ainda sem modo programado ou imagem
+apresentada ([ADR-0048](../adr/0048-memoria-fisica-contigua.md)).
 
 O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) guarda a continuação do pai
 sem copiar Clock/retired; término da filha restaura esse contexto. A filha roda
@@ -73,6 +75,12 @@ e liberação faltam. KRNL v8 acrescenta SYML v1 para namespace/handles de link;
 KRNL v1–v7 migram sem D:. NtClose só fecha links nesta versão. KRNL v9/AVST v1
 preserva o encoder; v1–v8 migram com saída desabilitada. A EEPROM continua
 autoritativa para o padrão/flags; não há estado duplicado ou tempo novo.
+
+KRNL v10/CMEM v1 acrescenta os recursos contíguos. A janela 0x80000000+PA só
+mapeia suas páginas RW, sem abrir acesso geral à RAM/código. O snapshot cruza
+tradução linear, posse, bitmap e aliases; v1–v9 migram sem recursos. Há suporte
+a limites/alinhamento e proteção RW com WRITECOMBINE opcional sob coerência
+síncrona do Bus. Liberação e persistência ainda faltam.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -117,8 +125,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **380 testes workspace/doctests** e **168 casos de
-Rust gerado em debug/release**, incluindo encoder, EEPROM, blanking e snapshots. O Rust
+A validação atual tem **388 testes workspace/doctests** e **171 casos de
+Rust gerado em debug/release**, incluindo contiguidade física, DMA e snapshots. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

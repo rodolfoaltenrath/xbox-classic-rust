@@ -182,8 +182,8 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
-inclui `AOTC` v7, memória e estado `KRNL` v9 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+inclui `AOTC` v7, memória e estado `KRNL` v10 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v1 / `CMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -285,6 +285,15 @@ enabled. Sem framebuffer herdado, AvGetSavedDataAddress retorna NULL. Não há
 GPU, apresentação, scanout ou vblank por essa entrega. KRNL v9/AVST v1 salva
 perfil/estado; v1–v8 migram com saída desabilitada. Nenhum Clock ou configuração
 EEPROM é duplicado. Memória fisicamente contígua e programação do modo faltam.
+
+O [ADR-0048](../adr/0048-memoria-fisica-contigua.md) acrescenta o alocador físico
+contíguo, separado de VMEM e usando o mesmo bitmap. Mapeia apenas páginas
+possuídas em 0x80000000|PA, RW sem execução, mantendo RAM virtual/física/DMA
+coerente. Limites físicos inclusivos, alinhamento e espaço livre são conferidos
+antes do commit planejado em cópias de MMU/bitmap. KRNL v10/CMEM v1 registra os
+recursos; v1–v9 migram sem recursos. Restauração rejeita posse/tradução/proteção
+inconsistente, aliases externos e páginas órfãs na janela, sem marcar A/D.
+Liberação/persistência e programação/apresentação do framebuffer ainda faltam.
 ([ADR-0043](../adr/0043-alocacao-virtual-guest.md)).
 
 ## Evidência e limites
