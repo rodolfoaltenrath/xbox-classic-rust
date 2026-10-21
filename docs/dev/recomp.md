@@ -579,10 +579,35 @@ Snapshot preserva chamada pendente, troca concluída e efeitos na RAM. A sessão
 captura o retorno antes do serviço, incluindo Target sobre a pilha de retorno.
 Outros serviços Interlocked continuam ausentes; somente 54 é importado pelo hello.
 
-O XBE real mantém quatro raízes/9027 blocos, passa pela troca e para em
-**KeQuerySystemTime (128)**, retorno 0x20D8B, argumento 0x7000FDD8. Definir época
-guest e passagem do Clock ao dispatcher, com saída de 8 bytes e snapshot da
-referência temporal. Não usar hora host, retired ou resposta zero para avançar.
+Nessa entrega, o XBE real manteve quatro raízes/9027 blocos, passou pela troca e
+parou em **KeQuerySystemTime (128)**, retorno 0x20D8B, argumento 0x7000FDD8.
+O contrato temporal e o snapshot dessa referência foram implementados no ADR-0041,
+descrito a seguir, usando o Clock da sessão e uma referência UTC explícita.
 Validação: **336 testes workspace/doctests e 140 nativos debug/release**, mais
 verificação local do efeito no XBE real; 14/69 serviços. Fonte/contratos/logs:
 [ADR-0040](../adr/0040-interlocked-exchange-guest.md).
+
+## Tempo de sistema derivado do Clock — ADR-0041
+
+KeQuerySystemTime (128), stdcall/4 VOID, escreve LARGE_INTEGER little-endian
+em RAM gravável após validar os oito bytes. A referência UTC no power-on é
+explícita: padrão sintético 2000-01-01, ou valor fornecido por
+SystemTimeReference::from_boot_ticks. A consulta soma floor(ciclos × 10000000 /
+CPU_HZ), com u128 intermediário e limite de LARGE_INTEGER. O dispatcher recebe
+o Clock real de Session por atender_com_clock; atender sem contexto recusa essa
+consulta. Não usa hora host, retired, Clock::nanos ou outro contador temporal.
+
+KRNL v4/STIM v1 guarda a referência, mantendo AOTS v1/AOTC v7/KMUT v2/EEPR v1/
+PCIC v1 e o Clock em AOTC/CLK0. KRNL v1–v3 migram para o padrão, sem herdar a
+configuração de destino. Carga transacional, saída parcial/MMIO/RO/overflow,
+continuação sobre a pilha e chamadas pendentes são cobertas por testes.
+
+O hello continua com quatro raízes/9027 blocos. Aos 704 ciclos, a consulta real
+escreve 125911584000000009 em 0x7000FDD8 e avança até **KeGetCurrentIrql (103)**,
+retorno **0x20E09**, sem argumentos. Próximo passo: IRQL guest explícito e snapshot,
+sem confundir com IF ou usar literal para ignorar o assert do SDK.
+
+Validação: **342 testes workspace/doctests e 145 nativos debug/release**, seis
+novos testes de kernel e cinco nativos, mais teste local sobre o XBE real;
+**15/69 serviços**. Fontes, contrato e logs:
+[ADR-0041](../adr/0041-tempo-sistema-guest.md).

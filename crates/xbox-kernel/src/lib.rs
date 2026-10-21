@@ -10,7 +10,8 @@
 //! Seções críticas recursivas em RAM guest (ADR-0037):
 //! Leitura da configuração PCI de clock (ADR-0039):
 //! Troca de LONG em RAM guest por `InterlockedExchange` (ADR-0040):
-//! **14 de 69** serviços implementados, com variantes limitadas.
+//! Tempo de sistema derivado do Clock e referência UTC explícita (ADR-0041):
+//! **15 de 69** serviços implementados, com variantes limitadas.
 //! Scheduler e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;

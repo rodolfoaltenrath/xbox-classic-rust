@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: KeQuerySystemTime (128), stdcall/4 VOID, escreve o tempo de sistema
+  guest em oito bytes após validação integral. Referência UTC sintética explícita
+  (2000-01-01), configurável e derivada do Clock único; sem hora host ou retired.
+  KRNL v4/STIM v1 preserva a referência e migra v1–v3. 342 testes workspace/doctests
+  e 145 nativos debug/release; teste real confere a saída e avança até
+  KeGetCurrentIrql (103), retorno 0x20E09. 15/69 serviços (ADR-0041).
+
 - Fase 4/alpha: InterlockedExchange (54), FASTCALL/8, troca LONG em RAM guest e
   retorna os bits anteriores; valida leitura/escrita antes do efeito e preserva
   a atomicidade do Bus exclusivo. Sem estado host novo ou mudança de snapshot.

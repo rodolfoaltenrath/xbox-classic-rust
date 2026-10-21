@@ -1,8 +1,8 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0040. O hello nxdk inicia nativamente com TLS/imports, 14 serviços
-e perfil de CPU/PCI guest; passa pela troca de LONG e chega a KeQuerySystemTime.
+ADRs 0013–0041. O hello nxdk inicia nativamente com TLS/imports, 15 serviços
+e perfil de CPU/PCI guest; passa pela consulta de tempo e chega a KeGetCurrentIrql.
 Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
@@ -230,6 +230,17 @@ snapshot é necessário. A continuação HLE capturada permite Target sobre o re
 fastcall limpa somente as palavras efetivamente na pilha
 ([ADR-0040](../adr/0040-interlocked-exchange-guest.md)).
 
+KeQuerySystemTime recebe o Clock autoritativo da sessão por
+Dispatcher::atender_com_clock. SystemTimeReference guarda a data UTC do power-on:
+padrão sintético 2000-01-01, configurável sem relógio host. A consulta soma a essa
+referência os ciclos convertidos a 100 ns com u128 e limite de LARGE_INTEGER.
+Valida a saída inteira como RAM gravável antes dos oito bytes little-endian;
+contexto ausente, overflow, MMIO e ponteiros inválidos recusam explicitamente.
+KRNL v4/STIM v1 salva somente a referência; Clock continua em AOTC/CLK0, sem
+contador duplicado. KRNL v1–v3 migram para o padrão. Formato integral atual:
+AOTS v1/AOTC v7/KRNL v4/KMUT v2/EEPR v1/PCIC v1/STIM v1
+([ADR-0041](../adr/0041-tempo-sistema-guest.md)).
+
 ## Evidência e limites
 
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que
@@ -237,7 +248,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 140 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 145 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

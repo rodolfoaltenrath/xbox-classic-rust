@@ -222,8 +222,8 @@ fn snapshot_pci_e_kernel_preservam_perfil_e_recusam_payload_invalido_atomicament
         }
     }
     let mut bad = snapshot.clone();
-    let tail = bad.len() - 4;
-    bad[tail..].copy_from_slice(&2u32.to_le_bytes());
+    let profile = bad.windows(4).position(|tag| tag == b"PCIC").unwrap() + 8;
+    bad[profile..profile + 4].copy_from_slice(&2u32.to_le_bytes());
     assert!(
         restored
             .load(&mut SnapshotReader::new(&bad).unwrap())

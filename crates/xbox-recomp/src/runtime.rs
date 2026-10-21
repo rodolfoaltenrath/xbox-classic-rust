@@ -280,9 +280,12 @@ impl Session {
     pub fn atender_kernel(&mut self) -> Result<()> {
         let call = self.kernel_call()?;
         self.validate_kernel_return(&call)?;
-        let atendimento = self
-            .kernel
-            .atender(&mut self.bus, self.state.eip, &self.state.regs)?;
+        let atendimento = self.kernel.atender_com_clock(
+            &mut self.bus,
+            self.state.eip,
+            &self.state.regs,
+            &self.state.clock,
+        )?;
         // O serviço pode escrever sobre a pilha de argumentos/retorno. Usar a
         // continuação capturada, sem nova leitura falível depois de publicar efeitos.
         self.apply_kernel_return(&call, atendimento.eax);

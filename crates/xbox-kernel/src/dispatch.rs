@@ -9,13 +9,14 @@
 //!
 //! O dispatcher precisa ler argumentos e escrever efeitos na memória guest, mas **não**
 //! pode depender de `Session`: `xbox-recomp` já depende deste crate, e o inverso
-//! fecharia um ciclo. Então a assinatura é `(&mut Bus, pc, regs)` e quem aplica o
+//! fecharia um ciclo. O chamador fornece `Bus`, PC, registradores e, para consultas temporais,
+//! o Clock autoritativo da sessão por `atender_com_clock`. Quem aplica o
 //! resultado na CPU é o chamador, por `Session::atender_kernel`. Isso também
 //! mantém o dispatcher testável sem gerar e compilar código.
 //!
 //! ## Estado
 //!
-//! [`Dispatcher`] guarda contadores, EEPROM, perfil PCI e mutexes guest serializáveis. A sessão AOT é
+//! [`Dispatcher`] guarda contadores, referência UTC, EEPROM, perfil PCI e mutexes guest serializáveis. A sessão AOT é
 //! dona deste estado; salvar só CPU/RAM não preserva os objetos de kernel.
 
 use xbox_core::error::SnapshotError;
@@ -28,12 +29,14 @@ mod mutants;
 mod nvram;
 mod pci;
 mod sha;
+mod system_time;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 use mutants::Mutants;
 pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
 pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
+pub use system_time::SystemTimeReference;
 
 use crate::imports::{Abi, Call, Kind};
 use crate::loader::Result as LoaderResult;
@@ -51,6 +54,7 @@ pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
+pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -77,6 +81,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_INTERLOCKED_EXCHANGE,
+    ORDINAL_KE_QUERY_SYSTEM_TIME,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
@@ -112,6 +117,9 @@ pub struct Atendimento {
 /// Falha ao atender uma chamada de kernel.
 #[derive(Debug, thiserror::Error)]
 pub enum Erro {
+    /// Falta de Clock explícito ou referência fora do intervalo de `LARGE_INTEGER`.
+    #[error("KeQuerySystemTime (ordinal 128): tempo guest indisponível: {detalhe}")]
+    ContextoTemporal { detalhe: &'static str },
     /// A fronteira ABI ou um acesso à memória guest falhou.
     #[error(transparent)]
     Fronteira(#[from] crate::loader::Error),
@@ -166,6 +174,7 @@ pub struct Dispatcher {
     mutants: Mutants,
     eeprom: EepromState,
     pci: PciConfig,
+    system_time: SystemTimeReference,
 }
 
 impl Dispatcher {
@@ -190,6 +199,18 @@ impl Dispatcher {
         &self.pci
     }
 
+    /// Referência UTC no power-on; não consulta o relógio host.
+    pub fn with_system_time(system_time: SystemTimeReference) -> Self {
+        Self {
+            system_time,
+            ..Self::default()
+        }
+    }
+
+    pub const fn system_time(&self) -> &SystemTimeReference {
+        &self.system_time
+    }
+
     /// Chamadas atendidas por um serviço implementado.
     pub const fn atendidas(&self) -> u64 {
         self.atendidas
@@ -205,7 +226,8 @@ impl Dispatcher {
         self.mutants.get(handle)
     }
 
-    /// Atende a chamada de kernel em `pc`.
+    /// Atende a chamada de kernel em `pc`, sem contexto temporal.
+    /// `KeQuerySystemTime` exige `atender_com_clock` e recusa esta entrada.
     ///
     /// `pc` tem de ser um trampolim instalado nesta imagem — [`Call::read`] verifica
     /// isso antes de qualquer efeito. A CPU não é alterada aqui: o chamador aplica
@@ -216,6 +238,27 @@ impl Dispatcher {
         pc: u32,
         regs: &[u32; 8],
     ) -> Result<Atendimento, Erro> {
+        self.dispatch(bus, pc, regs, None)
+    }
+
+    /// Usa o Clock autoritativo da sessão; não cria outro contador de tempo.
+    pub fn atender_com_clock(
+        &mut self,
+        bus: &mut Bus,
+        pc: u32,
+        regs: &[u32; 8],
+        clock: &xbox_core::time::Clock,
+    ) -> Result<Atendimento, Erro> {
+        self.dispatch(bus, pc, regs, Some(clock))
+    }
+
+    fn dispatch(
+        &mut self,
+        bus: &mut Bus,
+        pc: u32,
+        regs: &[u32; 8],
+        clock: Option<&xbox_core::time::Clock>,
+    ) -> Result<Atendimento, Erro> {
         let call = Call::read(bus, pc, regs)?;
         let export = call.export;
 
@@ -223,6 +266,7 @@ impl Dispatcher {
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_HAL_READ_WRITE_PCI_SPACE => self.pci.transfer(bus, &call),
             ORDINAL_INTERLOCKED_EXCHANGE => interlocked::exchange(bus, &call),
+            ORDINAL_KE_QUERY_SYSTEM_TIME => self.system_time.query(bus, &call, clock),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
@@ -403,16 +447,17 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 3);
+        out.section("KRNL", 4);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
         self.eeprom.save(out);
         self.pci.save(out);
+        self.system_time.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 3)?;
+        let version = inp.section("KRNL", 4)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -433,12 +478,19 @@ impl Snapshot for Dispatcher {
         if version >= 3 {
             pci.load(inp)?;
         }
+        // v1–v3 não tinham referência UTC; migrar para o perfil determinístico,
+        // nunca herdar a configuração da sessão de destino.
+        let mut system_time = SystemTimeReference::default();
+        if version >= 4 {
+            system_time.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
             mutants,
             eeprom,
             pci,
+            system_time,
         };
         Ok(())
     }

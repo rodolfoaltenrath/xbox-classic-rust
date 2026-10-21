@@ -24,6 +24,7 @@ mod scan;
 mod sha;
 mod shifts;
 mod strings;
+mod system_time;
 mod timing;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
@@ -63,6 +64,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
     main.push_str(&interlocked::sources(output));
+    main.push_str(&system_time::sources(output));
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));
     main.push_str(&nvram::sources(output));

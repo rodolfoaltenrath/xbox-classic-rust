@@ -1139,6 +1139,8 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 4 / 5 | Leitura PCI do clock guest (ADR-0039) | — | PLL 0:0:3 e subleituras, configuração compartilhada com CPU/MSRs, KRNL v3/PCIC v1 com migração; 331 testes workspace/doctests e 135 nativos debug/release; hello calcula 733333333 Hz e chega a InterlockedExchange (54); 13/69 serviços |
 | 2026-10-20 | 4 / 5 | InterlockedExchange guest (ADR-0040) | — | FASTCALL/8, troca LONG/retorno anterior sob Bus exclusivo, sem formato novo; 336 testes workspace/doctests e 140 nativos debug/release; efeito conferido no XBE real, que avança até KeQuerySystemTime (128); 14/69 serviços |
 
+| 2026-10-20 | 4 / 5 | Tempo de sistema guest (ADR-0041) | — | KeQuerySystemTime deriva 100 ns do Clock único e referência UTC explícita; KRNL v4/STIM v1 com migração; 342 testes workspace/doctests e 145 nativos debug/release; saída real conferida aos 704 ciclos, hello chega a KeGetCurrentIrql (103); 15/69 serviços |
+
 ---
 
 ### Próxima ação
@@ -1146,7 +1148,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `14/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `15/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
@@ -1163,10 +1165,13 @@ Em ordem:
    leituras desconhecidas e escritas recusam (ADR-0039).
    InterlockedExchange (54) troca LONG em RAM e retorna o anterior, com FASTCALL/8,
    atomicidade sob Bus exclusivo e sem formato novo de snapshot (ADR-0040).
-   **O próximo bloqueio é KeQuerySystemTime (128)**, retorno `0x20D8B`, argumento
-   `0x7000FDD8`. Definir época/tempo de sistema guest (100 ns desde 1601/GMT),
-   passagem do Clock único ao dispatcher e snapshot da referência temporal.
-   Não usar hora host, retired ou retorno zero apenas para avançar o caller.
+   KeQuerySystemTime (128) usa o Clock único passado pela sessão e referência UTC
+   explícita no power-on, padrão sintético 2000-01-01. KRNL v4/STIM v1 preserva a
+   referência e migra KRNL v1–v3. Aos 704 ciclos, o hello recebeu
+   125911584000000009 em RAM, sem avanço temporal no atendimento (ADR-0041).
+   **O próximo bloqueio é KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos.
+   Modelar IRQL guest explícito, snapshot e futuras transições/interrupções;
+   não confundir com EFLAGS.IF ou retornar um literal para passar pelo assert.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
    (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar

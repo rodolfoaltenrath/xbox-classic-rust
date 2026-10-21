@@ -74,8 +74,8 @@ em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
 espera/liberação de mutant (233/221), SHA-1 Init/Update/Final (335/336/337),
 consulta integral de EEPROM (24), seções críticas (291/277/294/306) e
-leitura do PLL PCI (46) e InterlockedExchange (54):
-**14/69 serviços implementados**, com variantes limitadas,
+leitura do PLL PCI (46), InterlockedExchange (54) e KeQuerySystemTime (128):
+**15/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -111,8 +111,9 @@ nessa entrega o hello chegou a HalReadWritePCISpace (46), retorno `0x2064D`.
 O ADR-0039 atende essa consulta com configuração PCI de clock explícita;
 o hello calcula 733333333 Hz e avança até InterlockedExchange (54), retorno
 `0x19DC7`, argumentos `0x29158, 1`. O ADR-0040 atende a troca com efeito em RAM
-e retorno anterior; o bloqueio atual é KeQuerySystemTime (128), retorno `0x20D8B`,
-argumento `0x7000FDD8`. Falta definir época/tempo guest e contexto de Clock para HLE.
+e retorno anterior. O ADR-0041 implementa KeQuerySystemTime (128), com
+referência UTC explícita e Clock da sessão; o bloqueio atual é KeGetCurrentIrql
+(103), retorno `0x20E09`, sem argumentos. Falta modelar IRQL guest e seu snapshot.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -190,10 +191,10 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
 Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
 o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
-são **9027 blocos** e o bloqueio real é **KeQuerySystemTime (128)**, retorno
-`0x20D8B`, argumento `0x7000FDD8`, depois da frequência PCI e da troca de LONG.
+são **9027 blocos** e o bloqueio real é **KeGetCurrentIrql (103)**, retorno
+`0x20E09`, sem argumentos, depois da frequência PCI, troca de LONG e tempo guest.
 Isso ainda é execução inicial, sem framebuffer.
-Contrato/evidência atual: [ADR-0040](../adr/0040-interlocked-exchange-guest.md).
+Contrato/evidência atual: [ADR-0041](../adr/0041-tempo-sistema-guest.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
@@ -201,7 +202,7 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v3/EEPR v1 no snapshot atual.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v4/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
@@ -215,7 +216,7 @@ Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem r
 host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
 KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-O formato atual é AOTS v1/AOTC v7/KRNL v3/KMUT v2/EEPR v1/PCIC v1. Detalhes das seções críticas:
+O formato atual é AOTS v1/AOTC v7/KRNL v4/KMUT v2/EEPR v1/PCIC v1/STIM v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
@@ -238,8 +239,18 @@ InterlockedExchange (54) é FASTCALL/8, usa ECX/EDX, troca o LONG em RAM e
 retorna o valor anterior em EAX. Valida R/W antes do acesso; não há yield no
 Bus síncrono/exclusivo, MMIO ou atomicidade entre threads host. Snapshot não
 mudou. O hello real passou pela troca e chegou a KeQuerySystemTime. Validação
-atual: 336 testes workspace/doctests e 140 casos nativos debug/release, além do
+nessa entrega: 336 testes workspace/doctests e 140 casos nativos debug/release, além do
 teste local sobre o XBE real. Detalhes: [ADR-0040](../adr/0040-interlocked-exchange-guest.md).
+
+KeQuerySystemTime (128) escreve LARGE_INTEGER de oito bytes, stdcall/4 VOID,
+com a referência sintética 2000-01-01 UTC somada a ciclos × 10000000 / CPU_HZ.
+SystemTimeReference é configurável; Session passa seu Clock ao dispatcher por
+atender_com_clock. Sem contexto ou com overflow, recusa em vez de presumir zero.
+KRNL v4/STIM v1 salva a referência e migra KRNL v1–v3 para o padrão. No XBE real,
+aos 704 ciclos o serviço escreveu 125911584000000009 em 0x7000FDD8 e o hello
+avançou até KeGetCurrentIrql (103), retorno 0x20E09. Validação atual: 342 testes
+workspace/doctests e 145 nativos debug/release, mais teste local do efeito real.
+Fontes/limites: [ADR-0041](../adr/0041-tempo-sistema-guest.md).
 
 ## Referências públicas
 

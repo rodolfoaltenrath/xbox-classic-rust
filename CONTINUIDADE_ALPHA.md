@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`e56ceab`** e nas alterações
-locais do **ADR-0040**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`516e667`** e nas alterações
+locais do **ADR-0041**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -36,8 +36,9 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
 RDMSR e a leitura PCI do PLL já estão implementados. Com quatro raízes explícitas,
-**9027 blocos** passam pela troca de LONG e executam até **KeQuerySystemTime (128)**,
-retorno `0x20D8B`, argumento `0x7000FDD8`. A frequência calculada pelo hello foi conferida em RAM:
+**9027 blocos** passam pela troca de LONG e por KeQuerySystemTime (128),
+que usa a referência UTC guest e o Clock da sessão. O bloqueio atual é
+**KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos. A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
@@ -48,9 +49,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock e InterlockedExchange; 14/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange e tempo de sistema; 15/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa por InterlockedExchange; para em KeQuerySystemTime (128); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Passa pela consulta de tempo; para em KeGetCurrentIrql (103); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -160,7 +161,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
-| Bloqueio de execução atual | KeQuerySystemTime (128), stdcall/4, retorno 0x20D8B, argumento 0x7000FDD8 |
+| Bloqueio de execução atual | KeGetCurrentIrql (103), stdcall/0, retorno 0x20E09, sem argumentos |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -488,17 +489,52 @@ LONG 0x29158=1 e frequência ainda 733333333 Hz. Artefato ignorado:
 `target/alpha-hello-msr-ratio-20261020/tests/interlocked_effect.rs`;
 log `target/interlocked-hello-effect-test.log`.
 
-Próxima entrega: tempo de sistema guest. O nxdk documenta saída de 8 bytes em
-intervalos de 100 ns desde 1601/GMT. Definir época explícita e passagem do Clock
-único ao dispatcher (hoje a assinatura só recebe Bus/PC/regs); preservar snapshot
-da referência temporal. Não usar hora host, retired ou resposta zero para avançar.
+A entrega então planejada era tempo de sistema guest: saída de 8 bytes em
+intervalos de 100 ns desde 1601/GMT, com época explícita, Clock único e snapshot
+da referência temporal. Naquela referência o dispatcher só recebia Bus/PC/regs.
+Essa entrega foi implementada no ADR-0041, descrito a seguir.
 
-Registro atual: **14/69 serviços**, 3/3 dados; **336 testes workspace/doctests** e
+Registro nessa entrega: **14/69 serviços**, 3/3 dados; **336 testes workspace/doctests** e
 **140 casos nativos debug/release** (124 fora de x86_64), no Rust 1.98.1. Cinco
 novos testes de kernel e cinco gerados cobrem bits/guardas, ABI, faltas, aliases,
 retorno, tail-call e snapshot. Detalhes/fontes:
 [ADR-0040](docs/adr/0040-interlocked-exchange-guest.md). Logs usam prefixo
 `target/interlocked-`. Threads, execução completa e framebuffer continuam abertos.
+
+### Tempo de sistema da sessão (ADR-0041)
+
+`KeQuerySystemTime` (128), stdcall/4 VOID, escreve LARGE_INTEGER little-endian
+em RAM guest após validar todos os oito bytes. A data absoluta deriva do Clock
+único da sessão: referência UTC no power-on + floor(ciclos × 10000000 / CPU_HZ).
+`SystemTimeReference` tem padrão sintético **2000-01-01 UTC**
+(`125911584000000000` ticks desde 1601); permite referência não negativa explícita
+por `from_boot_ticks` e `Dispatcher::with_system_time`. Não usa hora host, EEPROM,
+`retired`, nanos intermediários ou contador independente. O dispatcher recebe
+Clock por `atender_com_clock`; a entrada anterior sem Clock recusa essa consulta.
+
+A soma é verificada contra LARGE_INTEGER positivo. Saída inválida, MMIO, wrap,
+página parcial/RO e overflow recusam sem alterar CPU/conteúdo RAM ou referência.
+Traduções podem marcar Accessed/Dirty da MMU durante preflight. O HLE não cobra
+ciclos próprios. Retorno capturado antes da escrita permite saída sobre a pilha.
+
+**KRNL v4 / STIM v1** persistem a referência UTC, mantendo AOTS v1/AOTC v7/
+KMUT v2/EEPR v1/PCIC v1. O Clock segue em AOTC/CLK0. KRNL v1–v3 migram para o
+padrão, sem herdar configuração de destino; carga de kernel é transacional.
+
+O hello mantém quatro raízes/9027 blocos. Na consulta real, Clock=704 ciclos,
+CurrentTime=`125911584000000009`, saída `0x7000FDD8`; os oito bytes e o Clock
+inalterado foram conferidos por teste local. O CRT libera depois o lock em
+`0x29158`, que passa de 1 para 0. A frequência continua 733333333 Hz.
+O próximo bloqueio é **KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos.
+Modelar IRQL guest explícito, com snapshot e contrato para futuras transições;
+não confundir IRQL com EFLAGS.IF ou retornar um literal para ignorar o assert.
+
+Registro atual: **15/69 serviços**, 3/3 dados; **342 testes workspace/doctests** e
+**145 nativos debug/release** (129 fora de x86_64), Rust 1.98.1. Seis novos testes
+de kernel e cinco nativos cobrem tempo/ABI, falhas, snapshot, migração e replay.
+Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
+[ADR-0041](docs/adr/0041-tempo-sistema-guest.md); logs `target/system-time-*`.
+Threads, execução completa e framebuffer continuam pendentes.
 
 Trabalho restante:
 
@@ -612,7 +648,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é KeQuerySystemTime após o ADR-0040. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é KeGetCurrentIrql após o ADR-0041. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -694,7 +730,7 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 
 Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
 O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
-PCI e InterlockedExchange e para em KeQuerySystemTime (128), sem framebuffer. Com três raízes, falta o case
+PCI, InterlockedExchange e tempo de sistema; para em KeGetCurrentIrql (103), sem framebuffer. Com três raízes, falta o case
 `0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
 execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
@@ -718,7 +754,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 140 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 145 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -739,25 +775,22 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: e56ceab + alterações locais do ADR-0040.
+> alterar código. Base documentada: 516e667 + alterações locais do ADR-0041.
 > A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
-> concluir o hello. O kernel tem 14/69 serviços com variantes limitadas:
-> RtlInitAnsiString, mutants, SHA-1, EEPROM integral, seções críticas, leitura
-> PCI de clock e InterlockedExchange. Não há scheduler ou KTHREAD real.
-> Snapshot integral: AOTS v1, AOTC v7, KRNL v3, KMUT v2, EEPR v1, PCIC v1.
-> MSR 0x10/RDTSC compartilham Clock. RetailClockV1 no core centraliza CPU/PLL;
-> o hello calcula 733333333 Hz. Escritas PCI/áreas desconhecidas recusam.
-> InterlockedExchange (54) é FASTCALL/8 (ECX/EDX), troca RAM guest e devolve bits
-> anteriores em EAX; atomicidade sob Bus exclusivo. Sem estado host novo. Outros
-> Interlocked não foram implementados. Testes cobrem alias do retorno e tail-call.
-> O hello traduz 9027 blocos e executa com --entry 0x19110 --entry 0x145E0
-> --entry 0x205E0 --entry 0x20889. Agora passa pela troca e chega a
-> KeQuerySystemTime (128), retorno 0x20D8B, argumento 0x7000FDD8, stdcall/4.
-> Próximo passo: época e tempo de sistema guest explícitos, em unidades de 100 ns
-> desde 1601/GMT, derivados do Clock da sessão. Hoje o dispatcher não recebe Clock:
-> definir a passagem de contexto e snapshot da referência temporal, sem hora host,
-> retired ou sucesso zero. Validar a saída completa de 8 bytes antes de escrever.
-> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 336 testes
-> workspace/doctests e 140 casos nativos debug/release. Threads/execução completa/
+> concluir o hello. Kernel: 15/69 serviços com variantes limitadas, 3/3 dados.
+> Não há scheduler ou KTHREAD real. Snapshot: AOTS v1, AOTC v7, KRNL v4,
+> KMUT v2, EEPR v1, PCIC v1, STIM v1. MSR 0x10/RDTSC e consultas de tempo usam
+> o Clock único da sessão. RetailClockV1 centraliza CPU/PLL; o hello calcula
+> 733333333 Hz. KeQuerySystemTime (128) usa SystemTimeReference: padrão sintético
+> 2000-01-01 UTC + ciclos convertidos a 100 ns. Referência configurável/salva em
+> STIM; KRNL v1–v3 migram para o padrão. Session passa Clock por atender_com_clock;
+> atender sem Clock recusa a consulta, sem presumir tempo zero. HLE não avança Clock.
+> Hello: 9027 blocos, --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
+> O teste real confirmou CurrentTime=125911584000000009 aos 704 ciclos em 0x7000FDD8.
+> Próximo bloqueio: KeGetCurrentIrql (103), stdcall/0, retorno 0x20E09, sem argumentos.
+> Modelar IRQL guest explícito, snapshot e relação com futuras transições; não
+> confundir com IF nem retornar constante só para passar pelo assert de memória.
+> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 342 testes
+> workspace/doctests e 145 casos nativos debug/release. Threads/execução completa/
 > framebuffer seguem pendentes. Preserve AOT/bus/estado explícito e atualize
 > continuidade, alpha, roadmap, changelog e evidências ao avançar.
