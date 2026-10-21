@@ -266,6 +266,11 @@ fn lower(i: &Instruction) -> Result<Operation> {
     if i.has_rep_prefix() || i.has_repne_prefix() {
         return Err(fail(pc, "REP exige operação de string suportada"));
     }
+    // 0F 1F /0 é um NOP único, mesmo quando seu ModR/M descreve memória.
+    // Não baixar o operando: o SDM não prevê leitura/escrita ou cálculo de EA.
+    if matches!(i.code(), Code::Nop_rm16 | Code::Nop_rm32) {
+        return Ok(Operation::Nop);
+    }
     if let Some(op) = lower_exchange(i)? {
         return Ok(op);
     }

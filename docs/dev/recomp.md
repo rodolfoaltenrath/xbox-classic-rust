@@ -660,3 +660,24 @@ Modelar thread guest e continuação serializável, sem pular para main ou criar
 Validação: **354 testes workspace/doctests e 153 nativos debug/release**, sete
 novos testes de kernel, um de frames e cinco nativos, mais teste local do XBE real;
 **17/69 serviços**. Fontes/contrato/logs: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
+
+## NOP multibyte e entradas de thread — ADR-0044
+
+NOP r/m16 e r/m32 (`0F 1F /0`) usam a IR Nop existente. ModR/M/SIB/deslocamento
+não provocam cálculo ou acesso ao endereço descrito. Flags/registradores ficam
+preservados; EIP avança pelo comprimento completo, com custo de uma instrução
+do perfil AOT. LOCK/REP/PAUSE e segmentos fora do perfil seguem recusados.
+Snapshots e dependências não mudaram; sem novo unsafe.
+
+Os testes cobrem comprimentos, destino indireto através do NOP, todas as flags
+aritméticas, endereço ausente/MMIO/FS, orçamento, Clock e snapshot. A suíte tem
+**357 testes workspace/doctests e 156 casos nativos debug/release** em x86_64
+(140 em outros hosts).
+
+Antes de criar a thread, informar também `--entry 0x13C70 --entry 0x18FC0`.
+Essas entradas revelaram o NOP em `0x13C68`; com ele, as seis raízes traduzem
+**9454 blocos**. O módulo real compila/executa, mas ainda para em
+**PsCreateSystemThreadEx (255)**. Traduzir o startup não cria nem executa a thread.
+O próximo trabalho continua sendo o modelo guest com identidade, pilha/TLS,
+SystemRoutine, contextos, espera/término e snapshot. Fonte e evidência:
+[ADR-0044](../adr/0044-nop-multibyte-raizes-thread.md).

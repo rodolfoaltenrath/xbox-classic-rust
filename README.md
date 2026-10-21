@@ -31,10 +31,12 @@ O primeiro dos [seis marcos do alpha](docs/dev/alpha.md) foi concluído localmen
 memória/loader verificados com mídia real, contratos sob Miri e benchmark seguro.
 O [homebrew nxdk hello](docs/dev/homebrew.md) já tem build local reproduzida e
 inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
-estão disponíveis, assim como os três dados exportados. Com `--entry 0x19110`,
-o hello inicia nativamente, cria mutex guest, inicializa SHA-1 e consulta a EEPROM
-sintética da sessão. Agora para em `NtWaitForSingleObject` (233).
-Há 6/69 serviços com variantes limitadas; espera, threads e framebuffer seguem pendentes.
+estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
+SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
+Agora para em `PsCreateSystemThreadEx` (255). Há **17/69 serviços**, com variantes
+limitadas; threads e framebuffer seguem pendentes. As seis raízes explícitas no
+[guia do homebrew](docs/dev/homebrew.md) traduzem 9454 blocos, incluindo entradas
+de startup da thread; traduzi-las ainda não implementa sua execução.
 
 ## Demonstração de recompilação
 

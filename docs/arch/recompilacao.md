@@ -267,6 +267,12 @@ Formato atual: AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/V
 
 ## Evidência e limites
 
+O ADR-0044 acrescenta NOP multibyte como a IR Nop já existente, sem ler memória
+ou calcular o operando ModR/M. As entradas SystemRoutine/StartRoutine da thread
+passam a ser raízes explícitas adicionais: seis raízes traduzem 9454 blocos.
+Isso prepara a tradução do startup; a execução ainda recusa PsCreateSystemThreadEx.
+[Contrato e limites](../adr/0044-nop-multibyte-raizes-thread.md).
+
 A fixture contém código x86 escrito pelo projeto: soma 1..=10, chama uma função que
 soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62,
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.

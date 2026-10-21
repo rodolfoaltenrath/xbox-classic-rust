@@ -186,7 +186,7 @@ flags aritméticas indefinidas. O código gerado usa funções por bloco, com at
 diretório novo/vazio:
 
 ```powershell
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
@@ -197,6 +197,13 @@ são **9027 blocos** e o bloqueio real é **PsCreateSystemThreadEx (255)**, reto
 `0x13BF1`, após frequência PCI, troca de LONG, tempo guest, IRQL e alocação de 64 KiB.
 Isso ainda é execução inicial, sem framebuffer.
 Contrato/evidência atual: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
+
+Na retomada Windows de 2026-10-21, incluir também as entradas de thread
+`0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
+`0x13C68`. Com a instrução implementada, as **seis raízes traduzem 9454 blocos**.
+O módulo ampliado compilou/executou até a mesma recusa PsCreateSystemThreadEx;
+não há thread criada ou corpo executado ainda. A receita acima já inclui as
+seis raízes. [ADR-0044](../adr/0044-nop-multibyte-raizes-thread.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:

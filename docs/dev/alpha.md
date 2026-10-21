@@ -13,7 +13,7 @@ continuam sendo testes; não substituem esse marco.
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
 | 3. Kernel mínimo | dados, dispatcher, mutants, SHA-1, EEPROM, seções críticas, PCI de clock, InterlockedExchange, tempo de sistema, IRQL e reserva+commit privado (até ADR-0043); 17/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | CLI/HLT, RDTSC, CMPXCHG/LOCK, SETcc, CMOVcc, BSF/BSR e CLC/STC/CMC; RDMSR e perfil de CPU/MSRs disponíveis | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 4. ISA necessária | ISA anterior, RDMSR/perfil de CPU e NOP multibyte; seis raízes traduzem 9454 blocos | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | passa pela alocação de 64 KiB e para em PsCreateSystemThreadEx (255); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
@@ -47,12 +47,18 @@ bloqueante e filas de espera recusam sem bloquear o host. O snapshot integral
 preserva RAM, CPU, kernel e chamada pendente sem formato novo
 ([ADR-0037](../adr/0037-secoes-criticas-guest.md)).
 
-O hello real traduz **9027 instruções/blocos** com as raízes `0x19110`, `0x145E0`,
-`0x205E0` e `0x20889`. Passa por mutex, SHA, EEPROM, Init da seção crítica e
+O hello real traduz **9454 instruções/blocos** com as raízes `0x19110`, `0x145E0`,
+`0x205E0`, `0x20889`, `0x13C70` e `0x18FC0`. Passa por mutex, SHA, EEPROM, Init da seção crítica e
 RDMSR, leitura PCI, troca de LONG, tempo de sistema, IRQL e alocação de 64 KiB;
 para em **PsCreateSystemThreadEx (255)**, retorno `0x13BF1`. O CRT pede pilha de
 64 KiB, TLS de 0x114 bytes e passa heap+8 como contexto. O próximo passo é thread guest. A quarta raiz é o case do
 multiplicador da CPU, ainda não inferido por passar pela pilha.
+
+As duas últimas raízes são SystemRoutine e StartRoutine do pedido de criação.
+Incluí-las revelou NOP multibyte em `0x13C68`, agora traduzido sem acessar o
+operando de memória ([ADR-0044](../adr/0044-nop-multibyte-raizes-thread.md)).
+O módulo ampliado compila/executa, mas continua recusando PsCreateSystemThreadEx:
+não há thread criada ou corpo executado por essa mudança.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -97,8 +103,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler ou retomada automática.
 
-A validação desta entrega tem **354 testes workspace/doctests** e **153 casos de
-Rust gerado em debug/release**, incluindo cinco novos para alocação/ABI/snapshot. O Rust
+A validação atual tem **357 testes workspace/doctests** e **156 casos de
+Rust gerado em debug/release**, incluindo análise e execução dos NOPs. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`0fccc4b`** e nas alterações
-locais do **ADR-0043**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-21**, com base no commit **`94d222a`** e nas alterações
+locais do **ADR-0044**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -35,8 +35,9 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
-RDMSR e a leitura PCI do PLL já estão implementados. Com quatro raízes explícitas,
-**9027 blocos** passam pela troca de LONG e por KeQuerySystemTime (128),
+RDMSR e a leitura PCI do PLL já estão implementados. O fluxo com quatro raízes
+tinha 9027 blocos; com as entradas de startup da thread, **seis raízes traduzem
+9454 blocos**. O fluxo executado passa pela troca de LONG e por KeQuerySystemTime (128),
 que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
 64 KiB zerados em 0x30000, que o CRT usa. O bloqueio atual é
@@ -52,7 +53,7 @@ Jogos comerciais ainda não executam.
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange, tempo de sistema, IRQL e reserva+commit privado; 17/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 4 | ISA necessária | RDMSR, perfil de CPU e NOP multibyte implementados; 9454 blocos com seis raízes; execução das entradas de thread ainda pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
 | 5 | Execução integrada | Passa pela alocação de 64 KiB; para em PsCreateSystemThreadEx (255); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
@@ -162,7 +163,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
+| Análise AOT atual | 9454 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70 e 0x18FC0 |
 | Bloqueio de execução atual | PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1; stack=0x10000, TLS=0x114, StartRoutine=0x18FC0, contexto=0x30008, SystemRoutine=0x13C70 |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
@@ -617,6 +618,34 @@ Registro atual: **17/69 serviços**, 3/3 dados; **354 testes workspace/doctests*
 de kernel, um de frames e cinco nativos cobrem efeitos, falhas, ABI e snapshot.
 Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
 [ADR-0043](docs/adr/0043-alocacao-virtual-guest.md); logs `target/virtual-memory-*`.
+
+### Retomada Windows — raízes da thread e NOP multibyte (ADR-0044)
+
+O Git chegou limpo em 94d222a. Foram revisadas as entregas de espera/liberação,
+seções críticas, RDMSR/PCI, InterlockedExchange, tempo, IRQL e memória virtual.
+O README ainda tinha o estado de 6 serviços; foi atualizado para 17/69.
+
+Antes de criar a thread, incluir StartRoutine `0x18FC0` e SystemRoutine `0x13C70`
+como raízes AOT revelou Nop_rm32 em `0x13C68`. O ADR-0044 baixa NOP multibyte
+16/32 para a IR Nop existente, sem avaliar/acessar o operando de memória.
+Flags/registradores permanecem iguais, e o custo é por instrução, não por byte.
+LOCK/REP/PAUSE e segmentos fora do perfil continuam recusados.
+
+As seis raízes traduzem **9454 instruções/blocos**, e o módulo real compilou e
+executou até a mesma recusa **PsCreateSystemThreadEx (255)**, retorno `0x13BF1`.
+Ainda **não há criação ou execução de thread**, nem novo serviço registrado.
+Não confundir tradução das entradas com a execução do corpo da thread.
+
+O startup público WinapiThreadStartup usa KeGetCurrentThread()->TlsData, prepara
+slot/template/zero-fill, registra FLS, chama StartRoutine e termina via ExitThread.
+Implementar o contrato SystemRoutine(StartRoutine, StartContext), identidade,
+handle, pilha/TLS, contextos, espera/término e snapshot. Não saltar direto a main.
+Mutants e seções críticas ainda usam INITIAL_THREAD; revisar a propriedade ao
+ativar outra thread. O Clock precisa continuar único; IRQL pertence à CPU.
+
+Evidência desta retomada: **357 testes workspace/doctests**, **156 casos gerados
+em debug/release** (140 nos demais hosts), Clippy global, fmt e diff.
+Fontes, limites e logs: [ADR-0044](docs/adr/0044-nop-multibyte-raizes-thread.md).
 Teste real: `target/alpha-hello-msr-ratio-20261020/tests/virtual_memory_effect.rs`.
 Threads, execução completa e framebuffer continuam pendentes.
 
@@ -808,11 +837,11 @@ No Windows usado como referência:
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-homebrew.sh
 cargo run --offline -p ordinal-report -- target/homebrew/hello.xbe
 cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
+Na referência atual, `check-memory` e `translate` com as seis raízes passam.
 O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
 PCI, InterlockedExchange, tempo de sistema, IRQL e alocação; para em PsCreateSystemThreadEx (255), sem framebuffer. Com três raízes, falta o case
 `0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
@@ -838,7 +867,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 153 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 156 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -859,7 +888,7 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 0fccc4b + alterações locais do ADR-0043.
+> alterar código. Base documentada: 94d222a + alterações locais do ADR-0044.
 > A entrega 1 tem aceite local; TLS/ABI existe, mas faltam threads/serviços para
 > concluir o hello. Kernel: 17/69 serviços com variantes limitadas, 3/3 dados.
 > Snapshot: AOTS v1, AOTC v7, KRNL v6, KMUT v2, EEPR v1, PCIC v1, STIM v1,
@@ -873,14 +902,15 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > Snapshot confere posse/permissões/aliases/headers. KRNL v1–v5 migra sem alocações e
 > Session recupera o intervalo do XBE correspondente; erros exigem descartar a sessão.
 > FRM0 v1 agora valida bitmap/contagem/padding antes do commit. Nenhum unsafe novo.
-> Hello: 9027 blocos, --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
+> Hello: 9454 blocos; raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70 e 0x18FC0.
+> NOP multibyte foi necessário para traduzir os caminhos de startup (ADR-0044).
 > Alocação real: 0x30000, 64 KiB, 16 frames RW; CRT passa heap+8 à nova thread.
 > Próximo bloqueio: PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1.
 > Args: 0x7000FE88, 0, 0x10000, 0x114, 0, 0x18FC0, 0x30008, 0, 0, 0x13C70.
 > Modelar threads guest com pilha/TLS, handle/identidade, SystemRoutine/StartRoutine,
 > espera/término e snapshot. Conferir CRT e raízes AOT antes; não pular para main
 > ou iniciar thread host. Memória comercial/BIOS não são necessárias.
-> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 354 testes
-> workspace/doctests e 153 casos nativos debug/release. Execução completa/framebuffer
+> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 357 testes
+> workspace/doctests e 156 casos nativos debug/release. Execução completa/framebuffer
 > seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
 > alpha, roadmap, changelog e evidências ao avançar.

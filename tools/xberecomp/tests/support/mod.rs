@@ -17,6 +17,7 @@ mod irql;
 mod kernel;
 mod msr;
 mod muldiv;
+mod nop;
 mod nvram;
 mod ordering;
 mod pci;
@@ -77,6 +78,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&timing::sources(output));
     main.push_str(&msr::sources(output));
     main.push_str(&control::sources(output));
+    main.push_str(&nop::sources(output));
     main.push_str(&breakpoint::sources(output));
     main.push_str(&ordering::sources(output));
     main.push_str(&conditional::sources(output));

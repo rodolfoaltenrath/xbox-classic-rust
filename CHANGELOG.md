@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT/alpha: NOP multibyte r/m16/r/m32 baixa para Nop sem calcular/acessar
+  seu operando; flags, orçamento, tempo e snapshot preservados. As entradas
+  SystemRoutine/StartRoutine acrescentam duas raízes: 9454 blocos traduzem,
+  compilam e executam até PsCreateSystemThreadEx, ainda sem implementação.
+  357 testes workspace/doctests e 156 casos nativos debug/release; catálogo
+  permanece em 17/69 serviços, sem thread criada por essa entrega (ADR-0044).
+
 - Fase 4/alpha: NtAllocateVirtualMemory (184), stdcall/20, reserva+commit privado
   com base escolhida/ZeroBits=0/PAGE_READWRITE em Passive. First-fit após a imagem
   inteira, alinhamento, frames próprios zerados e saídas validadas sem efeitos
