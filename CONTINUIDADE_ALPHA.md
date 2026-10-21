@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`84ead43`** e nas alterações
-locais do **ADR-0048**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-21**, com base no commit **`7e48ef9`** e nas alterações
+locais do **ADR-0049**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,15 +42,18 @@ que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
 64 KiB zerados em 0x30000, que o CRT usa. Uma filha guest com pilha/TLS próprios
 já executa bootstrap e StartRoutine, mantendo o pai estacionado. O bloqueio
-atual é **AvSetDisplayMode (3)**, retorno **0x12CA4**.
+atual é **AvSendTVEncoderOption (2), opção 11**, retorno **0x12DFA**, Param=5
+(filtro de cintilação).
 O hello já alocou e zerou 1.228.800 bytes/300 frames fisicamente contíguos para
-o framebuffer de 640×480×32: VA=0x80050000, PA=0x50000. Ainda falta programar
-o modo e apresentar a imagem.
+o framebuffer de 640×480×32: VA=0x80050000, PA=0x50000. AvSetDisplayMode já
+configura NTSC-M 640×480/60, formato A8R8G8B8 e pitch 2560. O runtime lê as
+linhas BGRA por DMA, com saída ainda desabilitada; faltam os ajustes do encoder,
+gamma MMIO e apresentação da imagem.
 O namespace guest já permite consultar/criar D: para `\Device\CdRom0\`;
 isso ainda não conecta mídia à VFS nem produz imagem.
 A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
-A execução integrada completa e o framebuffer ainda estão pendentes.
+A execução integrada completa e a apresentação do framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
 ## As seis entregas e o estado atual
@@ -59,10 +62,10 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Serviços anteriores e alocação física contígua do framebuffer; 26/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Alocação física contígua e modo de vídeo; 27/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Framebuffer alocado/zerado; para em AvSetDisplayMode (3); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
-| 6 | Framebuffer | Memória disponível; modo/apresentação pendentes | Apresentar uma imagem produzida pela execução do homebrew |
+| 5 | Execução integrada | Modo configurado; para no filtro de cintilação do encoder; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 6 | Framebuffer | Modo e leitura das linhas disponíveis; saída desabilitada, apresentação pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
 aceites completos do alpha. O passo 2 depende de partes do passo 3
@@ -666,7 +669,7 @@ global, fmt, diff e links aprovados. Evidência local:
 `target/video-clippy.log`, `target/video-hello-effect.log` e teste ignorado
 `target/alpha-hello-crt-case-20261021/tests/video_startup.rs`.
 
-### Memória fisicamente contígua e chegada ao modo de vídeo (ADR-0048, estado atual)
+### Memória fisicamente contígua e chegada ao modo de vídeo (ADR-0048)
 
 MmAllocateContiguousMemoryEx (166), stdcall/20, agora reserva frames consecutivos
 no bitmap do Bus: first-fit respeitando limites físicos inclusivos, alinhamento
@@ -707,6 +710,48 @@ Validação: **388 testes workspace/doctests e 171 casos nativos debug/release**
 casos novos no Rust emitido cobrem efeitos, DMA, falhas e snapshots/migração.
 Fontes/perfil/reprodução no [ADR-0048](docs/adr/0048-memoria-fisica-contigua.md);
 logs `target/contiguous-*`.
+
+### Modo de vídeo e leitura do framebuffer (ADR-0049, estado atual)
+
+AvSetDisplayMode (3), stdcall/24, configura Step=0, modo 0x04010101, formato
+0x12 (A8R8G8B8): NTSC-M 640×480/60. EEPROM deve informar NTSC-M; pitch alinhado
+a quatro, entre 2560 e 16384 bytes, PA alinhado a quatro. O intervalo inteiro
+pitch*480 precisa caber em um recurso CMEM registrado, inclusive com offset.
+Base/Step/modo/formato/padrão de TV não modelados recusam. Geometria/PA inválidos
+recusam sem publicar modo. Valida Bus/MMU/bitmap antes do efeito; preserva
+enabled, flags e Clock. Retorna Step=0, concluindo a transação HLE sem executar
+a sequência interna de registradores do hardware. São **27/69 serviços**.
+
+Dispatcher::framebuffer(&Bus) retorna metadados e uma visão emprestada por DMA.
+row(y) fornece os 640 pixels BGRA visíveis, sem padding de pitch; fora de 0..480
+retorna None. A visão também existe com saída desabilitada, para inspeção.
+Empresta a arena, impedindo retomada mutável do Bus durante seu uso; nenhum
+unsafe novo, thread host ou mudança de Send/!Sync. Apresentação futura pode
+copiar as linhas antes de retomar o guest. Nenhum pixel é sintetizado.
+
+**AVST v2** guarda presença de modo e ID/formato/pitch/PA; v1 migra sem modo,
+preservando enabled e limpando modo de destino. KRNL fica v10, AOTS v2/AOTC v7/
+CMEM v1 permanecem. Carga cruza modo/EEPROM/CMEM antes de publicar Dispatcher;
+Session confere também RAM/MMU/bitmap/aliases. Inspeção não marca A/D.
+
+O hello configurou pitch=2560, PA=0x50000 e avançou até **AvSendTVEncoderOption
+(2), opção 11**, retorno **0x12DFA**, args `0xFD000000, 11, 5, 0`: filtro de
+cintilação, ainda sem implementação. O teste real conferiu as 480 linhas pretas
+zeradas pelo guest e snapshot integral byte a byte: **17213045 retired/ciclos,
+40 chamadas atendidas**, saída desabilitada. Evidência local ignorada:
+`target/alpha-hello-crt-case-20261021/tests/display_mode.rs` e
+`target/display-hello-effect.log`. As nove raízes/10676 blocos permanecem.
+
+Próximo: ajustes do encoder chamados pelo SDK (flicker opção 11, soften opção
+14), rampa gamma via MMIO (base NV2A+0x6813C8/0x6813C9), habilitação e apresentação
+do framebuffer. Ainda sem texto Hello nxdk desenhado, janela ou alpha completo.
+Vblank/IRQ, outros modos/formatos e scheduler geral não foram implementados.
+
+Validação: **394 testes workspace/doctests e 174 casos nativos debug/release**
+(158 fora de x86_64), Clippy global e Rust emitido em release com `-D warnings`,
+fmt/diff/links. Seis testes de kernel e três casos nativos novos cobrem efeitos,
+pixels guest, ABI, falhas, snapshots e migração. Perfil, fontes e reprodução:
+[ADR-0049](docs/adr/0049-modo-video-framebuffer.md), logs `target/display-*`.
 
 ### IRQL explícito da CPU guest (ADR-0042)
 
@@ -1036,7 +1081,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 171 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 174 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1057,11 +1102,11 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 84ead43 + alterações locais do ADR-0048.
+> alterar código. Base documentada: 7e48ef9 + alterações locais do ADR-0049.
 > A entrega 1 tem aceite local; TLS/ABI e bootstrap de uma filha existem, mas
-> faltam serviços/escalonamento para concluir o hello. Kernel: 26/69, 3/3 dados.
+> faltam serviços/escalonamento para concluir o hello. Kernel: 27/69, 3/3 dados.
 > Snapshot: AOTS v2, AOTC v7, KRNL v10, KMUT v3, THRD/TCXT v1, além de
-> EEPR/PCIC/STIM/IRQL/VMEM/SYML/AVST/CMEM v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
+> EEPR/PCIC/STIM/IRQL/VMEM/SYML/CMEM v1 e AVST v2. Clock/retired/perfil de CPU/IRQL únicos. Sem
 > scheduler geral ou IRQ/APC/DPC; prefixo KTHREAD da filha termina em TlsData+0x28.
 > NtAllocateVirtualMemory (184) atende só base nula/ZeroBits=0/flags=0x3000/PAGE_RW,
 > em Passive. Reserva+commit privado, first-fit após a imagem inteira, base 64 KiB,
@@ -1075,19 +1120,22 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > 0x18FC0, 0x18C90, 0x139B0 e 0x14F14. Passa por bootstrap e automount de D:.
 > Namespace inicialmente sem D:, consulta/criação/open/close de links com handles
 > reais e alvo copiado; não conecta mídia à VFS. Próximo bloqueio:
-> AvSetDisplayMode (3), retorno 0x12CA4, args 0xFD000000, 0, 0x04010101,
-> 0x12, 0xA00, 0x50000. Framebuffer já alocado/zerado: 300 frames consecutivos,
+> AvSendTVEncoderOption (2), opção 11, retorno 0x12DFA, args 0xFD000000, 11, 5, 0.
+> Framebuffer já alocado/zerado: 300 frames consecutivos,
 > 1.228.800 bytes, VA=0x80050000/PA=0x50000. CMEM respeita limites/alinhamento,
 > RW com WRITECOMBINE opcional, mapa restrito e snapshot; sem liberação ainda.
-> Modelar modo/scanout e leitura por PA com limites/stride/formato, depois
-> controles/MMIO/apresentação necessários. Encoder já consulta EEPROM,
+> AvSetDisplayMode configura NTSC-M 640×480/60 A8R8G8B8, pitch 2560, PA 0x50000,
+> Step=0. Dispatcher::framebuffer empresta linhas BGRA por DMA sem padding.
+> AVST v2 guarda modo e cruza EEPROM/CMEM; v1 migra sem modo, preservando enabled.
+> Modelar ajustes de encoder (11/flicker, 14/soften), gamma MMIO nos offsets
+> 0x6813C8/0x6813C9 e apresentação. Encoder já consulta EEPROM,
 > usa cabo padrão (settings 0x00480101), guarda blanking e não herda framebuffer.
-> Modo/MMIO/apresentação ainda faltam; sem imagem apresentada.
+> Saída ainda desabilitada; sem texto desenhado ou imagem apresentada.
 > Filha roda primeiro, pai estacionado; término noreturn/RET restaura o pai.
 > Espera em filha terminada funciona; espera viva, yield/Sleep, preempção,
 > múltiplas filhas, NtClose de mutant/thread, liberação e abandono ainda faltam.
 > Não pular para main ou criar thread host. BIOS/mídia comercial não são necessárias.
-> Use Rust 1.98.1. Registro atual: 388 testes workspace/doctests e 171 casos
+> Use Rust 1.98.1. Registro atual: 394 testes workspace/doctests e 174 casos
 > nativos debug/release. Execução completa/apresentação do framebuffer
 > seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
 > alpha, roadmap, changelog e evidências ao avançar.

@@ -4,7 +4,7 @@
 > **Linguagem:** Rust (100% nativo, sem dependências de runtime externo)
 > **Plataformas na v1:** Windows 10/11 (x86_64) e Linux (x86_64, desktop)
 > **Plataforma-alvo final:** Linux minimalista rodando direto no KMS/DRM, sem X11/Wayland, como *appliance* (mini console)
-> **Última atualização:** 2026-10-20
+> **Última atualização:** 2026-10-21
 > **Status global:** Fases 0 e 1 concluídas; código de memória presente, com aceite da Fase 2 ainda pendente. **Fase 3-AOT iniciada:** primeira fixture traduzida para Rust, compilada e executada nativamente (ADR-0013). Jogos comerciais ainda não executam.
 
 ---
@@ -1149,6 +1149,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 4 / alpha | Namespace guest D: e chegada ao vídeo (ADR-0046) | — | Open/create/close de links, consulta de ausência, handles compartilhados, alvo copiado; KRNL v8/SYML v1; 372 testes workspace/doctests e 165 nativos debug/release; nove raízes/10676 blocos, D: confirmado no hello, próxima chamada AvSendTVEncoderOption (2), retorno 0x12769; 23/69 serviços |
 | 2026-10-21 | 4 / alpha | Encoder e perfil de vídeo cold boot (ADR-0047) | — | GET_SETTINGS derivado da EEPROM/cabo padrão, VIDEOENABLE com estado de blanking e ausência explícita de framebuffer herdado; KRNL v9/AVST v1; hello pede 1.228.800 bytes para 640×480×32 em MmAllocateContiguousMemoryEx (166), retorno 0x12C01; 380 testes workspace/doctests e 168 nativos debug/release; 25/69 serviços |
 | 2026-10-21 | 4 / alpha | Framebuffer em memória física contígua (ADR-0048) | — | MmAllocateContiguousMemoryEx, frames vizinhos reais, janela guest restrita RW e coerência DMA; KRNL v10/CMEM v1; hello aloca/zera 300 páginas e chega a AvSetDisplayMode (3), retorno 0x12CA4; 388 testes workspace/doctests e 171 nativos debug/release; 26/69 serviços |
+| 2026-10-21 | 4 / alpha | Modo de vídeo e leitura do framebuffer (ADR-0049) | — | AvSetDisplayMode configura NTSC-M 640×480/60 A8R8G8B8 sobre CMEM; visão BGRA por DMA sem compartilhar arena; AVST v2 migra v1; hello para na opção 11 do encoder, retorno 0x12DFA, ainda sem apresentação; 394 testes workspace/doctests e 174 nativos debug/release; 27/69 serviços |
 
 ---
 
@@ -1157,7 +1158,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `26/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `27/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de escalonamento geral do nxdk hello. O bootstrap de uma filha existe (ADR-0045).
@@ -1200,9 +1201,12 @@ Em ordem:
    MmAllocateContiguousMemoryEx (166) já aloca 300 frames consecutivos reais,
    VA=0x80050000/PA=0x50000, com mapa restrito RW e coerência DMA. O hello zera
    1.228.800 bytes para 640×480×32; KRNL v10/CMEM v1 confere posse e aliases.
-   Próximo bloqueio: **AvSetDisplayMode (3)**, retorno 0x12CA4, modo 0x04010101,
-   formato 0x12/pitch 2560 e PA real. Modelar modo/scanout, controles/MMIO e
-   apresentação necessários (ADR-0048). Espera na filha terminada
+   AvSetDisplayMode já configura o modo 0x04010101 (NTSC-M 640×480/60), formato
+   0x12/pitch 2560 e PA real; o runtime lê linhas BGRA por DMA. AVST v2 persiste
+   o modo e migra v1 sem modo, mantendo KRNL v10 (ADR-0049). Próximo bloqueio:
+   **AvSendTVEncoderOption (2), opção 11**, retorno 0x12DFA, Param=5, filtro de
+   cintilação. Modelar ajustes do encoder, rampa gamma MMIO e apresentação;
+   a saída ainda está desabilitada. Espera na filha terminada
    funciona; espera viva, yield/Sleep, preempção, múltiplas filhas, NtClose de mutant/thread e
    liberação ainda faltam (ADR-0045). Os recursos são retidos nesta versão.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host

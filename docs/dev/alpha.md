@@ -12,10 +12,10 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | serviços anteriores e alocação física contígua do framebuffer (ADR-0048); 26/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | alocação física contígua e modo de vídeo (ADR-0049); 27/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | framebuffer alocado/zerado; para em AvSetDisplayMode (3); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
-| 6. Framebuffer | memória disponível, programação/apresentação pendentes | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
+| 5. Execução integrada | modo configurado; para no filtro de cintilação do encoder; controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 6. Framebuffer | modo e leitura das linhas disponíveis; saída desabilitada, apresentação pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
 Dependências reais de kernel/ISA só serão conhecidas após compilar o alvo.
@@ -35,7 +35,7 @@ inventário, hashes e limites estão em [`homebrew.md`](homebrew.md).
 
 A infraestrutura de uma thread inicial prepara TLS nxdk, aplica FS e transporta
 chamadas stdcall/cdecl/fastcall até o dispatcher. Os três dados exportados já têm
-representação guest. Os 17 serviços são RtlInitAnsiString, criação/espera/liberação
+representação guest. Os primeiros 17 serviços são RtlInitAnsiString, criação/espera/liberação
 de mutant, SHA-1 Init/Update/Final, consulta integral de EEPROM e a família
 Init/Enter/Leave/TryEnter de seção crítica, leitura PCI de clock, InterlockedExchange, KeQuerySystemTime, KeGetCurrentIrql e NtAllocateVirtualMemory. Há variantes recusadas explicitamente;
 a contagem de serviços não mede compatibilidade.
@@ -60,9 +60,12 @@ blanking; AvGetSavedDataAddress retorna NULL no cold boot sem imagem herdada.
 MmAllocateContiguousMemoryEx (166) agora entrega **1.228.800 bytes/300 páginas
 fisicamente contíguas para 640×480×32**. O hello recebeu VA 0x80050000 e PA
 0x50000; o teste real sujou a região e comprovou que o memset guest a zerou.
-O bloqueio atual é **AvSetDisplayMode (3)**, retorno **0x12CA4**, modo 0x04010101,
-formato 0x12/pitch 2560 e PA do recurso. Ainda sem modo programado ou imagem
-apresentada ([ADR-0048](../adr/0048-memoria-fisica-contigua.md)).
+AvSetDisplayMode (3) agora configura o modo 0x04010101 (NTSC-M 640×480/60),
+formato 0x12/pitch 2560 e PA do recurso. O runtime lê as linhas BGRA por DMA,
+sem compartilhar a arena. O bloqueio atual é **AvSendTVEncoderOption (2), opção
+11**, retorno **0x12DFA**, Param=5: filtro de cintilação. A saída permanece
+desabilitada; ajustes de encoder/MMIO e apresentação ainda faltam
+([ADR-0049](../adr/0049-modo-video-framebuffer.md)).
 
 O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) guarda a continuação do pai
 sem copiar Clock/retired; término da filha restaura esse contexto. A filha roda
@@ -81,6 +84,12 @@ mapeia suas páginas RW, sem abrir acesso geral à RAM/código. O snapshot cruza
 tradução linear, posse, bitmap e aliases; v1–v9 migram sem recursos. Há suporte
 a limites/alinhamento e proteção RW com WRITECOMBINE opcional sob coerência
 síncrona do Bus. Liberação e persistência ainda faltam.
+
+AVST v2 guarda o modo, conferindo geometria, EEPROM e recurso CMEM antes de
+publicar o estado restaurado; AVST v1 migra sem modo, preservando enabled.
+KRNL continua v10. A visão empresta a RAM do Bus e expõe apenas pixels visíveis
+de cada linha, excluindo o padding. Ela permite inspeção com saída desabilitada;
+não implica scanout, vblank ou uma imagem já apresentada.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -125,8 +134,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **388 testes workspace/doctests** e **171 casos de
-Rust gerado em debug/release**, incluindo contiguidade física, DMA e snapshots. O Rust
+A validação atual tem **394 testes workspace/doctests** e **174 casos de
+Rust gerado em debug/release**, incluindo modo de vídeo, linhas BGRA, DMA e snapshots. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

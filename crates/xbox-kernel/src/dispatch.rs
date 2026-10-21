@@ -52,7 +52,8 @@ pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use system_time::SystemTimeReference;
 pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
 pub use video::{
-    AV_PACK_STANDARD, VIDEO_BASE, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_VIDEOENABLE, VideoState,
+    AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTSC_M,
+    VIDEO_BASE, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_VIDEOENABLE, VideoState,
 };
 pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
@@ -66,6 +67,7 @@ use crate::loader::Result as LoaderResult;
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
+pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
@@ -110,6 +112,7 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_AV_SET_DISPLAY_MODE,
     ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
@@ -160,6 +163,8 @@ pub struct Atendimento {
 /// Falha ao atender uma chamada de kernel.
 #[derive(Debug, thiserror::Error)]
 pub enum Erro {
+    #[error("estado de vídeo guest inconsistente: {0}")]
+    VideoState(&'static str),
     #[error("estado de memória contígua guest inconsistente: {0}")]
     MemoriaContigua(&'static str),
     #[error("estado de thread guest inconsistente: {0}")]
@@ -262,6 +267,9 @@ impl Dispatcher {
     pub const fn video(&self) -> &VideoState {
         &self.video
     }
+    pub fn framebuffer<'a>(&self, bus: &'a Bus) -> Result<Option<FramebufferView<'a>>, Erro> {
+        self.video.framebuffer(bus, &self.contiguous, &self.eeprom)
+    }
 
     /// Snapshots anteriores ao alocador dependem do XBE usado para abrir a sessão.
     /// Confere seus headers na RAM restaurada antes de recuperar esse contexto.
@@ -277,6 +285,12 @@ impl Dispatcher {
             .validate_bus(bus)
             .map_err(|what| SnapshotError::BadValue {
                 section: "CMEM",
+                what,
+            })?;
+        self.video
+            .validate_memory(&self.contiguous, &self.eeprom)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "AVST",
                 what,
             })
     }
@@ -409,6 +423,10 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_AV_SET_DISPLAY_MODE => {
+                self.video
+                    .set_mode(bus, &call, &self.eeprom, &self.contiguous)
+            }
             ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX => {
                 self.contiguous.allocate(bus, &call, self.irql)
             }
@@ -727,6 +745,12 @@ impl Snapshot for Dispatcher {
         if version >= 10 {
             contiguous.load(inp)?;
         }
+        video
+            .validate_memory(&contiguous, &eeprom)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "AVST",
+                what,
+            })?;
         *self = Self {
             atendidas,
             recusadas,

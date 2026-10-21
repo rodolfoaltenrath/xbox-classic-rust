@@ -203,9 +203,11 @@ a montagem de D:, agora modelada pelo namespace guest. O encoder já atende
 consulta de settings e blanking; AvGetSavedDataAddress usa o perfil cold boot
 sem imagem herdada. MmAllocateContiguousMemoryEx (166) já aloca 1.228.800 bytes
 fisicamente contíguos para 640×480×32, com VA 0x80050000/PA 0x50000. O guest zera
-a região e chega a **AvSetDisplayMode (3), retorno 0x12CA4**. Ainda sem modo
-programado/apresentação ou execução completa. Contrato/evidência atual:
-[ADR-0048](../adr/0048-memoria-fisica-contigua.md).
+a região e configura o modo NTSC-M 640×480/60, formato 0x12/pitch 2560.
+O runtime lê as linhas BGRA por DMA. O próximo bloqueio é **AvSendTVEncoderOption
+(2), opção 11, retorno 0x12DFA**, Param=5: filtro de cintilação. Ainda sem saída
+habilitada, imagem apresentada ou execução completa. Contrato/evidência atual:
+[ADR-0049](../adr/0049-modo-video-framebuffer.md).
 
 Na retomada Windows de 2026-10-21, incluir também as entradas de thread
 `0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
@@ -235,7 +237,7 @@ host por endereço. `OwningThread` é a identidade guest ativa (pai 1, filha 2),
 não um ponteiro KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
 O formato atual é AOTS v2/AOTC v7/KRNL v10/KMUT v3/THRD v1/TCXT v1, além de
-EEPR/PCIC/STIM/IRQL/VMEM/SYML/AVST/CMEM v1. Detalhes das seções críticas:
+EEPR/PCIC/STIM/IRQL/VMEM/SYML/CMEM v1 e AVST v2. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 O bootstrap de uma filha preserva registradores/flags/FS do pai; Clock/retired,
@@ -276,10 +278,24 @@ proteções/alinhamentos fora do perfil recusam. KRNL v10/CMEM v1 salva recursos
 valida Bus/MMU/bitmap/aliases sem A/D. Versões anteriores migram sem recursos;
 páginas órfãs na janela recusam. Liberação e persistência seguem pendentes.
 
-Validação atual: **388 testes workspace/doctests e 171 nativos debug/release**
+Validação da entrega de memória contígua: **388 testes workspace/doctests e 171 nativos debug/release**
 (155 fora de x86_64). O teste real conferiu o memset guest após sujar todo o
 buffer e o PA passado ao vídeo, além de replay integral do snapshot na fronteira
 AvSetDisplayMode. Logs `target/contiguous-*`.
+
+O ADR-0049 implementa AvSetDisplayMode (3) para Step=0, modo 0x04010101,
+NTSC-M 640×480/60, A8R8G8B8. Valida EEPROM, pitch e PA dentro de um recurso
+CMEM inteiro antes de publicar o modo e retornar Step=0. Dispatcher::framebuffer
+empresta as linhas BGRA da RAM por DMA, sem padding; funciona para inspeção
+mesmo com saída desabilitada. AVST v2 salva o modo e cruza EEPROM/CMEM; v1 migra
+sem modo, preservando enabled. KRNL permanece v10. Não há scanout/vblank ou
+janela de apresentação nessa entrega.
+
+Validação atual: **394 testes workspace/doctests e 174 nativos debug/release**
+(158 fora de x86_64). O teste com hello real conferiu 480 linhas pretas,
+modo/pitch/PA e snapshot integral com replay idêntico na opção 11 do encoder:
+**17213045 retired/ciclos e 40 chamadas atendidas**. Logs `target/display-*`,
+teste local ignorado `target/alpha-hello-crt-case-20261021/tests/display_mode.rs`.
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
 registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000

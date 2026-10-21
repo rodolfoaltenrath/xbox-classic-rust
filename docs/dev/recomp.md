@@ -733,7 +733,7 @@ As mesmas nove raízes/10676 blocos agora chegam a **MmAllocateContiguousMemoryE
 640×480×32. Framebuffer, programação de modo/MMIO e apresentação ainda faltam.
 Reprodução/evidência no [ADR-0047](../adr/0047-encoder-video-cold-boot.md).
 
-### Memória fisicamente contígua (ADR-0048, estado atual)
+### Memória fisicamente contígua (ADR-0048)
 
 MmAllocateContiguousMemoryEx (166), stdcall/20, reserva frames consecutivos no
 bitmap do Bus, respeita limites físicos inclusivos/alinhamento e retorna
@@ -750,3 +750,24 @@ O hello alocou 300 páginas, VA=0x80050000/PA=0x50000, zerou o framebuffer e
 chegou a **AvSetDisplayMode (3), retorno 0x12CA4**: modo 0x04010101, formato 0x12,
 pitch 2560 e PA real. Ainda sem programação/apresentação da imagem. Perfil,
 fontes e reprodução no [ADR-0048](../adr/0048-memoria-fisica-contigua.md).
+
+### Modo HLE e leitura do framebuffer (ADR-0049, estado atual)
+
+AvSetDisplayMode (3), stdcall/24, aceita Step=0 e NTSC-M 640×480/60,
+modo 0x04010101, A8R8G8B8. Pitch/PA devem cobrir 480 linhas dentro de um recurso
+CMEM registrado; a EEPROM precisa informar NTSC-M. Todas as validações precedem
+a publicação do modo. Retorna Step=0 com efeito real sobre VideoState,
+preservando blanking e Clock. Variantes/endereços inválidos recusam.
+
+Dispatcher::framebuffer(&Bus) devolve metadados e linhas BGRA emprestadas por
+DMA físico, excluindo padding de pitch. O empréstimo impede retomar a CPU com
+Bus mutável enquanto usado; não torna a arena Sync. AVST v2 persiste o modo e
+migra v1 sem modo; KRNL v10 permanece. Snapshot confere modo/EEPROM/CMEM e a
+restauração integral também confere RAM/MMU/bitmap/aliases.
+
+O hello configura o modo com pitch 2560/PA 0x50000, avança após Step=0 e para
+em AvSendTVEncoderOption (2), opção 11/Param=5, retorno 0x12DFA. Ainda com saída
+desabilitada e buffer preto zerado pelo guest; ajustes de encoder, gamma MMIO
+e apresentação faltam. Validação: 394 testes workspace/doctests e 174 nativos
+debug/release (158 fora de x86_64). Perfil, fontes e reprodução:
+[ADR-0049](../adr/0049-modo-video-framebuffer.md).

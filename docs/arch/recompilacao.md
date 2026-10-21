@@ -1,9 +1,10 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0043. O hello nxdk inicia nativamente com TLS/imports, 17 serviços
-e perfil de CPU/PCI guest; passa pela alocação de 64 KiB e chega a PsCreateSystemThreadEx.
-Execução completa, renderização e áudio pendem.
+ADRs 0013–0049. O hello nxdk inicia nativamente com TLS/imports, 27 serviços
+e perfil de CPU/PCI guest; executa o bootstrap de uma filha e configura o modo
+de vídeo sobre memória física contígua. A leitura das linhas está disponível;
+ajustes de encoder/MMIO, execução completa, apresentação e áudio pendem.
 
 ## Pipeline implementado
 
@@ -183,7 +184,7 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 
 `Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
 inclui `AOTC` v7, memória e estado `KRNL` v10 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v1 / `CMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v2 / `CMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -353,3 +354,14 @@ não oferece cache identificado por hash e não integra o módulo ao `obsidian r
 Os fontes e o XBE de saída são artefatos locais. Antes de distribuir módulos de
 jogos, é necessário resolver identificação de imagem/perfil/runtime e o processo de
 geração local do usuário.
+
+O [ADR-0049](../adr/0049-modo-video-framebuffer.md) acrescenta modo HLE NTSC-M
+640×480/60 A8R8G8B8 e leitura por DMA do framebuffer CMEM. AvSetDisplayMode valida
+EEPROM, geometria e posse antes de publicar DisplayMode; Step=0 encerra a
+transação HLE. O descritor não permite construção externa sem validação.
+Dispatcher::framebuffer empresta a RAM e expõe linhas BGRA sem padding;
+o empréstimo impede retomar a CPU com Bus mutável enquanto usado. Não há
+compartilhamento da arena ou pixels gerados pelo host. AVST v2 persiste o modo,
+migra v1 sem modo e cruza EEPROM/CMEM; KRNL continua v10. Scanout, vblank e
+apresentação ficam fora dessa entrega. O hello para no filtro de cintilação
+(opção 11 do encoder), com saída ainda desabilitada.

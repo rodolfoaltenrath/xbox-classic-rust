@@ -10,6 +10,7 @@ mod conditional;
 mod contiguous;
 mod control;
 mod critical;
+mod display;
 mod double_shifts;
 mod exchange;
 mod indirect;
@@ -76,6 +77,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&video::sources(output));
+    main.push_str(&display::sources(output));
     main.push_str(&system_time::sources(output));
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));

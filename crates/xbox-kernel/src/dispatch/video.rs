@@ -4,6 +4,8 @@ use crate::imports::Call;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter, error::SnapshotError};
 use xbox_formats::eeprom::{Eeprom, FlagsDeVideo, PadraoDeVideo};
 use xbox_mem::{Acesso, Bus, GuestVirt};
+mod display;
+pub use display::{COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTSC_M};
 
 pub const VIDEO_BASE: u32 = 0xFD00_0000;
 pub const VIDEO_ENC_GET_SETTINGS: u32 = 6;
@@ -18,10 +20,11 @@ const FLAGS: u32 = FlagsDeVideo::WIDESCREEN
     | 0x0080_0000;
 
 /// Perfil de cabo padrão e cold boot, inicialmente sem saída habilitada.
-/// Não representa um framebuffer, vblank ou a execução do scanout.
+/// Modo e RAM de scanout são explícitos; vblank/apresentação não são executados.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct VideoState {
     enabled: bool,
+    mode: Option<DisplayMode>,
 }
 impl VideoState {
     /// Cold boot sem framebuffer herdado. `AvSetSavedDataAddress` ainda recusa.
@@ -58,7 +61,7 @@ impl VideoState {
             return Err(variant(
                 bus,
                 call,
-                "perfil admite GET_SETTINGS com base NV2A e Param zero",
+                "opção ou Param ainda não implementado no perfil do encoder",
             ));
         }
         if !ram_range(bus, output, 4, Acesso::Escrita) {
@@ -86,16 +89,24 @@ impl VideoState {
 }
 impl Snapshot for VideoState {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AVST", 1);
+        out.section("AVST", 2);
         out.u32(1); // StandardCableColdBootV1.
         out.bool(self.enabled);
+        out.bool(self.mode.is_some());
+        if let Some(mode) = self.mode {
+            out.u32(mode.id);
+            out.u32(mode.format);
+            out.u32(mode.pitch);
+            out.u32(mode.framebuffer.0);
+        }
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
         let bad = |what| SnapshotError::BadValue {
             section: "AVST",
             what,
         };
-        if inp.section("AVST", 1)? != 1 || inp.u32()? != 1 {
+        let version = inp.section("AVST", 2)?;
+        if !matches!(version, 1 | 2) || inp.u32()? != 1 {
             return Err(bad("versão/perfil de encoder desconhecido"));
         }
         let enabled = match inp.u8()? {
@@ -103,7 +114,27 @@ impl Snapshot for VideoState {
             1 => true,
             _ => return Err(bad("estado de blanking inválido")),
         };
-        *self = Self { enabled };
+        let mode = if version >= 2 {
+            match inp.u8()? {
+                0 => None,
+                1 => {
+                    let mode = DisplayMode {
+                        id: inp.u32()?,
+                        format: inp.u32()?,
+                        pitch: inp.u32()?,
+                        framebuffer: xbox_mem::GuestPhys(inp.u32()?),
+                    };
+                    if !mode.valid() {
+                        return Err(bad("geometria/formato de modo inválido"));
+                    }
+                    Some(mode)
+                }
+                _ => return Err(bad("indicador de modo inválido")),
+            }
+        } else {
+            None
+        };
+        *self = Self { enabled, mode };
         Ok(())
     }
 }

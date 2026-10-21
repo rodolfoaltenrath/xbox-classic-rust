@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: AvSetDisplayMode (3), perfil NTSC-M 640×480/60 Hz, A8R8G8B8,
+  com pitch/PA validados contra o recurso físico contíguo e a EEPROM (27/69
+  serviços). Visão emprestada das linhas BGRA por DMA, sem compartilhar a arena
+  ou produzir pixels artificiais. AVST v2 persiste o modo, migra v1 sem modo e
+  cruza EEPROM/CMEM; KRNL permanece v10. O hello configura o modo e para no filtro
+  de cintilação, AvSendTVEncoderOption (2), opção 11, retorno 0x12DFA. 394 testes
+  workspace/doctests e 174 nativos debug/release. Saída ainda desabilitada;
+  ajustes/MMIO e apresentação da imagem pendentes (ADR-0049).
+
 - Fase 4/alpha: MmAllocateContiguousMemoryEx (166), com frames consecutivos reais,
   limites físicos inclusivos, alinhamento e janela guest restrita a páginas RW
   possuídas (26/69 serviços). RAM virtual/física/DMA coerente; KRNL v10/CMEM v1
