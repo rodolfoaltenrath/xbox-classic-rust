@@ -4,7 +4,7 @@ use xbox_core::Error as CoreError;
 use xbox_formats::Xbe;
 use xbox_mem::{Acesso, Bus, GuestVirt, Perm};
 
-use super::{Image, Mode, Result, data};
+use super::{Image, Mode, Result, data, mmio};
 use crate::imports::{self, TRAMPOLINE_BASE, TRAMPOLINE_SIZE};
 
 pub const STACK_BASE: u32 = 0x7000_0000;
@@ -42,6 +42,9 @@ impl Image {
         } else {
             None
         };
+        // MMIO é hardware, não import: a janela existe independentemente do que a
+        // imagem importa, e o bus registra o que o guest toca nela.
+        mmio::install(bus)?;
         map_fresh(bus, STACK_BASE, STACK_SIZE)?;
         map_fresh(bus, TIB_BASE, 4096)?;
         let stack_top = STACK_BASE + STACK_SIZE;
@@ -130,6 +133,7 @@ pub fn validate_startup_layout(xbe: &Xbe<'_>) -> xbox_core::Result<()> {
             (TRAMPOLINE_BASE, TRAMPOLINE_SIZE),
             (data::DATA_RO_BASE, data::DATA_SIZE),
             (data::DATA_RW_BASE, data::DATA_SIZE),
+            (mmio::NV2A_BASE, mmio::NV2A_SIZE),
         ] {
             if base < reserved + length && base + size > reserved {
                 return Err(CoreError::format(format!(

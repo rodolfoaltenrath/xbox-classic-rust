@@ -5,7 +5,9 @@ use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter, error::SnapshotError};
 use xbox_formats::eeprom::{Eeprom, FlagsDeVideo, PadraoDeVideo};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 mod display;
-pub use display::{COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTSC_M};
+pub use display::{
+    COLOR_A8R8G8B8, DisplayMode, FramebufferView, HEIGHT, MODE_640_480_NTSC_M, WIDTH,
+};
 
 pub const VIDEO_BASE: u32 = 0xFD00_0000;
 pub const VIDEO_ENC_GET_SETTINGS: u32 = 6;

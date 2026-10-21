@@ -10,6 +10,7 @@ mod conditional;
 mod contiguous;
 mod control;
 mod critical;
+mod delay;
 mod display;
 mod double_shifts;
 mod encoder_filters;
@@ -77,6 +78,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
+    main.push_str(&delay::sources(output));
     main.push_str(&video::sources(output));
     main.push_str(&display::sources(output));
     main.push_str(&encoder_filters::sources(output));

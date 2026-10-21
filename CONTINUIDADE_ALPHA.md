@@ -1,10 +1,17 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`0d77ba5`** e nas alterações
-locais do **ADR-0050**, ainda sem novo commit nesta referência. Este documento
-registra o contexto necessário para continuar o projeto sem o histórico da conversa.
-Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
-locais: o código pode ter evoluído depois desta referência.
+Atualizado em **2026-10-21**, com base no commit **`d2e1b60`** (que já contém o
+ADR-0050) e nas alterações locais do **ADR-0051**, ainda sem commit nesta referência.
+Este documento registra o contexto necessário para continuar o projeto sem o histórico
+da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
+instruções locais: o código pode ter evoluído depois desta referência.
+
+> **Como ler este arquivo.** O estado vigente está em "**Estado atual**" (logo abaixo) e
+> na tabela de contratos ("Fim da execução atual" e "Comando completo"). As seções
+> por ADR mais adiante são **registros datados**: frases como "Próximo bloqueio" ou "o
+> bloqueio atual" dentro delas descrevem o momento em que cada ADR foi escrito e estão
+> preservadas como histórico, não como estado vigente. Na dúvida, reproduza com o
+> comando completo da tabela de contratos antes de investigar qualquer bloqueio.
 
 ## Objetivo do software e do primeiro alpha
 
@@ -41,9 +48,41 @@ O fluxo executado passa pela troca de LONG e por KeQuerySystemTime (128),
 que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
 64 KiB zerados em 0x30000, que o CRT usa. Uma filha guest com pilha/TLS próprios
-já executa bootstrap e StartRoutine, mantendo o pai estacionado. O bloqueio
-atual é a escrita do **DAC gamma em VA=0xFD6813C8, PC=0x12EEB**, ainda sem
-mapeamento/modelo de dispositivo.
+já executa bootstrap e StartRoutine, mantendo o pai estacionado. A escrita do
+DAC gamma em `0xFD6813C8` deixou de bloquear: a janela MMIO do NV2A está mapeada
+(ADR-0051) e a telemetria registra os 769 acessos da rampa. **O hello agora executa o
+seu `main`**: `XVideoSetMode` e depois o laço `debugPrint` + `Sleep(2000)`, com
+`KeDelayExecutionThread` avançando o relógio guest. Não há mais parada por serviço
+faltante nesse caminho; a execução termina no **orçamento do `main` gerado** (64 M de
+blocos, ~4 iterações do laço), porque o alvo não retorna espontaneamente. O framebuffer
+guest contém "Hello nxdk!" legível, e **agora uma janela Win32 o mostra**
+(`obsidian-native --janela`, ADR-0052): capturada de fora pelo sistema, a janela tem
+640×480 1:1 e os mesmos 1208 pixels que a RAM guest. Fechar a janela interrompe a
+execução de forma controlada. A imagem é de **bytes crus**: gamma e filtros do encoder
+não são aplicados — dívida provisória declarada, com condição de saída em
+`ROADMAP.md §16.1` (P1 e P2). **Falta:** vblank por interrupção, apresentação em Linux
+(só existe Windows), orçamento do `main` gerado ainda fixo no template, e o
+escalonamento de threads para além do hello.
+
+**Armadilha de medição, para quem for reproduzir:** o binário gerado em **debug** leva
+~38 s para chegar ao primeiro `Sleep` (21× mais lento que em release, ~1,85 s). Um
+processo a 100% de CPU nesse tempo está *trabalhando*, não travado. Para ver a janela,
+use `--release`:
+
+```powershell
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe `
+  --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 `
+  --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --entry 0x14F14 --out target/alpha-janela
+cargo run --release --offline --manifest-path target/alpha-janela/Cargo.toml `
+  --target-dir target/recomp-hello-release -- --janela
+```
+
+Verificado literalmente neste host: a **primeira** execução leva ~3 a 4 minutos só
+compilando (o perfil release usa LTO fat, `codegen-units = 1`) antes de a janela
+aparecer; as seguintes reaproveitam o `--target-dir` e abrem em ~2 s. Um `cargo` ativo
+sem janela nesse intervalo é compilação, não travamento.
+
+Sem `--janela` o comportamento é o de antes (relatório em ASCII, sem abrir nada).
 O hello já alocou e zerou 1.228.800 bytes/300 frames fisicamente contíguos para
 o framebuffer de 640×480×32: VA=0x80050000, PA=0x50000. AvSetDisplayMode já
 configura NTSC-M 640×480/60, formato A8R8G8B8 e pitch 2560. O runtime lê as
@@ -63,10 +102,10 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Memória contígua, modo e pedidos de filtros; 27/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Memória contígua, modo, filtros, janela MMIO do NV2A e espera por intervalo; 28/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Modo/filtros configurados; para no DAC gamma por MMIO; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
-| 6 | Framebuffer | Modo e leitura das linhas disponíveis; saída desabilitada, apresentação pendente | Apresentar uma imagem produzida pela execução do homebrew |
+| 5 | Execução integrada | **Executa o `main` do hello** (`debugPrint` + `Sleep`); termina no orçamento do `main` gerado, sem serviço faltante; **o host interrompe a execução fechando a janela** (ADR-0052); orçamento ainda fixo no template e vblank por interrupção pendentes; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 6 | Framebuffer | **Apresentado em janela Win32** (`--janela`, ADR-0052): capturado de fora pelo SO, 640×480 1:1, 1208 pixels idênticos à RAM guest, "Hello nxdk!" × 4. **Limites:** só Windows; bytes crus, sem gamma nem filtros do encoder (provisório, ROADMAP §16.1 P1/P2); caminho "usuário fecha durante a execução" não exercitado por teste | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
 aceites completos do alpha. O passo 2 depende de partes do passo 3
@@ -175,7 +214,8 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 9454 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70 e 0x18FC0 |
-| Bloqueio de execução atual | PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1; stack=0x10000, TLS=0x114, StartRoutine=0x18FC0, contexto=0x30008, SystemRoutine=0x13C70 |
+| Fim da execução atual | **Orçamento do `main` gerado esgotado**, não um bloqueio: 64 M de blocos, 17.452.569 instruções, relógio guest 8023 ms, 47 chamadas atendidas e 0 recusadas. Executa `XVideoSetMode` e ~4 iterações de `debugPrint` + `Sleep(2000)` (ADR-0051). *Histórico: a linha anterior desta tabela dizia `PsCreateSystemThreadEx` (255), retorno `0x13BF1`, resolvido pelo ADR-0045.* |
+| Comando completo | `translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --entry 0x14F14` (nove raízes, 10676 blocos). Com menos raízes a execução para antes, em `UnknownTarget`. |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -1014,7 +1054,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é PsCreateSystemThreadEx após o ADR-0043. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; *(histórico, na época do ADR-0043: o bloqueio era PsCreateSystemThreadEx — já resolvido pelo ADR-0045; o estado vigente está em "Estado atual", no início deste arquivo)*. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.

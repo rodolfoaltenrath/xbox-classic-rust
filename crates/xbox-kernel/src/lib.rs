@@ -13,8 +13,16 @@
 //! Tempo de sistema derivado do Clock e referência UTC explícita (ADR-0041):
 //! Consulta de IRQL explícito da CPU guest (ADR-0042):
 //! Reserva+commit privado em RAM por `NtAllocateVirtualMemory` (ADR-0043):
-//! **17 de 69** serviços implementados, com variantes limitadas.
-//! Scheduler e o resto dos serviços continuam pendentes.
+//! Bootstrap cooperativo de uma thread guest filha (ADR-0045):
+//! Namespace do drive `D:` com links simbólicos e handles (ADR-0046):
+//! Estado do encoder de vídeo e cold boot (ADR-0047):
+//! Memória física contígua para o framebuffer (ADR-0048):
+//! Modo de vídeo e leitura do framebuffer guest (ADR-0049):
+//! Pedidos de filtros do encoder (ADR-0050):
+//! Janela MMIO do NV2A e espera por intervalo relativo (ADR-0051), esta última sem
+//! bloquear o host: o serviço deixa um pedido que a sessão aplica ao Clock único:
+//! **28 de 69** serviços implementados, com variantes limitadas — número que não mede
+//! compatibilidade. Escalonamento de threads e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;
 pub mod imports;

@@ -121,6 +121,23 @@ impl Clock {
         scale_ceil(us, CPU_HZ, 1_000_000)
     }
 
+    /// Converte unidades de 100 ns (`LARGE_INTEGER` do kernel) em ciclos, arredondando
+    /// **para cima**, ou `None` se o resultado não couber em `u64`.
+    ///
+    /// Versão verificada, ao contrário de [`Self::ms_to_cycles`]: aquelas recebem
+    /// constantes do próprio emulador, e `scale_ceil` trunca em silêncio com `as u64`.
+    /// Esta recebe o intervalo de um `Sleep` do guest — entrada não confiável — e um
+    /// valor enorme não pode virar um intervalo curto por truncamento.
+    pub const fn hundred_ns_to_cycles(ticks: u64) -> Option<Cycles> {
+        let n = ticks as u128 * CPU_HZ as u128;
+        let ciclos = n.div_ceil(10_000_000);
+        if ciclos > u64::MAX as u128 {
+            None
+        } else {
+            Some(ciclos as u64)
+        }
+    }
+
     /// Duração de um frame de vídeo, em ciclos, para a taxa dada em milihertz.
     ///
     /// Use [`VBLANK_NTSC_MHZ`] ou [`VBLANK_PAL_MHZ`].
@@ -415,6 +432,31 @@ mod tests {
             assert_eq!(c.tick_count_ms(), ms, "ida e volta falhou para {ms} ms");
         }
         assert_eq!(Clock::us_to_cycles(1_000), Clock::ms_to_cycles(1));
+    }
+
+    #[test]
+    fn cem_ns_para_ciclos_bate_com_um_segundo_e_arredonda_para_cima() {
+        // 10_000_000 unidades de 100 ns = 1 s = CPU_HZ ciclos, exato.
+        assert_eq!(Clock::hundred_ns_to_cycles(10_000_000), Some(CPU_HZ));
+        assert_eq!(Clock::hundred_ns_to_cycles(0), Some(0));
+        // O `Sleep(2000)` do hello: 2000 ms = 20_000_000 unidades.
+        assert_eq!(Clock::hundred_ns_to_cycles(20_000_000), Some(2 * CPU_HZ));
+        // 1 unidade = 73,3333 ciclos: nunca vence cedo, então vai para 74.
+        assert_eq!(Clock::hundred_ns_to_cycles(1), Some(74));
+        // Consistente com a conversão por milissegundo (1 ms = 10_000 unidades).
+        assert_eq!(
+            Clock::hundred_ns_to_cycles(10_000),
+            Some(Clock::ms_to_cycles(1))
+        );
+    }
+
+    #[test]
+    fn cem_ns_para_ciclos_recusa_overflow_em_vez_de_truncar() {
+        // `scale_ceil` faria `as u64` e devolveria um intervalo curto e errado.
+        let limite = u64::MAX / CPU_HZ * 10_000_000;
+        assert!(Clock::hundred_ns_to_cycles(limite).is_some());
+        assert_eq!(Clock::hundred_ns_to_cycles(u64::MAX), None);
+        assert_eq!(Clock::hundred_ns_to_cycles(u64::MAX / 2), None);
     }
 
     #[test]

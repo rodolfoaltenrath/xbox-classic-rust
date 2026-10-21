@@ -1,0 +1,244 @@
+mod generated;
+
+use xbox_recomp::runtime::Exit;
+
+/// Orçamento por fatia e número máximo de fatias. O orçamento total e a interrupção
+/// pelo host são trabalho da entrega 5; aqui o limite existe para que um serviço
+/// faltante não vire laço infinito.
+const BLOCOS_POR_FATIA: u64 = 1_000_000;
+const FATIAS: u32 = 64;
+
+/// Imprime em stderr o que o guest tocou em MMIO sem modelo, em qualquer saída.
+///
+/// É a lista exata de registradores que o título usa: sem ela, um acesso que não parou a
+/// execução ficaria invisível, e um que parou só diria o endereço do primeiro.
+fn relatar_mmio(session: &xbox_recomp::runtime::Session) {
+    let telemetria = session.bus.telemetria();
+    if telemetria.total_de_acessos() > 0 {
+        eprintln!("\nMMIO sem modelo tocado pelo guest:\n{}", telemetria.relatorio());
+    }
+}
+
+/// Resume o framebuffer guest, se o título configurou um modo de vídeo.
+///
+/// Conta pixels diferentes do preenchimento inicial. É evidência objetiva de que o
+/// título **desenhou** algo — a diferença entre "executou" e "produziu imagem" — sem
+/// depender de janela, de GPU ou de apresentação (entrega 6 do alpha).
+fn relatar_framebuffer(session: &xbox_recomp::runtime::Session) {
+    let Ok(Some(view)) = session.kernel.framebuffer(&session.bus) else {
+        return;
+    };
+    let mut coloridos = 0u64;
+    let mut linhas_com_pixel = 0u32;
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = (u32::MAX, 0u32, u32::MAX, 0u32);
+    let mut y = 0;
+    while let Some(linha) = view.row(y) {
+        let mut linha_tem = false;
+        for (x, px) in linha.chunks_exact(4).enumerate() {
+            // B,G,R,A. Preto opaco ou transparente é fundo; qualquer canal de cor é tinta.
+            if px[0] != 0 || px[1] != 0 || px[2] != 0 {
+                coloridos += 1;
+                linha_tem = true;
+                let x = x as u32;
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            }
+        }
+        linhas_com_pixel += u32::from(linha_tem);
+        y += 1;
+    }
+    eprintln!(
+        "\nFramebuffer guest: modo 0x{:X}, saída {}, {} pixels coloridos em {} linhas",
+        view.mode().id(),
+        if view.enabled() { "habilitada" } else { "desabilitada" },
+        coloridos,
+        linhas_com_pixel
+    );
+    if coloridos > 0 {
+        eprintln!("  região desenhada: x {min_x}..={max_x}, y {min_y}..={max_y}");
+        desenhar_ascii(&view, min_x, max_x, min_y, max_y);
+    }
+}
+
+/// Desenha a região em ASCII, uma célula por bloco de 2×4 pixels. É como se verifica
+/// a olho que o framebuffer contém texto legível e não ruído — o mesmo método do logo
+/// do XBE na Fase 1 —, sem janela nem GPU.
+fn desenhar_ascii(
+    view: &xbox_kernel::dispatch::FramebufferView<'_>,
+    min_x: u32,
+    max_x: u32,
+    min_y: u32,
+    max_y: u32,
+) {
+    const LARGURA_MAXIMA: u32 = 160;
+    let passo_x = 1u32;
+    let passo_y = 2u32;
+    eprintln!();
+    let mut y = min_y;
+    while y <= max_y {
+        let mut texto = String::new();
+        let mut x = min_x;
+        while x <= max_x && (x - min_x) / passo_x < LARGURA_MAXIMA {
+            let mut tinta = false;
+            for dy in 0..passo_y {
+                if let Some(linha) = view.row(y + dy) {
+                    let i = (x * 4) as usize;
+                    if let Some(px) = linha.get(i..i + 4) {
+                        tinta |= px[0] != 0 || px[1] != 0 || px[2] != 0;
+                    }
+                }
+            }
+            texto.push(if tinta { '#' } else { ' ' });
+            x += passo_x;
+        }
+        eprintln!("  {}", texto.trim_end());
+        y += passo_y;
+    }
+}
+
+/// Cópia do framebuffer guest como um quadro que o apresentador possui, ou `None` se o
+/// título ainda não configurou um modo de vídeo.
+///
+/// Copia em vez de emprestar: nenhuma referência à RAM guest atravessa para o código da
+/// janela (a arena é `Send`, não `Sync`).
+fn capturar_quadro(
+    session: &xbox_recomp::runtime::Session,
+) -> Option<xbox_platform::display::Quadro> {
+    let view = session.kernel.framebuffer(&session.bus).ok()??;
+    let bytes = view.copiar_visivel()?;
+    xbox_platform::display::Quadro::novo(
+        xbox_kernel::dispatch::FRAMEBUFFER_WIDTH,
+        xbox_kernel::dispatch::FRAMEBUFFER_HEIGHT,
+        bytes,
+    )
+    .ok()
+}
+
+/// Apresenta o quadro atual e processa a janela. `true` = o usuário pediu para fechar.
+///
+/// Não apresenta antes de existir um modo de vídeo: a janela só é criada quando há o que
+/// mostrar, porque o fundo antes do primeiro quadro é indefinido.
+fn apresentar(
+    session: &xbox_recomp::runtime::Session,
+    janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
+    abrir: bool,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    if !abrir {
+        return Ok(false);
+    }
+    let Some(quadro) = capturar_quadro(session) else {
+        return Ok(false);
+    };
+    if janela.is_none() {
+        *janela = Some(xbox_platform::criar_janela(
+            "Obsidian — Xbox",
+            quadro.largura(),
+            quadro.altura(),
+        )?);
+    }
+    if let Some(j) = janela.as_mut() {
+        j.apresentar(&quadro)?;
+        return Ok(j.eventos()? == xbox_platform::display::Evento::Fechar);
+    }
+    Ok(false)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let abrir_janela = std::env::args().skip(1).any(|a| a == "--janela");
+    let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
+    let mut janela: Option<Box<dyn xbox_platform::display::Apresentador>> = None;
+
+    let resultado = executar(&mut session, &mut janela, abrir_janela);
+    relatar_mmio(&session);
+    relatar_framebuffer(&session);
+
+    // Com janela, o orçamento do `main` gerado acaba em segundos e a imagem sumiria antes
+    // de alguém vê-la. Mantém a janela viva, repintando, até o usuário fechar.
+    if abrir_janela && janela.is_some() {
+        eprintln!("\nExecução encerrada; janela mantida aberta. Feche-a para sair.");
+        loop {
+            if apresentar(&session, &mut janela, true)? {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+    }
+    resultado
+}
+
+fn executar(
+    session: &mut xbox_recomp::runtime::Session,
+    janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
+    abrir_janela: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for _ in 0..FATIAS {
+        match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
+            Exit::Returned => {
+                if session.complete_thread_return()? { continue; }
+                println!(
+                    "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
+                    session.state.regs[0], session.state.retired, session.kernel.atendidas()
+                );
+                return Ok(());
+            }
+            // Fim de fatia. Neste alvo o quadro só passa a existir **depois** do último
+            // fim de fatia (o modo de vídeo é configurado a 98,6% da execução), então esta é a
+            // rede de segurança para títulos que desenham sem nunca dormir; o ponto principal
+            // de apresentação é a espera, no braço de `KernelCall` abaixo.
+            Exit::Budget => {
+                if apresentar(session, janela, abrir_janela)? {
+                    // O usuário fechou a janela: é o host interrompendo um título que não
+                    // retorna sozinho, não uma falha. Parada controlada, estado intacto.
+                    eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
+                    return Ok(());
+                }
+                continue;
+            }
+            Exit::Breakpoint { pc } => {
+                return Err(format!(
+                    "exceção guest #BP (vetor 3) por INT3 em 0x{pc:08X}; próximo EIP=0x{:08X}; entrega de exceções ainda não implementada",
+                    session.state.eip
+                ).into());
+            }
+            Exit::Halted { pc, interrupts_enabled } => {
+                return Err(format!(
+                    "CPU guest suspensa por HLT em 0x{pc:08X}; próximo EIP=0x{:08X}, IF={}; entrega de interrupções ainda não implementada",
+                    session.state.eip, u8::from(interrupts_enabled)
+                ).into());
+            }
+            // O erro do dispatcher identifica nome, ordinal, chamador e argumentos.
+            // A CPU fica intacta: o estado pendente continua retomável.
+            Exit::KernelCall { .. } => {
+                let relogio_antes = session.state.clock.cycles();
+                session.atender_kernel()?;
+                // O guest cede a vez quando o tempo dele avança (uma espera): é quando a
+                // imagem está estável e quando um console real teria mostrado o quadro.
+                // Detectar pelo Clock, e não pelo serviço, mantém a política independente
+                // de quais esperas existam. Foram 47 chamadas em toda a execução do hello,
+                // das quais só as esperas apresentam.
+                if session.state.clock.cycles() != relogio_antes
+                    && apresentar(session, janela, abrir_janela)?
+                {
+                    eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
+                    return Ok(());
+                }
+            }
+        }
+    }
+    // O Clock guest distingue "dormiu várias vezes" de "preso num laço sem espera": só
+    // esperas avançam o relógio além do custo sintético de uma instrução por passo.
+    let ciclos = session.state.clock.cycles();
+    Err(format!(
+        "execução interrompida após {} blocos; {} chamadas atendidas, {} recusadas; \
+         instruções={}, relógio guest={} ciclos ({} ms)",
+        BLOCOS_POR_FATIA * u64::from(FATIAS),
+        session.kernel.atendidas(),
+        session.kernel.recusadas(),
+        session.state.retired,
+        ciclos,
+        session.state.clock.tick_count_ms()
+    )
+    .into())
+}

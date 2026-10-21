@@ -27,6 +27,7 @@
 14. [Legal e ética](#14-legal-e-ética)
 15. [Referências de estudo](#15-referências-de-estudo)
 16. [Glossário](#16-glossário)
+    - [16.1 Soluções provisórias declaradas](#161-soluções-provisórias-declaradas)
 17. [Log de progresso](#17-log-de-progresso)
 
 ---
@@ -1082,6 +1083,24 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 
 ---
 
+## 16.1 Soluções provisórias declaradas
+
+> **Para que serve esta tabela.** Uma solução provisória só é honesta enquanto estiver
+> marcada como provisória. O risco não é a solução existir — é ela **virar definitiva por
+> omissão**, porque funciona para o alvo atual e ninguém lembra por que foi aceita. Esta
+> lista contém apenas o que foi aceito *conscientemente*, com a **condição de saída**
+> verificável. Não é o backlog das fases (isso é a §8) e não deve receber pendências
+> comuns. Ao fechar um item, mova-o para o log de progresso com o commit.
+
+| # | Provisório | Por que é aceitável hoje | O que quebra se virar definitivo | Condição de saída |
+|---|---|---|---|---|
+| P1 | **Janela MMIO do NV2A sem modelo** (ADR-0051): escritas descartadas, leituras devolvem zero declarado | a telemetria registra todo acesso; o hello só *escreve* a rampa de gamma e nunca lê | título que leia status de registrador (`PCIO_CRTC_STATUS`, vblank) gira para sempre; título que dependa do efeito de uma escrita vê comportamento errado **sem erro** | cada registrador que a telemetria listar como **lido**, ou cujo efeito afete saída, ganha modelo antes de a Fase 5 fechar; o relatório vira teste de regressão |
+| P2 | **Gamma e filtros do encoder não aplicados na apresentação** (ADR-0052, ADR-0050) | o hello configura gamma com identidade e nunca a lê; flicker/soften são só pedidos lógicos | fade por gamma (comum) aparece sem fade; a janela passa a ser tomada por "a saída do console" | modelar o DAC (índice com autoincremento, 3 componentes, snapshot) e aplicá-lo na apresentação; decidir sobre os filtros |
+| P3 | **`KeDelayExecutionThread` avança o relógio** (ADR-0051) em vez de bloquear a thread | há uma única thread executável; esperar `T` e avançar `T` são a mesma coisa observável | com mais de uma thread executável, o tempo avança sem que as outras corram | escalonador de threads: a espera passa a **bloquear** a thread, e o avanço de tempo vira decisão do escalonador |
+| P4 | **Nome do arquivo e caminho de `XeImageFileName` declarados**, não derivados de mídia (ADR-0022) | o hello só chama `strncpy` do caminho para um buffer | título que abre arquivo relativo ao próprio XBE lê o caminho errado | ligar a VFS ao kernel e derivar o caminho da mídia carregada |
+| P5 | **Raízes de tradução declaradas à mão** (`--entry`, nove hoje) | análise conservadora (ADR-0019) e o hello tem poucos destinos indiretos | cada título novo exige caçar raízes por tentativa e erro; sem cobertura, o erro só aparece **em execução** | resolver jump table e tabelas de ponteiros na análise, provando que o limite protege o salto |
+| P6 | **Apresentação só no Windows**, e só `--janela` opt-in | o alvo de desenvolvimento é Windows e o nxdk hello é o único alvo | o alvo final (appliance Linux, Fase 10) não tem janela alguma | backend Linux desktop (Fase 8) e DRM/KMS (Fase 10) atrás do mesmo `Apresentador` |
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.
@@ -1151,6 +1170,9 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 4 / alpha | Framebuffer em memória física contígua (ADR-0048) | — | MmAllocateContiguousMemoryEx, frames vizinhos reais, janela guest restrita RW e coerência DMA; KRNL v10/CMEM v1; hello aloca/zera 300 páginas e chega a AvSetDisplayMode (3), retorno 0x12CA4; 388 testes workspace/doctests e 171 nativos debug/release; 26/69 serviços |
 | 2026-10-21 | 4 / alpha | Modo de vídeo e leitura do framebuffer (ADR-0049) | — | AvSetDisplayMode configura NTSC-M 640×480/60 A8R8G8B8 sobre CMEM; visão BGRA por DMA sem compartilhar arena; AVST v2 migra v1; hello para na opção 11 do encoder, retorno 0x12DFA, ainda sem apresentação; 394 testes workspace/doctests e 174 nativos debug/release; 27/69 serviços |
 | 2026-10-21 | 4 / alpha | Pedidos de filtros do encoder (ADR-0050) | — | Flicker 0..7/soften 0..1, estado opcional e recusa explícita; AVST v3 migra v1/v2 sem pedidos; hello passa por 5/false e para na escrita do DAC gamma em 0xFD6813C8, PC 0x12EEB, ainda sem mapeamento/modelo; 398 testes workspace/doctests e 177 nativos debug/release; mantém 27/69 serviços |
+| 2026-10-21 | 4 / alpha | **Hello executa o `main` e desenha "Hello nxdk!"** (ADR-0051) | — | Janela MMIO do NV2A como identidade (só mapeamento; telemetria vê a rampa de gamma: 1 escrita de índice + 768 de dados) e `KeDelayExecutionThread` com `Clock::hundred_ns_to_cycles` verificada; a sessão aplica o avanço antes do retorno, `TimeExhausted` deixa a CPU intacta; relógio guest 8023 ms = 4×2000 ms + custo de instruções; 1208 pixels legíveis em ASCII; 420 testes workspace/doctests e 181 nativos; **28/69 serviços**; apresentação em janela pendente |
+| 2026-10-21 | 4 / alpha | **Framebuffer apresentado em janela Win32** (ADR-0052) | — | `Apresentador` em `xbox-platform` (Win32 declarado à mão, sem dependência nova); `Quadro` possui os bytes, sem referência à RAM guest; apresenta quando o guest cede a vez (relógio avançou) — a premissa "fim de fatia" foi refutada: o modo de vídeo só existe a 98,6% da execução; **capturado de fora pelo SO: 640×480 1:1, 1208 pixels em x=26..119 y=26..88, idêntico à RAM, "Hello nxdk!" × 4**; WM_CLOSE encerra em <5 s; 437 testes estáveis em 3 rodadas; clippy limpo em Windows **e** Linux (bug de `Debug` só do Linux achado instalando o target); **seção 16.1 criada**: dívidas provisórias com condição de saída (P1–P6) |
+
 
 ---
 
@@ -1206,17 +1228,29 @@ Em ordem:
    0x12/pitch 2560 e PA real; o runtime lê linhas BGRA por DMA. AVST v2 persiste
    o modo e migra v1 sem modo, mantendo KRNL v10 (ADR-0049). Os pedidos de filtros
    11/flicker=5 e 14/soften=false já ficam no estado lógico; AVST v3 migra v1/v2
-   sem pedidos, sem aplicar filtros analógicos aos pixels (ADR-0050). Próximo
-   bloqueio: escrita de um byte no **DAC gamma, VA=0xFD6813C8, PC=0x12EEB**,
-   ainda sem mapeamento/modelo. Modelar índice/dados RGB e snapshot do dispositivo;
-   não abrir MMIO sobre o destino genérico que descarta escritas. Depois habilitar
-   e apresentar o framebuffer; a saída ainda está desabilitada. Espera na filha terminada
-   funciona; espera viva, yield/Sleep, preempção, múltiplas filhas, NtClose de mutant/thread e
-   liberação ainda faltam (ADR-0045). Os recursos são retidos nesta versão.
-   BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
-   (ADRs 0030/0031).
-   Novas raízes de callbacks/threads podem revelar
-   mais ISA. O framebuffer e o aceite integrado ainda estão pendentes.
+   sem pedidos, sem aplicar filtros analógicos aos pixels (ADR-0050). O bloqueio
+   seguinte, a escrita no **DAC gamma, VA=0xFD6813C8, PC=0x12EEB**, foi resolvido pelo
+   **ADR-0051**: janela MMIO do NV2A mapeada como identidade e `KeDelayExecutionThread`
+   para o `Sleep`. **O hello agora executa o seu `main`** e escreve "Hello nxdk!" no
+   framebuffer (relógio guest 8023 ms, 47 chamadas, 0 recusadas); a parada é o orçamento
+   do `main` gerado, não um serviço faltante. **28/69 serviços.**
+   *Decisão a revisar:* a recomendação anterior era modelar o DAC (índice/dados RGB e
+   snapshot) e **não** abrir MMIO sobre o destino genérico que descarta escritas. O
+   ADR-0051 fez o contrário, com razão registrada: o destino genérico não é silencioso,
+   porque a telemetria do bus registra cada acesso e o executável gerado a imprime; e o
+   modelo do DAC não tem consumidor enquanto não existir apresentação. Se o mantenedor
+   preferir o modelo antes, a janela e o modelo coexistem sem conflito.
+   **O framebuffer agora é apresentado em janela Win32** (ADR-0052, `--janela`): a
+   imagem capturada de fora pelo sistema é idêntica à da RAM guest (1208 pixels,
+   "Hello nxdk!" × 4), e fechar a janela encerra a execução — o que entrega também a
+   interrupção controlada **pelo host**. A apresentação é de bytes crus: gamma e filtros do
+   encoder **não** são aplicados, e isso é dívida provisória declarada (§16.1, P1 e P2).
+   **Falta:** vblank por interrupção, apresentação em Linux (Fases 8 e 10), e, para além do
+   hello, escalonamento de threads (a espera atual só é correta com uma thread
+   executável; ADR-0045: espera viva, preempção, múltiplas filhas, NtClose de
+   mutant/thread e liberação ainda faltam). O orçamento do `main` gerado continua fixo no
+   template. BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
+   (ADRs 0030/0031). Novas raízes de callbacks/threads podem revelar mais ISA.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,
    sem respostas genéricas de sucesso para ordinais pendentes.
 3. **Fase 3-AOT:** ampliar a ISA restante e a descoberta de alvos, com perfis de

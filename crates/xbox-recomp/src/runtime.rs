@@ -316,6 +316,19 @@ impl Session {
                 parent.restore(&mut self.state);
             }
         } else {
+            // Um serviço de espera deixa um pedido de avanço de tempo. O Clock é da
+            // sessão (ADR-0025), então só aqui ele avança — e a checagem de overflow vem
+            // **antes** de aplicar o retorno, para que `TimeExhausted` deixe a CPU na
+            // chamada pendente, como qualquer outra recusa. O pedido é consumido mesmo na
+            // falha: deixá-lo pendente faria o próximo atendimento aplicar um avanço
+            // velho.
+            if let Some(pedido) = self.kernel.take_time_request() {
+                let avanco = self.state.clock.cycles().checked_add(pedido.ciclos);
+                let Some(alvo) = avanco else {
+                    return Err(crate::Error::TimeExhausted { pc: self.state.eip });
+                };
+                self.state.clock.set(alvo);
+            }
             self.apply_kernel_return(&call, atendimento.eax);
             if let Some(child) = self.kernel.start_ready_thread() {
                 self.parent = Some(threads::ThreadContext::capture(&self.state));

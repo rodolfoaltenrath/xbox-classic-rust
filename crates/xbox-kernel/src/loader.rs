@@ -6,6 +6,7 @@ use xbox_formats::{Xbe, xbe::SectionFlags};
 use xbox_mem::{Acesso, Bus, GuestPhys, GuestVirt, Perm};
 
 pub mod data;
+pub mod mmio;
 mod startup;
 mod verify;
 pub use startup::{

@@ -225,3 +225,83 @@ fn configurar_modo_preserva_blanking_e_reconfiguracao_troca_buffer() {
     assert_eq!(d.video().flicker_filter(), Some(5));
     assert_eq!(d.video().soften_filter(), Some(false));
 }
+
+/// `copiar_visivel` é o que um apresentador consome (ADR-0052): as linhas visíveis,
+/// contíguas e sem o padding de pitch. O padding **não pode** vazar para o quadro — se
+/// vazasse, a imagem na janela sairia deslocada 16 bytes por linha.
+#[test]
+fn copiar_visivel_remove_o_padding_de_pitch_e_preserva_a_ordem_das_linhas() {
+    let (mut bus, mut d, regs) = setup();
+    let mut a = args();
+    a[4] = 2576; // 2560 + 16 bytes de padding por linha
+    a[5] += 16;
+    assert_eq!(call(&mut bus, &mut d, &regs, 3, &a).unwrap(), 0);
+    // Pixel (0,0), padding da linha 0 marcado com 0xAA, pixel (0,1).
+    bus.escrever_u32(GuestVirt(0x80020010), 0xFF123456).unwrap();
+    bus.escrever_bytes(GuestVirt(0x80020010 + 2560), &[0xAA; 16])
+        .unwrap();
+    bus.escrever_u32(GuestVirt(0x80020010 + 2576), 0xFFABCDEF)
+        .unwrap();
+
+    let copia = d
+        .framebuffer(&bus)
+        .unwrap()
+        .unwrap()
+        .copiar_visivel()
+        .expect("framebuffer legível");
+
+    // Tamanho exato do quadro: nem o padding nem bytes a mais.
+    assert_eq!(copia.len(), 640 * 480 * 4);
+    // A linha 1 começa em 2560 (largura × 4), e não em 2576 (pitch): é a prova de que o
+    // padding foi descartado.
+    assert_eq!(&copia[..4], &[0x56, 0x34, 0x12, 0xFF], "pixel (0,0)");
+    assert_eq!(&copia[2560..2564], &[0xEF, 0xCD, 0xAB, 0xFF], "pixel (0,1)");
+    assert!(
+        !copia.windows(16).any(|w| w == [0xAA; 16]),
+        "o padding de pitch vazou para o quadro"
+    );
+}
+
+#[test]
+fn copiar_visivel_e_identica_as_linhas_de_row() {
+    // Herda a validação de `row`: não há segunda leitura da RAM com regra própria.
+    let (mut bus, mut d, regs) = setup();
+    configure(&mut bus, &mut d, &regs);
+    for (i, y) in [0u32, 1, 239, 479].into_iter().enumerate() {
+        bus.escrever_bytes(GuestVirt(0x80020000 + y * 2560), &[i as u8 + 1; 4])
+            .unwrap();
+    }
+    let view = d.framebuffer(&bus).unwrap().unwrap();
+    let copia = view.copiar_visivel().unwrap();
+    for y in 0..480u32 {
+        let esperado = view.row(y).unwrap();
+        let obtido = &copia[(y * 2560) as usize..((y + 1) * 2560) as usize];
+        assert_eq!(obtido, esperado, "linha {y} diverge de row()");
+    }
+}
+
+#[test]
+fn copiar_visivel_nao_existe_antes_de_configurar_o_modo() {
+    // Sem modo, não há `FramebufferView`: o chamador recebe `None` e não apresenta nada.
+    let (bus, d, _regs) = setup();
+    assert!(d.framebuffer(&bus).unwrap().is_none());
+}
+
+#[test]
+fn copiar_visivel_nao_altera_a_ram_do_guest() {
+    let (mut bus, mut d, regs) = setup();
+    configure(&mut bus, &mut d, &regs);
+    bus.escrever_u32(GuestVirt(0x80020000), 0xFF010203).unwrap();
+    let antes = bus.arena().bytes().to_vec();
+    let _ = d
+        .framebuffer(&bus)
+        .unwrap()
+        .unwrap()
+        .copiar_visivel()
+        .unwrap();
+    assert_eq!(
+        bus.arena().bytes(),
+        &antes[..],
+        "a cópia modificou a RAM guest"
+    );
+}

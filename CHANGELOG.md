@@ -10,6 +10,32 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: **o hello do nxdk executa o seu `main` e escreve "Hello nxdk!" no
+  framebuffer**. Duas peças fecharam os dois últimos bloqueios (ADR-0051):
+  - janela MMIO do NV2A (`0xFD000000..0xFE000000`) mapeada como identidade, RW e nunca
+    executável — o que a revisão da Fase 2 já havia decidido e nenhum código montava. Só o
+    mapeamento: o dispositivo segue sem modelo, escritas são descartadas e leituras
+    devolvem zero como placeholder declarado. O `main.rs` gerado imprime a telemetria em
+    todo caminho de saída: a rampa de gamma aparece como 1 escrita de índice e 768 de dados;
+  - `KeDelayExecutionThread` (99) para espera relativa não alertável. O serviço não avança
+    relógio nenhum: deixa um pedido que `Session::atender_kernel` aplica ao Clock único,
+    **antes** do retorno e com `TimeExhausted` deixando a CPU intacta. Nenhum `sleep` do
+    host. `Clock::hundred_ns_to_cycles` é nova e verificada (arredonda para cima e devolve
+    `None` em vez de truncar). Alertável, absoluto e intervalo zero recusam como variante.
+- Evidência no hello real: 64 M de blocos, 17.452.569 instruções, **relógio guest 8023 ms**
+  (4 × 2000 ms + ~23 ms de custo de instruções), 47 chamadas atendidas e 0 recusadas;
+  framebuffer com 1208 pixels em 48 linhas, renderizado em ASCII a partir de
+  `FramebufferView`. A parada é o orçamento do `main` gerado, não um serviço faltante.
+  **28/69 serviços** — não é percentual de compatibilidade, e **não há apresentação em
+  janela**: o framebuffer existe em RAM guest e é inspecionado.
+- O template do `main.rs` gerado saiu de uma string raw dentro de `write_project` para
+  `tools/xberecomp/src/template_main.rs.txt` (`include_str!`). O `main.rs` emitido é
+  byte a byte idêntico ao anterior; a extração só tirou `write_project` do limite de
+  linhas do clippy.
+- 19 testes de kernel (11 de espera, 8 de janela MMIO), 2 de conversão de tempo e 4 no
+  Rust gerado, onde o guest mede o próprio `Sleep` com `RDTSC`. **420 testes
+  workspace/doctests** e **181 casos gerados** em debug/release (165 nos demais hosts).
+
 - Fase 4/alpha: pedidos de filtros no encoder HLE, opções 11/flicker (0..7) e
   14/soften (0/1), com Result nulo e validação antes dos efeitos. Valores
   independentes preservam modo/blanking/RAM/Clock; cold boot distingue ausência

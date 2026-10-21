@@ -26,6 +26,7 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod contiguous;
 mod critical;
+mod delay;
 mod interlocked;
 mod irql;
 mod links;
@@ -42,6 +43,7 @@ pub use contiguous::{
     PAGE_WRITECOMBINE,
 };
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
+pub use delay::PedidoDeTempo;
 pub use irql::Irql;
 pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
 use mutants::Mutants;
@@ -52,9 +54,9 @@ pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use system_time::SystemTimeReference;
 pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
 pub use video::{
-    AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, MODE_640_480_NTSC_M,
-    VIDEO_BASE, VIDEO_ENC_FLICKERFILTER, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_SOFTEN_FILTER,
-    VIDEO_ENC_VIDEOENABLE, VideoState,
+    AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, HEIGHT as FRAMEBUFFER_HEIGHT,
+    MODE_640_480_NTSC_M, VIDEO_BASE, VIDEO_ENC_FLICKERFILTER, VIDEO_ENC_GET_SETTINGS,
+    VIDEO_ENC_SOFTEN_FILTER, VIDEO_ENC_VIDEOENABLE, VideoState, WIDTH as FRAMEBUFFER_WIDTH,
 };
 pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
@@ -90,6 +92,7 @@ pub const ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 184;
 pub const ORDINAL_KE_GET_CURRENT_THREAD: u32 = 104;
 pub const ORDINAL_PS_CREATE_SYSTEM_THREAD_EX: u32 = 255;
 pub const ORDINAL_PS_TERMINATE_SYSTEM_THREAD: u32 = 258;
+pub const ORDINAL_KE_DELAY_EXECUTION_THREAD: u32 = 99;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -132,6 +135,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
     ORDINAL_PS_CREATE_SYSTEM_THREAD_EX,
     ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
+    ORDINAL_KE_DELAY_EXECUTION_THREAD,
     ORDINAL_RTL_ENTER_CRITICAL_SECTION,
     ORDINAL_RTL_INIT_ANSI_STRING,
     ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION,
@@ -237,6 +241,10 @@ pub struct Dispatcher {
     links: links::Links,
     video: VideoState,
     contiguous: ContiguousMemory,
+    // Pedido de avanço de tempo deixado pelo último serviço; só a sessão consome.
+    // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
+    // ponto de salvamento (ver `Session::atender_kernel`).
+    pending_time: Option<delay::PedidoDeTempo>,
 }
 
 impl Dispatcher {
@@ -482,6 +490,7 @@ impl Dispatcher {
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
+            ORDINAL_KE_DELAY_EXECUTION_THREAD => self.ke_delay_execution_thread(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION => critical::initialize(bus, &call),
             ORDINAL_RTL_ENTER_CRITICAL_SECTION => {
@@ -765,6 +774,11 @@ impl Snapshot for Dispatcher {
             links,
             video,
             contiguous,
+            // Deliberadamente `None`: o pedido de tempo vive só entre o atendimento e a
+            // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
+            // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço
+            // de relógio que já foi aplicado (ou descartado) na sessão de origem.
+            pending_time: None,
         };
         Ok(())
     }

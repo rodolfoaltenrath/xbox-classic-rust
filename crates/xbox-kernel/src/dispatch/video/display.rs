@@ -7,8 +7,10 @@ use xbox_mem::{Bus, GuestPhys};
 
 pub const MODE_640_480_NTSC_M: u32 = 0x0401_0101;
 pub const COLOR_A8R8G8B8: u32 = 0x12;
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 480;
+/// Largura visível do único modo de vídeo suportado, em pixels.
+pub const WIDTH: u32 = 640;
+/// Altura visível do único modo de vídeo suportado, em pixels.
+pub const HEIGHT: u32 = 480;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DisplayMode {
@@ -85,6 +87,19 @@ impl<'a> FramebufferView<'a> {
         }
         let start = (y * self.mode.pitch) as usize;
         self.bytes.get(start..start + (WIDTH * 4) as usize)
+    }
+    /// Copia as linhas visíveis, `WIDTH × HEIGHT × 4` bytes `B,G,R,A`, sem o padding de
+    /// pitch, ou `None` se alguma linha não puder ser lida.
+    ///
+    /// É a forma que um apresentador consome: o quadro **possui** seus bytes, então nenhuma
+    /// referência à RAM guest atravessa para código de janela (a arena é `Send`, não
+    /// `Sync`, ADR-0011). Usa `row`, então herda exatamente a mesma validação de limites.
+    pub fn copiar_visivel(&self) -> Option<Vec<u8>> {
+        let mut saida = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
+        for y in 0..HEIGHT {
+            saida.extend_from_slice(self.row(y)?);
+        }
+        Some(saida)
     }
 }
 impl VideoState {

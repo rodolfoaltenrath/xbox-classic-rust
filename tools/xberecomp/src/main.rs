@@ -113,67 +113,19 @@ fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dy
     let memory = quoted(root.join("crates/xbox-mem"));
     let core = quoted(root.join("crates/xbox-core"));
     let kernel = quoted(root.join("crates/xbox-kernel"));
+    let platform = quoted(root.join("crates/xbox-platform"));
     std::fs::create_dir_all(output.join("src"))?;
     std::fs::write(
         output.join("Cargo.toml"),
         format!(
-            "[package]\nname = \"obsidian-native\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n\n[dependencies]\nxbox-recomp = {{ path = {recomp} }}\nxbox-mem = {{ path = {memory} }}\nxbox-core = {{ path = {core} }}\nxbox-kernel = {{ path = {kernel} }}\n"
+            "[package]\nname = \"obsidian-native\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n\n[dependencies]\nxbox-recomp = {{ path = {recomp} }}\nxbox-mem = {{ path = {memory} }}\nxbox-core = {{ path = {core} }}\nxbox-kernel = {{ path = {kernel} }}\nxbox-platform = {{ path = {platform} }}\n"
         ),
     )?;
     std::fs::write(output.join("src/image.xbe"), bytes)?;
     std::fs::write(output.join("src/generated.rs"), source)?;
     std::fs::write(
         output.join("src/main.rs"),
-        r#"mod generated;
-
-use xbox_recomp::runtime::Exit;
-
-/// Orçamento por fatia e número máximo de fatias. O orçamento total e a interrupção
-/// pelo host são trabalho da entrega 5; aqui o limite existe para que um serviço
-/// faltante não vire laço infinito.
-const BLOCOS_POR_FATIA: u64 = 1_000_000;
-const FATIAS: u32 = 64;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
-
-    for _ in 0..FATIAS {
-        match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
-            Exit::Returned => {
-                if session.complete_thread_return()? { continue; }
-                println!(
-                    "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
-                    session.state.regs[0], session.state.retired, session.kernel.atendidas()
-                );
-                return Ok(());
-            }
-            Exit::Budget => continue,
-            Exit::Breakpoint { pc } => {
-                return Err(format!(
-                    "exceção guest #BP (vetor 3) por INT3 em 0x{pc:08X}; próximo EIP=0x{:08X}; entrega de exceções ainda não implementada",
-                    session.state.eip
-                ).into());
-            }
-            Exit::Halted { pc, interrupts_enabled } => {
-                return Err(format!(
-                    "CPU guest suspensa por HLT em 0x{pc:08X}; próximo EIP=0x{:08X}, IF={}; entrega de interrupções ainda não implementada",
-                    session.state.eip, u8::from(interrupts_enabled)
-                ).into());
-            }
-            // O erro do dispatcher identifica nome, ordinal, chamador e argumentos.
-            // A CPU fica intacta: o estado pendente continua retomável.
-            Exit::KernelCall { .. } => session.atender_kernel()?,
-        }
-    }
-    Err(format!(
-        "execução interrompida após {} blocos; {} chamadas atendidas, {} recusadas",
-        BLOCOS_POR_FATIA * u64::from(FATIAS),
-        session.kernel.atendidas(),
-        session.kernel.recusadas()
-    )
-    .into())
-}
-"#,
+        include_str!("template_main.rs.txt"),
     )?;
     Ok(())
 }
