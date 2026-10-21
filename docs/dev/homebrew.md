@@ -187,7 +187,7 @@ flags aritméticas indefinidas. O código gerado usa funções por bloco, com at
 diretório novo/vazio:
 
 ```powershell
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --entry 0x14F14 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
@@ -198,9 +198,11 @@ são **9027 blocos**, e as entradas de SystemRoutine/StartRoutine elevam para 94
 (ADR-0044). A criação agora funciona: uma filha com pilha/TLS/TIB próprios executa
 bootstrap, TLS/FLS e StartRoutine enquanto o pai aguarda. Duas raízes reveladas
 pela execução, main_wrapper=0x18C90 e inicializador=0x139B0, elevam para **10444
-blocos**. O bloqueio medido é **JMP 0x14E86 → 0x14F14**, case do CRT ainda sem
-tradução. Ainda sem framebuffer ou execução completa.
-Contrato/evidência atual: [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
+blocos**. Incluir também o case do CRT `0x14F14` produz **10676 blocos** e revela
+a montagem de D:, agora modelada pelo namespace guest. O bloqueio atual é
+**AvSendTVEncoderOption (2)**, retorno 0x12769, opção 6; ainda sem framebuffer
+ou execução completa. Contrato/evidência atual:
+[ADR-0046](../adr/0046-namespace-drive-d.md).
 
 Na retomada Windows de 2026-10-21, incluir também as entradas de thread
 `0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
@@ -215,7 +217,7 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v7/EEPR v1 no snapshot atual.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v8/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
@@ -229,8 +231,8 @@ Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem r
 host por endereço. `OwningThread` é a identidade guest ativa (pai 1, filha 2),
 não um ponteiro KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-O formato atual é AOTS v2/AOTC v7/KRNL v7/KMUT v3/THRD v1/TCXT v1, além de
-EEPR/PCIC/STIM/IRQL/VMEM v1. Detalhes das seções críticas:
+O formato atual é AOTS v2/AOTC v7/KRNL v8/KMUT v3/THRD v1/TCXT v1, além de
+EEPR/PCIC/STIM/IRQL/VMEM/SYML v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 O bootstrap de uma filha preserva registradores/flags/FS do pai; Clock/retired,
@@ -238,9 +240,16 @@ perfil de CPU e IRQL são únicos. Término noreturn ou RET local restaura o pai
 espera na filha terminada funciona. Recursos ficam retidos. Não há preempção,
 yield/Sleep, espera viva/timeout, segunda filha ou NtClose/liberação. O prefixo
 KTHREAD exposto termina em TlsData+0x28, com página seguinte ausente; o da thread
-inicial não foi modelado. Validação atual: 365 testes workspace/doctests e 162
+inicial não foi modelado. Validação da entrega de threads: 365 testes workspace/doctests e 162
 nativos debug/release (146 nos demais hosts). Perfil, fontes, snapshot e falhas
 no [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
+
+O namespace do ADR-0046 representa D: para um diretório de CdRom0: consulta de
+ausência, criação com cópia e open/close de handles. Não monta mídia na VFS ou
+links no host. NtClose de mutant/thread, query/delete do link e outras unidades
+seguem pendentes. KRNL v8/SYML v1 guarda destino e handles, conferindo colisões
+com mutants/threads; versões anteriores migram sem D:. Validação atual: 372
+testes workspace/doctests e 165 nativos debug/release (149 fora de x86_64).
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
 registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`777f5db`** e nas alterações
-locais do **ADR-0045**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-21**, com base no commit **`63ad4ee`** e nas alterações
+locais do **ADR-0046**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -36,13 +36,15 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
 RDMSR e a leitura PCI do PLL já estão implementados. Com as entradas de startup,
-main_wrapper e um inicializador, **oito raízes traduzem 10444 blocos**.
+main_wrapper, um inicializador e um case do CRT, **nove raízes traduzem 10676 blocos**.
 O fluxo executado passa pela troca de LONG e por KeQuerySystemTime (128),
 que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
 64 KiB zerados em 0x30000, que o CRT usa. Uma filha guest com pilha/TLS próprios
 já executa bootstrap e StartRoutine, mantendo o pai estacionado. O bloqueio
-atual é **JMP indireto 0x14E86 → 0x14F14**, dentro do CRT.
+atual é **AvSendTVEncoderOption (2)**, retorno **0x12769**, opção 6.
+O namespace guest já permite consultar/criar D: para `\Device\CdRom0\`;
+isso ainda não conecta mídia à VFS nem produz imagem.
 A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
@@ -54,9 +56,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Serviços anteriores e bootstrap de uma filha guest com identificação/término e pilha/TLS próprios; 20/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | 10444 blocos com oito raízes; próximo destino não recompilado 0x14F14 | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Bootstrap e StartRoutine executam; pai estacionado; para no JMP 0x14E86 → 0x14F14; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 3 | Kernel mínimo | **Serviços anteriores, bootstrap de uma filha e namespace D:; 23/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 5 | Execução integrada | Bootstrap, StartRoutine e montagem lógica de D: executam; para em AvSendTVEncoderOption (2); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -541,7 +543,7 @@ Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
 [ADR-0041](docs/adr/0041-tempo-sistema-guest.md); logs `target/system-time-*`.
 Threads, execução completa e framebuffer continuavam pendentes nessa entrega.
 
-### Bootstrap de uma filha guest (ADR-0045, estado atual)
+### Bootstrap de uma filha guest (ADR-0045)
 
 PsCreateSystemThreadEx (255), KeGetCurrentThread (104) e PsTerminateSystemThread
 (258) elevam o catálogo a **20/69 serviços**. Uma filha, identidade 2, executa
@@ -579,6 +581,46 @@ Validação: **365 testes workspace/doctests e 162 nativos debug/release**
 (146 nos demais hosts), mais execução do main gerado com RET da filha.
 Clippy global/fmt/diff aprovados. Fontes, perfil, migração e reprodução no
 [ADR-0045](docs/adr/0045-bootstrap-thread-guest.md); logs `target/threads-*`.
+
+### Namespace D: e chegada ao vídeo (ADR-0046, estado atual)
+
+Incluir `--entry 0x14F14` às oito raízes anteriores destravou o case do CRT sem
+alterar ISA/inferência: **10676 blocos**. A execução revelou NtOpenSymbolicLinkObject
+(203), retorno 0x143B3. O automount público do nxdk consulta D:; se ausente,
+obtém XeImageFileName, remove o nome do executável e cria o link para o diretório.
+
+O namespace guest começa sem D:. A consulta de ausência devolve
+STATUS_OBJECT_NAME_NOT_FOUND sem consumir handle/escrever saída; IoCreateSymbolicLink
+(67) guarda uma cópia do alvo, rejeitando duplicatas com NAME_COLLISION. Open
+posterior cria handle real; NtClose (187) fecha só handles de link sem desmontar.
+Contador compartilhado com mutants/threads; no máximo 256 handles de link.
+**23/69 serviços**, com variantes limitadas.
+
+Perfil: D:, nomes absolutos/OBJ_CASE_INSENSITIVE/RootDirectory nulo; destino
+ASCII de até 260 bytes sob CdRom0; Passive. OBJECT_STRING de 8 bytes é lida por
+Length, sem exigir NUL. Ponteiros, estrutura e faixa validados como RAM antes
+dos efeitos; aliases sobre argumentos/retorno usam a continuação capturada.
+Outras unidades, query/delete, atributos adicionais e NtClose de mutant/thread
+recusam. Não há link host ou montagem na VFS; o alvo deriva do XeImageFileName
+declarado, ainda sem mídia conectada.
+
+**KRNL v8/SYML v1** guarda destino e handles, conferindo faixa/ordem/duplicatas,
+contador compartilhado e colisões entre tipos. AOTS v2/AOTC v7/KMUT v3 e demais
+seções permanecem. KRNL v1–v7 migram sem D:, sem herdar o estado de destino.
+
+O teste real confirmou D: = `\Device\CdRom0\`, thread ativa 2 e TLS self-slot em
+0x4FEEC. Aos **9498 retired e 35 atendimentos**, chegou a **AvSendTVEncoderOption
+(2)**, retorno **0x12769**, args `0xFD000000, 6, 0, 0x27D38`. Snapshot integral
+nessa fronteira restaurou bytes idênticos, incluindo namespace/pai estacionado.
+Próximo trabalho: investigar opção 6 e o caminho público de vídeo; implementar
+comportamento necessário e seguir os diagnósticos. Ainda sem framebuffer/alpha
+completo ou scheduler geral.
+
+Validação: **372 testes workspace/doctests e 165 casos nativos debug/release**
+(149 fora de x86_64), Clippy global/fmt/diff. Reprodução e fontes no
+[ADR-0046](docs/adr/0046-namespace-drive-d.md); logs `target/links-*` e
+`target/crt-case-*`. O teste real adicional está em
+`target/alpha-hello-crt-case-20261021/tests/drive_mount.rs` (local, ignorado).
 
 ### IRQL explícito da CPU guest (ADR-0042)
 
@@ -908,7 +950,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 162 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 165 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -929,11 +971,11 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 777f5db + alterações locais do ADR-0045.
+> alterar código. Base documentada: 63ad4ee + alterações locais do ADR-0046.
 > A entrega 1 tem aceite local; TLS/ABI e bootstrap de uma filha existem, mas
-> faltam serviços/escalonamento para concluir o hello. Kernel: 20/69, 3/3 dados.
-> Snapshot: AOTS v2, AOTC v7, KRNL v7, KMUT v3, THRD/TCXT v1, além de
-> EEPR/PCIC/STIM/IRQL/VMEM v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
+> faltam serviços/escalonamento para concluir o hello. Kernel: 23/69, 3/3 dados.
+> Snapshot: AOTS v2, AOTC v7, KRNL v8, KMUT v3, THRD/TCXT v1, além de
+> EEPR/PCIC/STIM/IRQL/VMEM/SYML v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
 > scheduler geral ou IRQ/APC/DPC; prefixo KTHREAD da filha termina em TlsData+0x28.
 > NtAllocateVirtualMemory (184) atende só base nula/ZeroBits=0/flags=0x3000/PAGE_RW,
 > em Passive. Reserva+commit privado, first-fit após a imagem inteira, base 64 KiB,
@@ -943,15 +985,17 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > Snapshot confere posse/permissões/aliases/headers. KRNL v1–v5 migra sem alocações e
 > Session recupera o intervalo do XBE correspondente; erros exigem descartar a sessão.
 > FRM0 v1 agora valida bitmap/contagem/padding antes do commit. Nenhum unsafe novo.
-> Hello: 10444 blocos; raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70,
-> 0x18FC0, 0x18C90 e 0x139B0. Passa por criação, TLS/FLS, StartRoutine e
-> main_wrapper. Próximo bloqueio: UnknownTarget no JMP 0x14E86 → 0x14F14,
-> case de tabela do CRT ainda sem tradução. Incluir/inferir e continuar por demanda.
+> Hello: 10676 blocos; raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70,
+> 0x18FC0, 0x18C90, 0x139B0 e 0x14F14. Passa por bootstrap e automount de D:.
+> Namespace inicialmente sem D:, consulta/criação/open/close de links com handles
+> reais e alvo copiado; não conecta mídia à VFS. Próximo bloqueio:
+> AvSendTVEncoderOption (2), retorno 0x12769, args 0xFD000000, 6, 0, 0x27D38.
+> Investigar a opção 6 no caminho público de vídeo e continuar por demanda.
 > Filha roda primeiro, pai estacionado; término noreturn/RET restaura o pai.
 > Espera em filha terminada funciona; espera viva, yield/Sleep, preempção,
-> múltiplas filhas, NtClose/liberação e abandono de mutant ainda faltam.
+> múltiplas filhas, NtClose de mutant/thread, liberação e abandono ainda faltam.
 > Não pular para main ou criar thread host. BIOS/mídia comercial não são necessárias.
-> Use Rust 1.98.1. Registro atual: 365 testes workspace/doctests e 162 casos
+> Use Rust 1.98.1. Registro atual: 372 testes workspace/doctests e 165 casos
 > nativos debug/release. Execução completa/framebuffer
 > seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
 > alpha, roadmap, changelog e evidências ao avançar.

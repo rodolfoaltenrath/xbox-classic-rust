@@ -27,6 +27,7 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 mod critical;
 mod interlocked;
 mod irql;
+mod links;
 mod mutants;
 mod nvram;
 mod pci;
@@ -36,6 +37,7 @@ mod threads;
 mod virtual_memory;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use irql::Irql;
+pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
 use mutants::Mutants;
 pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
@@ -53,6 +55,9 @@ use crate::loader::Result as LoaderResult;
 
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
+pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
+pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
+pub const ORDINAL_NT_CLOSE: u32 = 187;
 pub const ORDINAL_RTL_ENTER_CRITICAL_SECTION: u32 = 277;
 pub const ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION: u32 = 291;
 pub const ORDINAL_RTL_LEAVE_CRITICAL_SECTION: u32 = 294;
@@ -93,6 +98,9 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_IO_CREATE_SYMBOLIC_LINK,
+    ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
+    ORDINAL_NT_CLOSE,
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_INTERLOCKED_EXCHANGE,
@@ -203,6 +211,7 @@ pub struct Dispatcher {
     irql: Irql,
     virtual_memory: VirtualMemory,
     threads: threads::Threads,
+    links: links::Links,
 }
 
 impl Dispatcher {
@@ -221,6 +230,11 @@ impl Dispatcher {
 
     pub const fn virtual_memory(&self) -> &VirtualMemory {
         &self.virtual_memory
+    }
+
+    /// Destino guest de D:, sem montagem ou acesso a caminhos do host.
+    pub fn drive_d_target(&self) -> Option<&str> {
+        self.links.target()
     }
 
     /// Snapshots anteriores ao alocador dependem do XBE usado para abrir a sessão.
@@ -363,6 +377,11 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_IO_CREATE_SYMBOLIC_LINK => self.links.create(bus, &call, self.irql),
+            ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT => {
+                self.links.open(bus, &call, self.irql, &mut self.mutants)
+            }
+            ORDINAL_NT_CLOSE => self.nt_close(bus, &call),
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(
                 bus,
                 &call,
@@ -478,7 +497,10 @@ impl Dispatcher {
             };
         }
 
-        // O handle de thread foi distinguido acima; os demais pertencem a mutants.
+        if self.links.contains(handle) {
+            return variante("link simbólico não é objeto aguardável");
+        }
+        // Handles de thread/link foram distinguidos; os demais pertencem a mutants.
         let Some(aquisicao) = self.mutants.acquire(handle, self.current_thread()) else {
             return Ok(Atendimento {
                 eax: STATUS_INVALID_HANDLE,
@@ -595,7 +617,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 7);
+        out.section("KRNL", 8);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -605,10 +627,11 @@ impl Snapshot for Dispatcher {
         self.irql.save(out);
         self.virtual_memory.save(out);
         self.threads.save(out);
+        self.links.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 7)?;
+        let version = inp.section("KRNL", 8)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -650,6 +673,11 @@ impl Snapshot for Dispatcher {
             threads.load(inp)?;
         }
         threads.validate(&mutants, &virtual_memory, None)?;
+        let mut links = links::Links::default();
+        if version >= 8 {
+            links.load(inp)?;
+        }
+        links.validate(&mutants, threads.child)?;
         *self = Self {
             atendidas,
             recusadas,
@@ -660,6 +688,7 @@ impl Snapshot for Dispatcher {
             irql,
             virtual_memory,
             threads,
+            links,
         };
         Ok(())
     }

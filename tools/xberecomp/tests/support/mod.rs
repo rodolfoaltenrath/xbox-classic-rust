@@ -15,6 +15,7 @@ mod indirect;
 mod interlocked;
 mod irql;
 mod kernel;
+mod links;
 mod msr;
 mod muldiv;
 mod nop;
@@ -67,6 +68,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&strings::sources(output));
     main.push_str(&indirect::sources(output));
     main.push_str(&kernel::sources(output));
+    main.push_str(&links::sources(output));
     main.push_str(&interlocked::sources(output));
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));

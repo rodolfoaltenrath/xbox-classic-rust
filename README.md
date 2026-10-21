@@ -34,11 +34,12 @@ inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
 SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
 Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o pai
-estacionado; há **20/69 serviços**, com variantes limitadas. Oito raízes explícitas
-no [guia do homebrew](docs/dev/homebrew.md) traduzem 10444 blocos. O bloqueio atual
-é outro destino indireto ainda não recompilado, `0x14E86 → 0x14F14`, dentro do CRT.
+estacionado; há **23/69 serviços**, com variantes limitadas. Nove raízes explícitas
+no [guia do homebrew](docs/dev/homebrew.md) traduzem 10676 blocos. O hello já monta
+o link guest `D:` para seu diretório e chega à inicialização de vídeo. O bloqueio
+atual é `AvSendTVEncoderOption` (2), ainda sem implementação.
 Escalonamento geral, execução completa e framebuffer seguem pendentes
-([ADR-0045](docs/adr/0045-bootstrap-thread-guest.md)).
+([ADR-0046](docs/adr/0046-namespace-drive-d.md)).
 
 ## Demonstração de recompilação
 

@@ -182,8 +182,8 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
-inclui `AOTC` v7, memória e estado `KRNL` v7 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+inclui `AOTC` v7, memória e estado `KRNL` v8 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -272,6 +272,12 @@ pai; Clock/retired/perfil de CPU/IRQL permanecem únicos. Sem threads host ou Bu
 compartilhado. Espera imediata em filha terminada é suportada; preempção, yield,
 espera bloqueante e múltiplas filhas não. AOTS v2/KRNL v7/KMUT v3 acrescentam
 THRD/TCXT v1 e migram versões anteriores sem filha/pai suspenso.
+
+O [ADR-0046](../adr/0046-namespace-drive-d.md) acrescenta um namespace mínimo de
+D: para diretório de CdRom0, independente de mounts da VFS. Open/create/close de
+links usam estado e handles guest, sem acesso ao host. KRNL v8/SYML v1 salva
+destino e handles, valida colisões entre tipos e migra v1–v7 para namespace vazio.
+NtClose de mutant/thread e ligação do namespace aos serviços de arquivo faltam.
 ([ADR-0043](../adr/0043-alocacao-virtual-guest.md)).
 
 ## Evidência e limites

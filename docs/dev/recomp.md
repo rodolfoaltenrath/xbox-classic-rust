@@ -682,7 +682,7 @@ O próximo trabalho continua sendo o modelo guest com identidade, pilha/TLS,
 SystemRoutine, contextos, espera/término e snapshot. Fonte e evidência:
 [ADR-0044](../adr/0044-nop-multibyte-raizes-thread.md).
 
-### Bootstrap de thread guest (ADR-0045, estado atual)
+### Bootstrap de thread guest (ADR-0045)
 
 Session executa uma filha com pilha/TLS/TIB próprios enquanto guarda a continuação
 do pai. O guest passa por SystemRoutine/StartRoutine; o kernel implementa criação,
@@ -702,3 +702,18 @@ a incluir/inferir. Ainda sem execução completa ou framebuffer. Validação atu
 365 testes workspace/doctests, 162 casos gerados debug/release (146 fora de
 x86_64). Fontes, variantes, snapshot e comando completo no
 [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
+
+### Namespace de D: (ADR-0046, estado atual)
+
+A raiz adicional `--entry 0x14F14` resolve o próximo case do formatador sem
+alterar a ISA/inferência; as nove raízes traduzem 10676 blocos. NtOpenSymbolicLinkObject
+(203), IoCreateSymbolicLink (67) e NtClose (187, só links) atendem o automount do
+nxdk. D: começa ausente e recebe uma cópia do diretório de CdRom0 fornecido pelo
+guest; abrir/fechar usa o contador compartilhado de handles. Não há montagem de
+mídia na VFS, outras unidades ou query/delete de links.
+
+KRNL v8 acrescenta SYML v1; v1–v7 migram sem namespace, sem herdar o destino da
+sessão de restauração. O hello confirmou D: = `\Device\CdRom0\` e chegou à
+chamada de vídeo **AvSendTVEncoderOption (2), retorno 0x12769, opção 6**. Ainda
+sem implementação desse serviço/framebuffer. Reprodução, perfil e evidência no
+[ADR-0046](../adr/0046-namespace-drive-d.md).

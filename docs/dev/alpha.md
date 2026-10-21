@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | serviços anteriores e bootstrap de uma filha guest com pilha/TLS próprios, identificação e término (ADR-0045); 20/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
-| 4. ISA necessária | oito raízes traduzem 10444 blocos; próximo destino indireto 0x14F14 | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | executa bootstrap e StartRoutine; para no JMP 0x14E86 → 0x14F14; controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 3. Kernel mínimo | serviços anteriores, bootstrap de uma filha e namespace D: (ADR-0046); 23/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
+| 5. Execução integrada | bootstrap e montagem lógica de D: executam; para em AvSendTVEncoderOption (2); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -47,12 +47,16 @@ bloqueante e filas de espera recusam sem bloquear o host. O snapshot integral
 preserva RAM, CPU, kernel e chamada pendente sem formato novo
 ([ADR-0037](../adr/0037-secoes-criticas-guest.md)).
 
-O hello real traduz **10444 instruções/blocos** com as raízes `0x19110`, `0x145E0`,
-`0x205E0`, `0x20889`, `0x13C70`, `0x18FC0`, `0x18C90` e `0x139B0`. Passa pelos
+O hello real traduz **10676 instruções/blocos** com as raízes `0x19110`, `0x145E0`,
+`0x205E0`, `0x20889`, `0x13C70`, `0x18FC0`, `0x18C90`, `0x139B0` e `0x14F14`. Passa pelos
 serviços anteriores e cria a filha com pilha de 64 KiB e TLS de 0x114 bytes.
 Executa SystemRoutine, inicializa TLS/FLS no guest e entra em StartRoutine e
-main_wrapper. O bloqueio atual é **UnknownTarget: JMP 0x14E86 → 0x14F14**, no CRT.
-As novas raízes são main_wrapper e um inicializador descobertos pela execução.
+main_wrapper. A última raiz destrava um case do formatador do CRT. O namespace
+guest começa sem D:; a consulta retorna ausência, a criação guarda o diretório
+e open/close operam sobre handles reais. Isso não conecta mídia à VFS.
+O bloqueio atual é **AvSendTVEncoderOption (2)**, retorno **0x12769**, opção 6.
+O teste real confirmou D: = `\Device\CdRom0\`, TLS da filha e snapshot integral
+na fronteira de vídeo ([ADR-0046](../adr/0046-namespace-drive-d.md)).
 
 O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) guarda a continuação do pai
 sem copiar Clock/retired; término da filha restaura esse contexto. A filha roda
@@ -60,7 +64,9 @@ primeiro, sem preempção ou yield. Espera na filha terminada funciona; espera v
 segunda criação, Sleep e escalonamento geral continuam pendentes. Não há garantia
 de progresso do pai se a filha entrar em laço. O prefixo KTHREAD não é ETHREAD
 completo. Snapshot AOTS v2/KRNL v7/KMUT v3 acrescenta THRD v1/TCXT v1, migrando
-formatos anteriores sem threads. Recursos são retidos; NtClose/liberação faltam.
+formatos anteriores sem threads. Recursos são retidos; NtClose de thread/mutant
+e liberação faltam. KRNL v8 acrescenta SYML v1 para namespace/handles de link;
+KRNL v1–v7 migram sem D:. NtClose só fecha links nesta versão.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -105,8 +111,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **365 testes workspace/doctests** e **162 casos de
-Rust gerado em debug/release**, incluindo bootstrap, propriedade e snapshots de threads. O Rust
+A validação atual tem **372 testes workspace/doctests** e **165 casos de
+Rust gerado em debug/release**, incluindo namespace, ABI e snapshots de links. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

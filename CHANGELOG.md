@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: namespace guest mínimo de D: com NtOpenSymbolicLinkObject,
+  IoCreateSymbolicLink e NtClose limitado a links (23/69 serviços). Consulta de
+  ausência, criação/cópia, handles compartilhados, fechamento sem desmontagem e
+  erros explícitos; KRNL v8/SYML v1 com migração. A raiz adicional 0x14F14 leva
+  o hello a 10676 blocos e à chamada de vídeo AvSendTVEncoderOption (2), retorno
+  0x12769. 372 testes workspace/doctests e 165 casos nativos debug/release; perfil e
+  evidência real no ADR-0046. Montagem de mídia na VFS/framebuffer pendentes.
+
 - Fase 4/alpha: bootstrap cooperativo de uma filha guest, com PsCreateSystemThreadEx,
   KeGetCurrentThread e PsTerminateSystemThread (20/69 serviços). Pilha/TLS/TIB
   próprios, prefixo KTHREAD limitado, continuação do pai, Clock único e propriedade
