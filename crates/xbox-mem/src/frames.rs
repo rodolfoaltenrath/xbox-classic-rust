@@ -153,7 +153,12 @@ impl Snapshot for AlocadorDeFrames {
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let _v = inp.section("FRM0", 1)?;
+        if inp.section("FRM0", 1)? != 1 {
+            return Err(SnapshotError::BadValue {
+                section: "FRM0",
+                what: "versão de frames desconhecida",
+            });
+        }
         let frames = inp.u32()?;
         if frames != self.frames {
             return Err(SnapshotError::BadValue {
@@ -161,7 +166,7 @@ impl Snapshot for AlocadorDeFrames {
                 what: "quantidade de frames diferente do build atual",
             });
         }
-        self.usados = inp.u32()?;
+        let usados = inp.u32()?;
         let n = inp.u64()? as usize;
         if n != self.bitmap.len() {
             return Err(SnapshotError::BadValue {
@@ -169,9 +174,23 @@ impl Snapshot for AlocadorDeFrames {
                 what: "tamanho de bitmap inconsistente",
             });
         }
-        for i in 0..n {
-            self.bitmap[i] = inp.u64()?;
+        let mut bitmap = Vec::with_capacity(n);
+        for _ in 0..n {
+            bitmap.push(inp.u64()?);
         }
+        let count: u32 = bitmap.iter().map(|word| word.count_ones()).sum();
+        let padding = frames % BITS;
+        if usados > frames
+            || count != usados
+            || (padding != 0 && bitmap.last().is_some_and(|word| word >> padding != 0))
+        {
+            return Err(SnapshotError::BadValue {
+                section: "FRM0",
+                what: "bitmap e contagem de frames inconsistentes",
+            });
+        }
+        self.bitmap = bitmap;
+        self.usados = usados;
         Ok(())
     }
 }
@@ -257,6 +276,36 @@ mod tests {
         let a = alocador();
         assert!(a.em_uso(256), "frame além do fim não pode parecer livre");
         assert!(a.em_uso(u32::MAX));
+    }
+
+    #[test]
+    fn snapshot_recusa_contagem_padding_e_truncamento_sem_alterar_alocador() {
+        let mut a = AlocadorDeFrames::novo(3 * 4096);
+        a.alocar().unwrap();
+        let save = |a: &AlocadorDeFrames| {
+            let mut out = SnapshotWriter::new();
+            a.save(&mut out);
+            out.finish()
+        };
+        let original = save(&a);
+        for (used, bitmap) in [(4u32, 1u64), (0, 1), (1, 8)] {
+            let mut out = SnapshotWriter::new();
+            out.section("FRM0", 1);
+            out.u32(3);
+            out.u32(used);
+            out.u64(1);
+            out.u64(bitmap);
+            assert!(
+                a.load(&mut SnapshotReader::new(&out.finish()).unwrap())
+                    .is_err()
+            );
+            assert_eq!(save(&a), original);
+        }
+        assert!(
+            a.load(&mut SnapshotReader::new(&original[..original.len() - 1]).unwrap())
+                .is_err()
+        );
+        assert_eq!(save(&a), original);
     }
 
     #[test]

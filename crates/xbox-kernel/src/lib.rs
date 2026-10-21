@@ -12,7 +12,8 @@
 //! Troca de LONG em RAM guest por `InterlockedExchange` (ADR-0040):
 //! Tempo de sistema derivado do Clock e referência UTC explícita (ADR-0041):
 //! Consulta de IRQL explícito da CPU guest (ADR-0042):
-//! **16 de 69** serviços implementados, com variantes limitadas.
+//! Reserva+commit privado em RAM por `NtAllocateVirtualMemory` (ADR-0043):
+//! **17 de 69** serviços implementados, com variantes limitadas.
 //! Scheduler e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;

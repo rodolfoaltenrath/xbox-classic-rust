@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`4fddd87`** e nas alterações
-locais do **ADR-0042**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`0fccc4b`** e nas alterações
+locais do **ADR-0043**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -38,8 +38,9 @@ e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
 RDMSR e a leitura PCI do PLL já estão implementados. Com quatro raízes explícitas,
 **9027 blocos** passam pela troca de LONG e por KeQuerySystemTime (128),
 que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
-prioridade explícita da CPU guest, independente de IF. O bloqueio atual é
-**NtAllocateVirtualMemory (184)**, retorno `0x20E68`, reserva/commit de 64 KiB. A frequência calculada pelo hello foi conferida em RAM:
+prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
+64 KiB zerados em 0x30000, que o CRT usa. O bloqueio atual é
+**PsCreateSystemThreadEx (255)**, retorno `0x13BF1`, criação da thread de main. A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
@@ -50,9 +51,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange, tempo de sistema e IRQL; 16/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange, tempo de sistema, IRQL e reserva+commit privado; 17/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa pela consulta de IRQL; para em NtAllocateVirtualMemory (184); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Passa pela alocação de 64 KiB; para em PsCreateSystemThreadEx (255); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -162,7 +163,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
-| Bloqueio de execução atual | NtAllocateVirtualMemory (184), stdcall/20, retorno 0x20E68; BaseAddress=0, RegionSize=0x10000, flags=0x3000, proteção=4 |
+| Bloqueio de execução atual | PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1; stack=0x10000, TLS=0x114, StartRoutine=0x18FC0, contexto=0x30008, SystemRoutine=0x13C70 |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -560,17 +561,63 @@ No hello real, a consulta em `0x20E09` devolveu Passive com **IF=0**, preservand
 CPU/Clock. O hello mantém quatro raízes/9027 blocos e avança até
 **NtAllocateVirtualMemory (184)**, retorno **0x20E68**. Argumentos:
 `0x7000FD94, 0, 0x7000FD98, 0x3000, 4`; os ponteiros contêm **BaseAddress=0**
-e **RegionSize=0x10000 (64 KiB)**. Próximo passo: reserva/commit e alocação virtual
-guest reais, reutilizando Bus/MMU/frames, com alinhamento, permissões, zero inicial,
-saídas validadas e snapshot; não usar endereço host ou ponteiro fixo para avançar.
+e **RegionSize=0x10000 (64 KiB)**. A reserva/commit privado usada por esse pedido foi implementada no ADR-0043,
+descrito a seguir, com frames reais e snapshot das regiões.
 
-Registro atual: **16/69 serviços**, 3/3 dados; **346 testes workspace/doctests** e
+Registro nessa entrega: **16/69 serviços**, 3/3 dados; **346 testes workspace/doctests** e
 **148 nativos debug/release** (132 fora de x86_64), Rust 1.98.1. Quatro novos testes
 de kernel e três nativos cobrem nível/ABI/IF, tail-call, falha/retry e snapshot.
 O teste de diagnóstico sem argumentos passou a usar KeGetCurrentThread (104),
 ainda ausente. Clippy global/fmt/diff aprovados. Fontes e reprodução no
 [ADR-0042](docs/adr/0042-irql-guest.md), logs `target/irql-*`; teste local do XBE
 real em `target/alpha-hello-msr-ratio-20261020/tests/irql_effect.rs`.
+Threads, execução completa e framebuffer continuam pendentes.
+
+### Reserva+commit privado de memória virtual (ADR-0043)
+
+`NtAllocateVirtualMemory` (184), stdcall/20, atende *BaseAddress=0, ZeroBits=0,
+MEM_RESERVE|MEM_COMMIT (0x3000), PAGE_READWRITE (4), em Passive. Bases alinhadas
+em 64 KiB e tamanhos arredondados a páginas de 4 KiB. First-fit começa após o
+intervalo completo do XBE, preserva buracos internos e pula páginas existentes;
+o limite superior é a pilha em 0x70000000. São políticas explícitas do perfil.
+Reserva isolada, commit sobre reserva prévia, base solicitada, outras proteções,
+ZeroBits, top-down, reset e NtFreeVirtualMemory continuam recusados.
+
+O serviço valida os dois parâmetros de entrada/saída como RAM R/W e recusa
+sobreposição, inclusive alias físico. Planeja em cópias da MMU/bitmap, obtém
+frames próprios (sem exigir contiguidade), zera os bytes e publica a alocação.
+Saídas inválidas, tamanho inválido e falta de RAM retornam NTSTATUS reais do
+perfil, sem alocações/saídas parciais. Variantes ausentes continuam erros claros.
+HLE não altera Clock/flags/retired. Perm::RW sem execução é a política AOT, não
+uma promessa de NX físico no Pentium III. Continuação capturada permite RegionSize
+sobre a palavra de retorno. Limite: 4096 regiões e RAM efetivamente livre.
+
+**KRNL v6/VMEM v1** salva intervalo do XBE e registros base/tamanho ordenados.
+AOTS v1/AOTC v7/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1 permanecem. MMU, frames
+e RAM continuam no Bus; a carga de Session confere esses estados contra o registro,
+headers XBE e posse física. Inspeção não marca Accessed/Dirty. KRNL v1–v5 migra
+sem alocações; Session recupera o intervalo do XBE correspondente usado para
+abri-la e confere seus headers na RAM restaurada. Dispatcher isolado precisa de
+`for_image` para alocar. Sessão com erro de snapshot deve ser descartada.
+FRM0 continua v1, com validação transacional de contagem/bitmap/padding/truncamento.
+MMU ganhou clone independente e enumeração de páginas, sem unsafe novo.
+
+O teste real confirmou **base 0x30000, 65536 bytes, 16 frames próprios RW zerados**.
+O CRT escreve nessa região e chama **PsCreateSystemThreadEx (255)**, retorno
+**0x13BF1**, argumentos `0x7000FE88, 0, 0x10000, 0x114, 0, 0x18FC0, 0x30008,
+0, 0, 0x13C70`. O contexto é heap+8. Permanecem quatro raízes/9027 blocos.
+
+Próximo passo: thread guest com handle/identidade, pilha, TLS de 0x114 bytes,
+SystemRoutine=0x13C70 e StartRoutine=0x18FC0, incluindo espera/término e snapshot.
+Inspecionar o CRT e descobrir as raízes necessárias; não pular para main ou
+substituir a criação por sucesso genérico/thread host.
+
+Registro atual: **17/69 serviços**, 3/3 dados; **354 testes workspace/doctests** e
+**153 nativos debug/release** (137 fora de x86_64), Rust 1.98.1. Sete novos testes
+de kernel, um de frames e cinco nativos cobrem efeitos, falhas, ABI e snapshot.
+Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
+[ADR-0043](docs/adr/0043-alocacao-virtual-guest.md); logs `target/virtual-memory-*`.
+Teste real: `target/alpha-hello-msr-ratio-20261020/tests/virtual_memory_effect.rs`.
 Threads, execução completa e framebuffer continuam pendentes.
 
 Trabalho restante:
@@ -685,7 +732,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é NtAllocateVirtualMemory após o ADR-0042. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é PsCreateSystemThreadEx após o ADR-0043. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -767,7 +814,7 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 
 Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
 O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
-PCI, InterlockedExchange, tempo de sistema e IRQL; para em NtAllocateVirtualMemory (184), sem framebuffer. Com três raízes, falta o case
+PCI, InterlockedExchange, tempo de sistema, IRQL e alocação; para em PsCreateSystemThreadEx (255), sem framebuffer. Com três raízes, falta o case
 `0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
 execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
@@ -791,7 +838,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 148 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 153 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -812,24 +859,28 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 4fddd87 + alterações locais do ADR-0042.
-> A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
-> concluir o hello. Kernel: 16/69 serviços com variantes limitadas, 3/3 dados.
-> Não há scheduler ou KTHREAD real. Snapshot: AOTS v1, AOTC v7, KRNL v5, KMUT v2,
-> EEPR v1, PCIC v1, STIM v1, IRQL v1. Clock único compartilhado com TSC e tempo
-> absoluto; SystemTimeReference padrão sintético 2000-01-01 UTC. CPU/PLL do perfil
-> RetailClockV1 são coerentes; hello calcula 733333333 Hz.
-> KeGetCurrentIrql (103) consulta prioridade lógica explícita da única CPU guest,
-> inicialmente Passive (0). Apc/Dispatch são contextos representáveis, sem IRQ/APC/DPC.
-> IRQL é independente de IF; CLI não o altera. KRNL v1–v4 migram para Passive.
-> KfRaiseIrql/KfLowerIrql continuam ausentes. Não há KPCR/APIC físico ou DIRQL.
+> alterar código. Base documentada: 0fccc4b + alterações locais do ADR-0043.
+> A entrega 1 tem aceite local; TLS/ABI existe, mas faltam threads/serviços para
+> concluir o hello. Kernel: 17/69 serviços com variantes limitadas, 3/3 dados.
+> Snapshot: AOTS v1, AOTC v7, KRNL v6, KMUT v2, EEPR v1, PCIC v1, STIM v1,
+> IRQL v1, VMEM v1. Clock único; tempo UTC padrão sintético 2000-01-01. IRQL
+> é estado da CPU guest independente de IF. Sem scheduler, KTHREAD ou IRQ/APC/DPC.
+> NtAllocateVirtualMemory (184) atende só base nula/ZeroBits=0/flags=0x3000/PAGE_RW,
+> em Passive. Reserva+commit privado, first-fit após a imagem inteira, base 64 KiB,
+> tamanho 4 KiB, frames próprios zerados, validação integral/sem efeitos parciais.
+> RW sem execução é política AOT. Outras variantes e NtFreeVirtualMemory faltam.
+> Session registra o intervalo XBE; VMEM guarda regiões, Bus guarda RAM/MMU/frames.
+> Snapshot confere posse/permissões/aliases/headers. KRNL v1–v5 migra sem alocações e
+> Session recupera o intervalo do XBE correspondente; erros exigem descartar a sessão.
+> FRM0 v1 agora valida bitmap/contagem/padding antes do commit. Nenhum unsafe novo.
 > Hello: 9027 blocos, --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
-> O teste real conferiu Passive com IF=0 e avanço até NtAllocateVirtualMemory (184),
-> stdcall/20, retorno 0x20E68. Argumentos: 0x7000FD94, 0, 0x7000FD98, 0x3000, 4;
-> *BaseAddress=0 e *RegionSize=0x10000 (64 KiB). Modelar reserva/commit, alinhamento,
-> permissões, zero inicial, validação de saídas e snapshot da alocação; reutilizar
-> Bus/MMU/alocador, sem endereços host ou ponteiros fixos. Conferir contratos antes.
-> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 346 testes
-> workspace/doctests e 148 casos nativos debug/release. Threads/execução completa/
-> framebuffer seguem pendentes. Preserve AOT/bus/estado explícito e atualize
-> continuidade, alpha, roadmap, changelog e evidências ao avançar.
+> Alocação real: 0x30000, 64 KiB, 16 frames RW; CRT passa heap+8 à nova thread.
+> Próximo bloqueio: PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1.
+> Args: 0x7000FE88, 0, 0x10000, 0x114, 0, 0x18FC0, 0x30008, 0, 0, 0x13C70.
+> Modelar threads guest com pilha/TLS, handle/identidade, SystemRoutine/StartRoutine,
+> espera/término e snapshot. Conferir CRT e raízes AOT antes; não pular para main
+> ou iniciar thread host. Memória comercial/BIOS não são necessárias.
+> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 354 testes
+> workspace/doctests e 153 casos nativos debug/release. Execução completa/framebuffer
+> seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
+> alpha, roadmap, changelog e evidências ao avançar.

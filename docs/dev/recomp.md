@@ -626,12 +626,37 @@ versões/níveis sem modelo e truncamento. AOTS v1/AOTC v7/KMUT v2/EEPR v1/PCIC 
 STIM v1 permanecem. Raise/Lower, DIRQL, IRQ/APC/DPC e KPCR/APIC físicos faltam;
 configurar o contexto inicial não executa transições ou entrega de eventos.
 
-O hello mantém quatro raízes/9027 blocos e consulta Passive com IF=0. O próximo
-bloqueio é **NtAllocateVirtualMemory (184)**, stdcall/20, retorno **0x20E68**:
+Naquela entrega, o hello manteve quatro raízes/9027 blocos e consultou Passive
+com IF=0. O bloqueio seguinte era **NtAllocateVirtualMemory (184)**, retorno **0x20E68**:
 argumentos 0x7000FD94, 0, 0x7000FD98, 0x3000, 4; *BaseAddress=0 e
-*RegionSize=0x10000 (64 KiB). Próximo passo: alocação virtual guest com reserva/
-commit, alinhamento, permissões, zero inicial, validação de saídas e snapshot.
+*RegionSize=0x10000 (64 KiB). Esse caminho foi implementado no ADR-0043,
+descrito a seguir, com reserva+commit privado e snapshot das regiões.
 
 Validação: **346 testes workspace/doctests e 148 nativos debug/release**, quatro
 novos testes de kernel e três nativos, mais teste local do XBE real; **16/69 serviços**.
 Fontes, contrato e logs: [ADR-0042](../adr/0042-irql-guest.md).
+
+## Reserva+commit privado guest — ADR-0043
+
+NtAllocateVirtualMemory (184), stdcall/20, atende base nula/ZeroBits=0/flags 0x3000/
+PAGE_READWRITE em Passive. First-fit após o intervalo completo XBE, base 64 KiB,
+tamanho 4 KiB e limite inferior à pilha. Frames próprios são zerados antes de
+publicar cópias planejadas de MMU/bitmap, parâmetros e região lógica. A arena não
+é copiada. Saídas passam por validação R/W/alias físico; faltas e OOM não deixam
+alocação parcial. RW sem execução é política AOT; outras variantes e liberação faltam.
+
+KRNL v6/VMEM v1 salva intervalo XBE e regiões; Bus guarda RAM/MMU/bitmap. Session
+confere headers, posse física, permissões e aliases. KRNL v1–v5 migra sem regiões;
+Session recupera o intervalo do XBE correspondente. FRM0 v1 passa a validar contagem/
+bitmap/padding antes de alterar estado. Nenhum unsafe novo. AOTS v1/AOTC v7/KMUT v2/
+EEPR v1/PCIC v1/STIM v1/IRQL v1 permanecem.
+
+O hello mantém quatro raízes/9027 blocos. O teste real confere 64 KiB em 0x30000,
+16 frames zerados/RW e uso pelo CRT, que passa heap+8 à nova thread. O próximo
+bloqueio é **PsCreateSystemThreadEx (255)**, retorno **0x13BF1**: pilha de 64 KiB,
+TLS de 0x114 bytes, StartRoutine=0x18FC0, contexto=0x30008, SystemRoutine=0x13C70.
+Modelar thread guest e continuação serializável, sem pular para main ou criar thread host.
+
+Validação: **354 testes workspace/doctests e 153 nativos debug/release**, sete
+novos testes de kernel, um de frames e cinco nativos, mais teste local do XBE real;
+**17/69 serviços**. Fontes/contrato/logs: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).

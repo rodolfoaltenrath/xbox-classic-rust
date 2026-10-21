@@ -22,6 +22,16 @@ ou DMA concorrente exigem ampliar esse protocolo antes de serem habilitados;
 uma fence do host não substitui a publicação guest nem a conclusão da GPU.
 Detalhes: [ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md).
 
+**Alocação HLE posterior (ADR-0043):** NtAllocateVirtualMemory usa o bitmap e
+cópias independentes da MMU para planejar reserva+commit privado, com frames
+zerados e saídas validadas. A MMU enumera páginas sem marcar Accessed/Dirty;
+Session confere posse de frames e registros virtuais ao restaurar snapshot.
+FRM0 v1 valida bitmap/contagem/padding antes do commit, mantendo snapshots
+anteriores válidos. MMU0 v1 também recusa frames fora de 32 bits e páginas grandes
+fisicamente desalinhadas, evitando overflow durante a inspeção de mapeamentos.
+Não há unsafe novo nem cópia da arena. Perfil e limites em
+[ADR-0043](../adr/0043-alocacao-virtual-guest.md).
+
 Medições feitas no host do mantenedor (x86-64, 8 núcleos lógicos, Windows 11,
 `rustc 1.98.1`, perfil `release` com LTO fat). A sonda está em
 `scratchpad/mem-probe` e é reproduzível.

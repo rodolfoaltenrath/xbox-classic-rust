@@ -27,6 +27,7 @@ mod shifts;
 mod strings;
 mod system_time;
 mod timing;
+mod virtual_memory;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
     let image = xbe_com_codigo(code).unwrap();
@@ -66,6 +67,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&kernel::sources(output));
     main.push_str(&interlocked::sources(output));
     main.push_str(&irql::sources(output));
+    main.push_str(&virtual_memory::sources(output));
     main.push_str(&system_time::sources(output));
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));

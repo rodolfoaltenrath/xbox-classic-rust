@@ -259,7 +259,10 @@ impl Session {
         Ok(Self {
             state,
             bus,
-            kernel: xbox_kernel::dispatch::Dispatcher::new(),
+            kernel: xbox_kernel::dispatch::Dispatcher::for_image(
+                xbe.header.base_address,
+                xbe.header.size_of_image,
+            )?,
         })
     }
 
@@ -335,9 +338,12 @@ impl Snapshot for Session {
                 what: "versão de sessão desconhecida",
             });
         }
+        let original_image = self.kernel.virtual_memory().image();
         self.state.load(inp)?;
         self.bus.load(inp)?;
-        self.kernel.load(inp)
+        self.kernel.load(inp)?;
+        self.kernel
+            .restore_memory_context(original_image, &self.bus)
     }
 }
 

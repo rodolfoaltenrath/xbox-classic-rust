@@ -1143,6 +1143,8 @@ Uma linha por marco concluído. Append-only.
 
 | 2026-10-20 | 4 / 5 | Consulta de IRQL guest (ADR-0042) | — | KeGetCurrentIrql lê prioridade explícita da única CPU, independente de IF; KRNL v5/IRQL v1 com migração; 346 testes workspace/doctests e 148 nativos debug/release; hello consulta Passive com IF=0 e chega a NtAllocateVirtualMemory (184), pedido de 64 KiB; 16/69 serviços |
 
+| 2026-10-20 | 4 / 5 | Reserva+commit privado guest (ADR-0043) | — | NtAllocateVirtualMemory, frames próprios zerados, first-fit após imagem completa e publicação planejada; KRNL v6/VMEM v1 com validação de Bus/MMU/bitmap; 354 testes workspace/doctests e 153 nativos debug/release; hello usa 64 KiB em 0x30000 e chega a PsCreateSystemThreadEx (255); 17/69 serviços |
+
 ---
 
 ### Próxima ação
@@ -1150,7 +1152,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `16/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `17/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
@@ -1174,10 +1176,14 @@ Em ordem:
    KeGetCurrentIrql (103) consulta a prioridade explícita da única CPU guest,
    independente de IF. KRNL v5/IRQL v1 salva o nível e migra v1–v4 para Passive;
    Raise/Lower e entrega de IRQ/APC/DPC continuam ausentes (ADR-0042).
-   **O próximo bloqueio é NtAllocateVirtualMemory (184)**, retorno `0x20E68`:
-   BaseAddress=0, RegionSize=0x10000, flags=0x3000 e proteção=4. Modelar reserva/
-   commit e alocação virtual guest, reutilizando Bus/MMU/frames, com alinhamento,
-   permissões, zero inicial, saídas validadas e snapshot do estado de alocação.
+   NtAllocateVirtualMemory (184) atende reserva+commit privado/RW com base escolhida
+   e ZeroBits=0, frames reais zerados e saídas validadas. KRNL v6/VMEM v1 salva
+   regiões e confere Bus/MMU/bitmap; FRM0 v1 valida contagem/padding (ADR-0043).
+   O hello usa 64 KiB em 0x30000 e passa heap+8 como contexto da thread.
+   **O próximo bloqueio é PsCreateSystemThreadEx (255)**, retorno `0x13BF1`:
+   pilha 0x10000, TLS 0x114, StartRoutine 0x18FC0, contexto 0x30008,
+   SystemRoutine 0x13C70. Investigar CRT/raízes AOT e modelar threads guest com
+   handle/identidade, pilha/TLS, espera/término e snapshot das continuações.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
    (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar

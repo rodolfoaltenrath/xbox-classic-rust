@@ -1,8 +1,8 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0042. O hello nxdk inicia nativamente com TLS/imports, 16 serviços
-e perfil de CPU/PCI guest; passa pela consulta de IRQL e chega a NtAllocateVirtualMemory.
+ADRs 0013–0043. O hello nxdk inicia nativamente com TLS/imports, 17 serviços
+e perfil de CPU/PCI guest; passa pela alocação de 64 KiB e chega a PsCreateSystemThreadEx.
 Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
@@ -182,8 +182,8 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v7, memória e estado `KRNL` v5 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1, com handles, propriedade, prioridade lógica e
+inclui `AOTC` v7, memória e estado `KRNL` v6 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1 / `VMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -249,8 +249,21 @@ sem alterar IRQL. Apc/Dispatch são contextos iniciais representáveis; DIRQL e
 transições Raise/Lower ainda não têm modelo. Não há IRQ/APC/DPC, KPCR/APIC físico
 ou cópia de prioridade por thread. KRNL v5/IRQL v1 salva o nível e migra KRNL
 v1–v4 para Passive independentemente de IF e do contexto de destino.
-Formato integral atual: AOTS v1/AOTC v7/KRNL v5/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1
+Formato dessa entrega: AOTS v1/AOTC v7/KRNL v5/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1
 ([ADR-0042](../adr/0042-irql-guest.md)).
+
+NtAllocateVirtualMemory atende reserva+commit privado/RW, base escolhida pelo
+kernel e ZeroBits=0, em Passive. O registro lógico guarda intervalo XBE completo e
+regiões committed, com bases 64 KiB/tamanhos 4 KiB e first-fit abaixo da pilha.
+MMU/frames são planejados em cópias independentes; frames são zerados antes de
+publicar mapeamentos e parâmetros. Sobreposição física entre saídas é recusada.
+Outras variantes e NtFreeVirtualMemory faltam; RW sem execução é política AOT.
+KRNL v6/VMEM v1 salva regiões sem duplicar os frames do Bus. Session confere
+headers, posse de RAM, permissões e ausência de aliases privados indevidos.
+KRNL v1–v5 migra sem regiões, recuperando o intervalo do XBE correspondente na
+carga de Session. FRM0 v1 valida bitmap/contagem/padding antes do commit.
+Formato atual: AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/VMEM v1
+([ADR-0043](../adr/0043-alocacao-virtual-guest.md)).
 
 ## Evidência e limites
 
@@ -259,7 +272,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 148 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 153 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

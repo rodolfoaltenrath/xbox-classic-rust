@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: NtAllocateVirtualMemory (184), stdcall/20, reserva+commit privado
+  com base escolhida/ZeroBits=0/PAGE_READWRITE em Passive. First-fit após a imagem
+  inteira, alinhamento, frames próprios zerados e saídas validadas sem efeitos
+  parciais. KRNL v6/VMEM v1 salva regiões e confere Bus/MMU/frames no snapshot;
+  FRM0 v1 valida bitmap/contagem transacionalmente. 354 testes workspace/doctests
+  e 153 nativos debug/release. O hello usa 64 KiB em 0x30000 e chega a
+  PsCreateSystemThreadEx (255), retorno 0x13BF1; 17/69 serviços (ADR-0043).
+
 - Fase 4/alpha: KeGetCurrentIrql (103), stdcall/0, consulta o IRQL explícito da
   única CPU guest, independente de CLI/IF. Padrão Passive; Apc/Dispatch são
   contextos representáveis, sem transições ou entrega de IRQ/APC/DPC. KRNL v5/

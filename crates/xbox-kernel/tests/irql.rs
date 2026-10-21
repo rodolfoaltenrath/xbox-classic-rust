@@ -87,7 +87,7 @@ fn snapshot_preserva_niveis_e_carga_de_kernel_recusa_corrupcao_sem_commit_parcia
         let original = saved(&restored);
         for (version, level) in [(0u32, 0u8), (2, 0), (1, 3), (1, 31), (1, 255)] {
             let mut bad = bytes.clone();
-            let at = bad.len() - 9;
+            let at = bad.windows(4).position(|tag| tag == b"IRQL").unwrap();
             bad[at + 4..at + 8].copy_from_slice(&version.to_le_bytes());
             bad[at + 8] = level;
             assert!(

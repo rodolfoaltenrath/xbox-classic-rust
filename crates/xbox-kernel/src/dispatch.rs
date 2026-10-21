@@ -32,6 +32,7 @@ mod nvram;
 mod pci;
 mod sha;
 mod system_time;
+mod virtual_memory;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use irql::Irql;
 use mutants::Mutants;
@@ -40,6 +41,10 @@ pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, 
 pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use system_time::SystemTimeReference;
+pub use virtual_memory::{
+    ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
+    STATUS_INVALID_PARAMETER, STATUS_NO_MEMORY, VirtualAllocation, VirtualMemory,
+};
 
 use crate::imports::{Abi, Call, Kind};
 use crate::loader::Result as LoaderResult;
@@ -59,6 +64,7 @@ pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
+pub const ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 184;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -87,6 +93,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_INTERLOCKED_EXCHANGE,
     ORDINAL_KE_GET_CURRENT_IRQL,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
+    ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
@@ -122,6 +129,8 @@ pub struct Atendimento {
 /// Falha ao atender uma chamada de kernel.
 #[derive(Debug, thiserror::Error)]
 pub enum Erro {
+    #[error("estado de memória virtual guest inconsistente: {0}")]
+    MemoriaVirtual(&'static str),
     /// Falta de Clock explícito ou referência fora do intervalo de `LARGE_INTEGER`.
     #[error("KeQuerySystemTime (ordinal 128): tempo guest indisponível: {detalhe}")]
     ContextoTemporal { detalhe: &'static str },
@@ -182,12 +191,35 @@ pub struct Dispatcher {
     system_time: SystemTimeReference,
     // Prioridade da única CPU guest, não da thread host nem de EFLAGS.IF.
     irql: Irql,
+    virtual_memory: VirtualMemory,
 }
 
 impl Dispatcher {
     /// Dispatcher sem estado acumulado.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Preserva todo o intervalo declarado da imagem, inclusive buracos sem páginas.
+    pub fn for_image(base: u32, size: u32) -> xbox_core::Result<Self> {
+        Ok(Self {
+            virtual_memory: VirtualMemory::for_image(base, size)?,
+            ..Self::default()
+        })
+    }
+
+    pub const fn virtual_memory(&self) -> &VirtualMemory {
+        &self.virtual_memory
+    }
+
+    /// Snapshots anteriores ao alocador dependem do XBE usado para abrir a sessão.
+    /// Confere seus headers na RAM restaurada antes de recuperar esse contexto.
+    pub fn restore_memory_context(
+        &mut self,
+        original: Option<ImageRange>,
+        bus: &Bus,
+    ) -> Result<(), SnapshotError> {
+        self.virtual_memory.restore_context(original, bus)
     }
 
     /// Origem explícita; sem leitura automática de arquivo ou alteração dos bytes.
@@ -291,6 +323,9 @@ impl Dispatcher {
                 eax: u32::from(self.irql.level()),
             }),
             ORDINAL_KE_QUERY_SYSTEM_TIME => self.system_time.query(bus, &call, clock),
+            ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY => {
+                self.virtual_memory.allocate(bus, &call, self.irql)
+            }
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
@@ -471,7 +506,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 5);
+        out.section("KRNL", 6);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -479,10 +514,11 @@ impl Snapshot for Dispatcher {
         self.pci.save(out);
         self.system_time.save(out);
         self.irql.save(out);
+        self.virtual_memory.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 5)?;
+        let version = inp.section("KRNL", 6)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -515,6 +551,10 @@ impl Snapshot for Dispatcher {
         if version >= 5 {
             irql.load(inp)?;
         }
+        let mut virtual_memory = VirtualMemory::legacy();
+        if version >= 6 {
+            virtual_memory.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
@@ -523,6 +563,7 @@ impl Snapshot for Dispatcher {
             pci,
             system_time,
             irql,
+            virtual_memory,
         };
         Ok(())
     }

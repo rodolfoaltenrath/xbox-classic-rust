@@ -84,3 +84,17 @@ Logs locais ignorados pelo Git: `target/memory-nfs-t14.log`,
 `target/memory-t14-real-test.log`, `target/memory-miri-contract.log`,
 `target/memory-safe-benchmark.log`, `target/memory-workspace-tests.log` e
 `target/memory-workspace-clippy.log`. Mídias e BIOS permanecem fora do repositório.
+
+## Integração com alocação virtual HLE — ADR-0043
+
+NtAllocateVirtualMemory usa MMU e alocador de frames existentes para reserva+commit
+privado, no perfil descrito em [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
+O planejamento copia apenas MMU/bitmap; a arena permanece única. Novos frames
+são zerados antes de publicar páginas e saídas. A enumeração de mapeamentos é
+somente leitura e não marca Accessed/Dirty. Session confere registros, posse,
+permissões e aliases ao restaurar. FRM0 v1 valida bitmap/contagem/padding e
+truncamento antes de alterar o alocador. MMU0 v1 recusa frames fora do espaço
+de 32 bits e páginas grandes fisicamente desalinhadas antes de enumerá-las.
+Nenhum unsafe ou API de arena mudou.
+A suíte inclui frames fragmentados/sujos, OOM, aliases de saída e snapshot
+inconsistente. O aceite local original da Fase 2 continua sendo o marco do ADR-0020.

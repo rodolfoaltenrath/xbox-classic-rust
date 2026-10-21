@@ -190,7 +190,7 @@ impl Entrada {
 }
 
 /// Uma entrada do diretório.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum EntradaDeDiretorio {
     /// Nada mapeado nestes 4 MiB.
     Ausente,
@@ -201,7 +201,7 @@ enum EntradaDeDiretorio {
 }
 
 /// A unidade de gerenciamento de memória do guest.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mmu {
     diretorio: Vec<EntradaDeDiretorio>,
 }
@@ -338,6 +338,21 @@ impl Mmu {
         Some((Self::fisico(e, grande, va), e.perm()))
     }
 
+    /// Páginas mapeadas, inclusive subdivisões das páginas grandes, sem marcar
+    /// Accessed/Dirty. Permite conferir a posse física ao restaurar uma sessão.
+    pub fn mapeamentos(&self) -> impl Iterator<Item = (GuestVirt, GuestPhys, Perm)> + '_ {
+        self.diretorio
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| !matches!(entry, EntradaDeDiretorio::Ausente))
+            .flat_map(move |(directory, _)| {
+                (0..1024u32).filter_map(move |table| {
+                    let va = GuestVirt(((directory as u32) << 22) | (table << 12));
+                    self.consultar(va).map(|(pa, perm)| (va, pa, perm))
+                })
+            })
+    }
+
     fn entrada(&self, va: GuestVirt) -> Option<(&Entrada, bool)> {
         match &self.diretorio[va.indice_diretorio()] {
             EntradaDeDiretorio::Grande(e) if e.presente() => Some((e, true)),
@@ -443,10 +458,10 @@ impl Snapshot for Mmu {
             let d = inp.u32()? as usize;
             let frame = inp.u32()?;
             let flags = inp.u8()?;
-            if d >= ENTRADAS_DIRETORIO {
+            if d >= ENTRADAS_DIRETORIO || frame > (u32::MAX >> 12) || !frame.is_multiple_of(1024) {
                 return Err(SnapshotError::BadValue {
                     section: "MMU0",
-                    what: "índice de diretório fora da faixa",
+                    what: "índice, frame ou alinhamento de página grande inválido",
                 });
             }
             self.diretorio[d] = EntradaDeDiretorio::Grande(Entrada {
@@ -461,10 +476,10 @@ impl Snapshot for Mmu {
             let i = inp.u32()? as usize;
             let frame = inp.u32()?;
             let flags = inp.u8()?;
-            if d >= ENTRADAS_DIRETORIO || i >= ENTRADAS_TABELA {
+            if d >= ENTRADAS_DIRETORIO || i >= ENTRADAS_TABELA || frame > (u32::MAX >> 12) {
                 return Err(SnapshotError::BadValue {
                     section: "MMU0",
-                    what: "índice de tabela fora da faixa",
+                    what: "índice ou frame de página fora da faixa",
                 });
             }
             if !matches!(self.diretorio[d], EntradaDeDiretorio::Tabela(_)) {
@@ -692,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_com_indice_invalido_e_recusado() {
+    fn snapshot_com_indice_ou_frame_invalido_e_recusado() {
         let mut w = SnapshotWriter::new();
         w.section("MMU0", 1);
         w.u64(1);
@@ -704,5 +719,29 @@ mod tests {
         let mut m = Mmu::nova();
         let mut r = SnapshotReader::new(&bytes).unwrap();
         assert!(m.load(&mut r).is_err());
+        // Sem estes limites, consultar uma página grande corrompida poderia
+        // transbordar ao enumerar seus endereços físicos durante a restauração.
+        for (large, frame) in [(true, 1u32), (true, u32::MAX), (false, u32::MAX)] {
+            let mut w = SnapshotWriter::new();
+            w.section("MMU0", 1);
+            if large {
+                w.u64(1);
+                w.u32(0);
+                w.u32(frame);
+                w.u8(0b1000);
+                w.u64(0);
+            } else {
+                w.u64(0);
+                w.u64(1);
+                w.u32(0);
+                w.u32(0);
+                w.u32(frame);
+                w.u8(0b1000);
+            }
+            assert!(
+                m.load(&mut SnapshotReader::new(&w.finish()).unwrap())
+                    .is_err()
+            );
+        }
     }
 }

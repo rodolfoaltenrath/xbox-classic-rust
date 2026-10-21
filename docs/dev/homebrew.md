@@ -74,8 +74,8 @@ em `0x28108`, callbacks ausentes, characteristics `0x00300000` (alinhamento 4).
 O dispatcher atende `RtlInitAnsiString` (289), `NtCreateMutant` (192) sem nome,
 espera/liberação de mutant (233/221), SHA-1 Init/Update/Final (335/336/337),
 consulta integral de EEPROM (24), seções críticas (291/277/294/306) e
-leitura do PLL PCI (46), InterlockedExchange (54), KeQuerySystemTime (128) e KeGetCurrentIrql (103):
-**16/69 serviços implementados**, com variantes limitadas,
+leitura do PLL PCI (46), InterlockedExchange (54), KeQuerySystemTime (128), KeGetCurrentIrql (103) e reserva+commit privado (184):
+**17/69 serviços implementados**, com variantes limitadas,
 e 3/3 dados representados. O relatório consulta a lista real do dispatcher.
 
 O CRT nxdk configura TLS e cria uma thread para `main`. Serão necessários criação
@@ -113,8 +113,9 @@ o hello calcula 733333333 Hz e avança até InterlockedExchange (54), retorno
 `0x19DC7`, argumentos `0x29158, 1`. O ADR-0040 atende a troca com efeito em RAM
 e retorno anterior. O ADR-0041 implementa KeQuerySystemTime (128), com
 referência UTC explícita e Clock da sessão. O ADR-0042 implementa a consulta de
-IRQL guest; o bloqueio atual é NtAllocateVirtualMemory (184), retorno `0x20E68`,
-BaseAddress=0, RegionSize=64 KiB, flags=0x3000 e proteção=4.
+IRQL guest. O ADR-0043 implementa a reserva+commit privada: o hello recebe
+64 KiB em 0x30000 e chega a PsCreateSystemThreadEx (255), retorno `0x13BF1`,
+com StartContext=0x30008 (heap+8). Thread guest é o próximo bloqueio.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -192,10 +193,10 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
 Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
 o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
-são **9027 blocos** e o bloqueio real é **NtAllocateVirtualMemory (184)**, retorno
-`0x20E68`, após frequência PCI, troca de LONG, tempo guest e consulta de IRQL.
+são **9027 blocos** e o bloqueio real é **PsCreateSystemThreadEx (255)**, retorno
+`0x13BF1`, após frequência PCI, troca de LONG, tempo guest, IRQL e alocação de 64 KiB.
 Isso ainda é execução inicial, sem framebuffer.
-Contrato/evidência atual: [ADR-0042](../adr/0042-irql-guest.md).
+Contrato/evidência atual: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
@@ -203,7 +204,7 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v5/EEPR v1 no snapshot atual.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v6/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
@@ -217,7 +218,7 @@ Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem r
 host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
 KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-O formato atual é AOTS v1/AOTC v7/KRNL v5/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1. Detalhes das seções críticas:
+O formato atual é AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/VMEM v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
@@ -260,9 +261,21 @@ IF não determinam o nível. KRNL v5/IRQL v1 salva o contexto e migra v1–v4 pa
 Passive. Raise/Lower, IRQ/APC/DPC, DIRQL e KPCR/APIC físicos continuam ausentes.
 O hello consulta Passive com IF=0 e avança até NtAllocateVirtualMemory (184),
 retorno 0x20E68: 0x7000FD94, 0, 0x7000FD98, 0x3000, 4; *BaseAddress=0,
-*RegionSize=0x10000. Validação atual: 346 testes workspace/doctests e 148 nativos
+*RegionSize=0x10000. Validação nessa entrega: 346 testes workspace/doctests e 148 nativos
 em debug/release, mais teste local do XBE real.
 Fontes/limites: [ADR-0042](../adr/0042-irql-guest.md).
+
+NtAllocateVirtualMemory (184), stdcall/20, atende base nula, ZeroBits=0,
+MEM_RESERVE|MEM_COMMIT e PAGE_READWRITE, em Passive. Usa first-fit após a imagem
+inteira, base 64 KiB, tamanho 4 KiB, frames privados zerados e saídas R/W validadas.
+RW sem execução é política AOT. Outras variantes e liberação faltam. KRNL v6/
+VMEM v1 salva regiões; Session confere Bus/MMU/bitmap/headers. KRNL v1–v5 migra
+sem alocações, recuperando o intervalo do XBE correspondente ao restaurar Session.
+O teste real confere 0x30000/64 KiB/16 frames e o CRT passa 0x30008 à thread.
+Próximo bloqueio: PsCreateSystemThreadEx (255), retorno 0x13BF1, pilha 0x10000,
+TLS=0x114, StartRoutine=0x18FC0 e SystemRoutine=0x13C70. Validação atual: 354 testes
+workspace/doctests e 153 nativos debug/release, mais teste local do efeito real.
+Fontes/limites: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
 
 ## Referências públicas
 
