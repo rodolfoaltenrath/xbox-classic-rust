@@ -12,9 +12,9 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | serviços anteriores, bootstrap de uma filha e namespace D: (ADR-0046); 23/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | serviços anteriores, bootstrap, namespace D: e perfil inicial do encoder (ADR-0047); 25/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | bootstrap e montagem lógica de D: executam; para em AvSendTVEncoderOption (2); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | configurações de vídeo consultadas; para na alocação do framebuffer, MmAllocateContiguousMemoryEx (166); controle/logs pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | pendente | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
@@ -54,9 +54,13 @@ Executa SystemRoutine, inicializa TLS/FLS no guest e entra em StartRoutine e
 main_wrapper. A última raiz destrava um case do formatador do CRT. O namespace
 guest começa sem D:; a consulta retorna ausência, a criação guarda o diretório
 e open/close operam sobre handles reais. Isso não conecta mídia à VFS.
-O bloqueio atual é **AvSendTVEncoderOption (2)**, retorno **0x12769**, opção 6.
-O teste real confirmou D: = `\Device\CdRom0\`, TLS da filha e snapshot integral
-na fronteira de vídeo ([ADR-0046](../adr/0046-namespace-drive-d.md)).
+AvSendTVEncoderOption (2) agora responde GET_SETTINGS com padrão/flags da EEPROM
+e cabo padrão, resultado 0x00480101 no perfil inicial. VIDEOENABLE guarda o
+blanking; AvGetSavedDataAddress retorna NULL no cold boot sem imagem herdada.
+O bloqueio atual é **MmAllocateContiguousMemoryEx (166)**, retorno **0x12C01**:
+pedido de **1.228.800 bytes para 640×480×32**, alinhamento 4 KiB/RW|WRITECOMBINE.
+Ainda sem framebuffer alocado ou imagem. Teste real confirmou settings, blanking,
+D:/TLS e replay integral ([ADR-0047](../adr/0047-encoder-video-cold-boot.md)).
 
 O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) guarda a continuação do pai
 sem copiar Clock/retired; término da filha restaura esse contexto. A filha roda
@@ -66,7 +70,9 @@ de progresso do pai se a filha entrar em laço. O prefixo KTHREAD não é ETHREA
 completo. Snapshot AOTS v2/KRNL v7/KMUT v3 acrescenta THRD v1/TCXT v1, migrando
 formatos anteriores sem threads. Recursos são retidos; NtClose de thread/mutant
 e liberação faltam. KRNL v8 acrescenta SYML v1 para namespace/handles de link;
-KRNL v1–v7 migram sem D:. NtClose só fecha links nesta versão.
+KRNL v1–v7 migram sem D:. NtClose só fecha links nesta versão. KRNL v9/AVST v1
+preserva o encoder; v1–v8 migram com saída desabilitada. A EEPROM continua
+autoritativa para o padrão/flags; não há estado duplicado ou tempo novo.
 
 O perfil `CpuProfile::XboxRetailV1` define EBL_CR_POWERON (0x2A) nominal para
 bus 133⅓ MHz × razão 5,5; demais bits são sintéticos, não dump físico. A leitura
@@ -111,8 +117,8 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **372 testes workspace/doctests** e **165 casos de
-Rust gerado em debug/release**, incluindo namespace, ABI e snapshots de links. O Rust
+A validação atual tem **380 testes workspace/doctests** e **168 casos de
+Rust gerado em debug/release**, incluindo encoder, EEPROM, blanking e snapshots. O Rust
 fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
 `main` e ainda faltam serviços, execução completa e framebuffer. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não

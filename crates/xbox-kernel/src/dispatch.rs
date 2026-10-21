@@ -34,6 +34,7 @@ mod pci;
 mod sha;
 mod system_time;
 mod threads;
+mod video;
 mod virtual_memory;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use irql::Irql;
@@ -45,6 +46,9 @@ pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use system_time::SystemTimeReference;
 pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
+pub use video::{
+    AV_PACK_STANDARD, VIDEO_BASE, VIDEO_ENC_GET_SETTINGS, VIDEO_ENC_VIDEOENABLE, VideoState,
+};
 pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
     STATUS_INVALID_PARAMETER, STATUS_NO_MEMORY, VirtualAllocation, VirtualMemory,
@@ -55,6 +59,8 @@ use crate::loader::Result as LoaderResult;
 
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
+pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
+pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
@@ -98,6 +104,8 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
+    ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
     ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
     ORDINAL_NT_CLOSE,
@@ -212,6 +220,7 @@ pub struct Dispatcher {
     virtual_memory: VirtualMemory,
     threads: threads::Threads,
     links: links::Links,
+    video: VideoState,
 }
 
 impl Dispatcher {
@@ -235,6 +244,10 @@ impl Dispatcher {
     /// Destino guest de D:, sem montagem ou acesso a caminhos do host.
     pub fn drive_d_target(&self) -> Option<&str> {
         self.links.target()
+    }
+
+    pub const fn video(&self) -> &VideoState {
+        &self.video
     }
 
     /// Snapshots anteriores ao alocador dependem do XBE usado para abrir a sessão.
@@ -377,6 +390,10 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {
+                eax: VideoState::SAVED_DATA_ADDRESS,
+            }),
+            ORDINAL_AV_SEND_TV_ENCODER_OPTION => self.video.encoder(bus, &call, &self.eeprom),
             ORDINAL_IO_CREATE_SYMBOLIC_LINK => self.links.create(bus, &call, self.irql),
             ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT => {
                 self.links.open(bus, &call, self.irql, &mut self.mutants)
@@ -617,7 +634,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 8);
+        out.section("KRNL", 9);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -628,10 +645,11 @@ impl Snapshot for Dispatcher {
         self.virtual_memory.save(out);
         self.threads.save(out);
         self.links.save(out);
+        self.video.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 8)?;
+        let version = inp.section("KRNL", 9)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -678,6 +696,10 @@ impl Snapshot for Dispatcher {
             links.load(inp)?;
         }
         links.validate(&mutants, threads.child)?;
+        let mut video = VideoState::default();
+        if version >= 9 {
+            video.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
@@ -689,6 +711,7 @@ impl Snapshot for Dispatcher {
             virtual_memory,
             threads,
             links,
+            video,
         };
         Ok(())
     }

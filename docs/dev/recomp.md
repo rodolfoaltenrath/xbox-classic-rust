@@ -703,7 +703,7 @@ a incluir/inferir. Ainda sem execução completa ou framebuffer. Validação atu
 x86_64). Fontes, variantes, snapshot e comando completo no
 [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
 
-### Namespace de D: (ADR-0046, estado atual)
+### Namespace de D: (ADR-0046)
 
 A raiz adicional `--entry 0x14F14` resolve o próximo case do formatador sem
 alterar a ISA/inferência; as nove raízes traduzem 10676 blocos. NtOpenSymbolicLinkObject
@@ -717,3 +717,18 @@ sessão de restauração. O hello confirmou D: = `\Device\CdRom0\` e chegou à
 chamada de vídeo **AvSendTVEncoderOption (2), retorno 0x12769, opção 6**. Ainda
 sem implementação desse serviço/framebuffer. Reprodução, perfil e evidência no
 [ADR-0046](../adr/0046-namespace-drive-d.md).
+
+### Encoder inicial de vídeo (ADR-0047, estado atual)
+
+AvSendTVEncoderOption atende GET_SETTINGS (6) derivado da EEPROM e cabo padrão,
+e VIDEOENABLE (9) com estado lógico de blanking. AvGetSavedDataAddress usa cold
+boot sem framebuffer herdado. São 25/69 serviços com variantes limitadas. Result
+é RAM guest validada integralmente; EAX=0 nas chamadas VOID não é o resultado.
+Base/opção/parâmetros/configuração sem modelo recusam, sem efeito parcial.
+
+KRNL v9/AVST v1 guarda ID de perfil e enabled; v1–v8 migram para cold boot com
+saída desabilitada. Padrão/flags continuam na EEPROM, sem cache ou Clock novo.
+As mesmas nove raízes/10676 blocos agora chegam a **MmAllocateContiguousMemoryEx
+(166), retorno 0x12C01**, pedido de 1.228.800 bytes/4 KiB/RW|WRITECOMBINE para
+640×480×32. Framebuffer, programação de modo/MMIO e apresentação ainda faltam.
+Reprodução/evidência no [ADR-0047](../adr/0047-encoder-video-cold-boot.md).

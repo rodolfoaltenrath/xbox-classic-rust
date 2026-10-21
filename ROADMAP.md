@@ -1147,6 +1147,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 3-AOT / 4 | NOP multibyte e raízes de startup da thread (ADR-0044) | — | NOP r/m16/r/m32 sem acesso ao operando; seis raízes/9454 blocos compilam e executam até PsCreateSystemThreadEx, ainda sem modelo; 357 testes workspace/doctests e 156 nativos debug/release; permanece 17/69 serviços |
 | 2026-10-21 | 4 / alpha | Bootstrap cooperativo de filha guest (ADR-0045) | — | Criação/identificação/término, pilha/TLS/TIB e prefixo KTHREAD próprios, continuação do pai e Clock único; propriedade por thread e espera em filha terminada; AOTS v2/KRNL v7/KMUT v3/THRD+TCXT v1; 365 testes workspace/doctests e 162 nativos debug/release; oito raízes/10444 blocos, próximo JMP 0x14E86 → 0x14F14; 20/69 serviços |
 | 2026-10-21 | 4 / alpha | Namespace guest D: e chegada ao vídeo (ADR-0046) | — | Open/create/close de links, consulta de ausência, handles compartilhados, alvo copiado; KRNL v8/SYML v1; 372 testes workspace/doctests e 165 nativos debug/release; nove raízes/10676 blocos, D: confirmado no hello, próxima chamada AvSendTVEncoderOption (2), retorno 0x12769; 23/69 serviços |
+| 2026-10-21 | 4 / alpha | Encoder e perfil de vídeo cold boot (ADR-0047) | — | GET_SETTINGS derivado da EEPROM/cabo padrão, VIDEOENABLE com estado de blanking e ausência explícita de framebuffer herdado; KRNL v9/AVST v1; hello pede 1.228.800 bytes para 640×480×32 em MmAllocateContiguousMemoryEx (166), retorno 0x12C01; 380 testes workspace/doctests e 168 nativos debug/release; 25/69 serviços |
 
 ---
 
@@ -1155,7 +1156,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `23/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `25/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de escalonamento geral do nxdk hello. O bootstrap de uma filha existe (ADR-0045).
@@ -1192,8 +1193,12 @@ Em ordem:
    case do CRT: **10676 blocos**. O automount agora consulta/cria D: no namespace
    guest; open/close de links usam handles reais e destino copiado, sem montar
    mídia na VFS. KRNL v8/SYML v1 preserva esse estado (ADR-0046). O próximo
-   bloqueio é **AvSendTVEncoderOption (2)**, retorno 0x12769, opção 6. Investigar
-   o caminho público de vídeo e continuar por demanda. Espera na filha terminada
+   bloqueio passou pelo encoder: GET_SETTINGS responde padrão/flags da EEPROM e
+   cabo padrão; VIDEOENABLE guarda blanking, AvGetSavedDataAddress usa cold boot
+   sem framebuffer herdado. KRNL v9/AVST v1 preserva perfil/estado (ADR-0047).
+   Agora falta **MmAllocateContiguousMemoryEx (166)**, retorno 0x12C01, pedido
+   de 1.228.800 bytes para 640×480×32. Modelar contiguidade física e aliases do
+   vídeo; depois programação de modo/MMIO e apresentação. Espera na filha terminada
    funciona; espera viva, yield/Sleep, preempção, múltiplas filhas, NtClose de mutant/thread e
    liberação ainda faltam (ADR-0045). Os recursos são retidos nesta versão.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host

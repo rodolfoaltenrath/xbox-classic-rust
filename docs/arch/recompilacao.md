@@ -182,8 +182,8 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
-inclui `AOTC` v7, memória e estado `KRNL` v8 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+inclui `AOTC` v7, memória e estado `KRNL` v9 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1 / `SYML` v1 / `AVST` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -278,6 +278,13 @@ D: para diretório de CdRom0, independente de mounts da VFS. Open/create/close d
 links usam estado e handles guest, sem acesso ao host. KRNL v8/SYML v1 salva
 destino e handles, valida colisões entre tipos e migra v1–v7 para namespace vazio.
 NtClose de mutant/thread e ligação do namespace aos serviços de arquivo faltam.
+
+O [ADR-0047](../adr/0047-encoder-video-cold-boot.md) acrescenta o perfil de encoder
+cabo padrão/cold boot: consulta deriva os settings da EEPROM e blanking guarda
+enabled. Sem framebuffer herdado, AvGetSavedDataAddress retorna NULL. Não há
+GPU, apresentação, scanout ou vblank por essa entrega. KRNL v9/AVST v1 salva
+perfil/estado; v1–v8 migram com saída desabilitada. Nenhum Clock ou configuração
+EEPROM é duplicado. Memória fisicamente contígua e programação do modo faltam.
 ([ADR-0043](../adr/0043-alocacao-virtual-guest.md)).
 
 ## Evidência e limites

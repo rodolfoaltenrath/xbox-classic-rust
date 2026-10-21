@@ -30,6 +30,7 @@ mod strings;
 mod system_time;
 mod threads;
 mod timing;
+mod video;
 mod virtual_memory;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
@@ -72,6 +73,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&interlocked::sources(output));
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
+    main.push_str(&video::sources(output));
     main.push_str(&system_time::sources(output));
     main.push_str(&critical::sources(output));
     main.push_str(&sha::sources(output));

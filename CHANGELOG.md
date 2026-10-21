@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: encoder de vídeo com GET_SETTINGS derivado da EEPROM e perfil de
+  cabo padrão, VIDEOENABLE/blanking com estado explícito e AvGetSavedDataAddress
+  no cold boot sem framebuffer herdado (25/69 serviços). KRNL v9/AVST v1 guarda
+  o estado e migra v1–v8. O hello pede 1.228.800 bytes para 640×480×32 e para em
+  MmAllocateContiguousMemoryEx (166), retorno 0x12C01; alocação/apresentação ainda
+  pendentes. 380 testes workspace/doctests e 168 nativos debug/release; perfil
+  e evidência real no ADR-0047.
+
 - Fase 4/alpha: namespace guest mínimo de D: com NtOpenSymbolicLinkObject,
   IoCreateSymbolicLink e NtClose limitado a links (23/69 serviços). Consulta de
   ausência, criação/cópia, handles compartilhados, fechamento sem desmontagem e

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`63ad4ee`** e nas alterações
-locais do **ADR-0046**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-21**, com base no commit **`a4a2eb7`** e nas alterações
+locais do **ADR-0047**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -42,7 +42,9 @@ que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
 64 KiB zerados em 0x30000, que o CRT usa. Uma filha guest com pilha/TLS próprios
 já executa bootstrap e StartRoutine, mantendo o pai estacionado. O bloqueio
-atual é **AvSendTVEncoderOption (2)**, retorno **0x12769**, opção 6.
+atual é **MmAllocateContiguousMemoryEx (166)**, retorno **0x12C01**.
+O hello já consultou o padrão de vídeo e pediu 1.228.800 bytes de memória
+fisicamente contígua para o framebuffer de 640×480×32.
 O namespace guest já permite consultar/criar D: para `\Device\CdRom0\`;
 isso ainda não conecta mídia à VFS nem produz imagem.
 A frequência calculada pelo hello foi conferida em RAM:
@@ -56,9 +58,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Serviços anteriores, bootstrap de uma filha e namespace D:; 23/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Serviços anteriores, bootstrap, namespace D: e encoder inicial; 25/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Bootstrap, StartRoutine e montagem lógica de D: executam; para em AvSendTVEncoderOption (2); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Configurações de vídeo consultadas; para na alocação do framebuffer, MmAllocateContiguousMemoryEx (166); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -582,7 +584,7 @@ Validação: **365 testes workspace/doctests e 162 nativos debug/release**
 Clippy global/fmt/diff aprovados. Fontes, perfil, migração e reprodução no
 [ADR-0045](docs/adr/0045-bootstrap-thread-guest.md); logs `target/threads-*`.
 
-### Namespace D: e chegada ao vídeo (ADR-0046, estado atual)
+### Namespace D: e chegada ao vídeo (ADR-0046)
 
 Incluir `--entry 0x14F14` às oito raízes anteriores destravou o case do CRT sem
 alterar ISA/inferência: **10676 blocos**. A execução revelou NtOpenSymbolicLinkObject
@@ -621,6 +623,47 @@ Validação: **372 testes workspace/doctests e 165 casos nativos debug/release**
 [ADR-0046](docs/adr/0046-namespace-drive-d.md); logs `target/links-*` e
 `target/crt-case-*`. O teste real adicional está em
 `target/alpha-hello-crt-case-20261021/tests/drive_mount.rs` (local, ignorado).
+
+### Encoder inicial e pedido do framebuffer (ADR-0047, estado atual)
+
+AvSendTVEncoderOption (2), GET_SETTINGS (6), escreve padrão/flags dos bytes
+EEPROM e cabo padrão. O perfil inicial retorna **0x00480101**; a preferência
+480p da EEPROM não implica saída HD, pois o SDK filtra os modos pelo cabo.
+UNKNOWN padrão/flags, base/opções/param sem modelo e Result fora de RAM gravável
+recusam sem store parcial. A API é VOID; EAX=0 é convenção, Result contém os dados.
+
+GET_SETTINGS destravou VIDEOENABLE (9), Param=1/Result=NULL, retorno 0x12DAD.
+O estado lógico enabled agora é explícito: Param é blanking (1 desabilita,
+0 habilita). Perfil cold boot inicia desabilitado e sem framebuffer herdado;
+AvGetSavedDataAddress (1), retorno 0x12B45, devolve NULL por essa invariante.
+AvSetSavedDataAddress permanece sem implementação. São **25/69 serviços**.
+Nada disso programa a NV2A, entrega vblank ou apresenta uma imagem.
+
+**KRNL v9/AVST v1** guarda ID StandardCableColdBootV1=1 e enabled canônico.
+Padrão/flags seguem autoritativos na EEPROM; não há cache/Clock duplicado.
+KRNL v1–v8 migram para saída desabilitada sem herdar estado do destino.
+AOTS v2/AOTC v7/KMUT v3 e demais seções não mudaram. Formatos inválidos recusam.
+
+As nove raízes/10676 blocos agora chegam a **MmAllocateContiguousMemoryEx (166)**,
+retorno **0x12C01**, argumentos `0x12C000, 0, 0x7FFFFFFF, 0x1000, 0x404`.
+São **1.228.800 bytes para 640×480×4**, alinhamento 4 KiB e RW|WRITECOMBINE.
+Ainda não há framebuffer alocado. O teste real confirmou settings em 0x27D38,
+blanking, D:/thread ativa e snapshot integral com replay byte a byte: **9777
+retired e 38 atendimentos** nessa fronteira.
+
+Próximo: representar frames fisicamente contíguos, faixa/alinhamento/proteção,
+endereços guest/alias usados pelo vídeo, falhas sem efeitos e snapshot. Não
+reutilizar a reserva virtual fragmentada fingindo contiguidade. Depois vêm
+programação de modo/MMIO, imagem e apresentação. Referência pública, perfil e
+reprodução no [ADR-0047](docs/adr/0047-encoder-video-cold-boot.md).
+
+Oito testes de kernel e três novos casos no Rust emitido cobrem dados/ABI,
+falhas, blanking, EEPROM e snapshots/migração. Aceite: **380 testes
+workspace/doctests e 168 nativos debug/release** (152 fora de x86_64), Clippy
+global, fmt, diff e links aprovados. Evidência local:
+`target/video-workspace.log`, `target/video-native-release.log`,
+`target/video-clippy.log`, `target/video-hello-effect.log` e teste ignorado
+`target/alpha-hello-crt-case-20261021/tests/video_startup.rs`.
 
 ### IRQL explícito da CPU guest (ADR-0042)
 
@@ -950,7 +993,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 165 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 168 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -971,11 +1014,11 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 63ad4ee + alterações locais do ADR-0046.
+> alterar código. Base documentada: a4a2eb7 + alterações locais do ADR-0047.
 > A entrega 1 tem aceite local; TLS/ABI e bootstrap de uma filha existem, mas
-> faltam serviços/escalonamento para concluir o hello. Kernel: 23/69, 3/3 dados.
-> Snapshot: AOTS v2, AOTC v7, KRNL v8, KMUT v3, THRD/TCXT v1, além de
-> EEPR/PCIC/STIM/IRQL/VMEM/SYML v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
+> faltam serviços/escalonamento para concluir o hello. Kernel: 25/69, 3/3 dados.
+> Snapshot: AOTS v2, AOTC v7, KRNL v9, KMUT v3, THRD/TCXT v1, além de
+> EEPR/PCIC/STIM/IRQL/VMEM/SYML/AVST v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
 > scheduler geral ou IRQ/APC/DPC; prefixo KTHREAD da filha termina em TlsData+0x28.
 > NtAllocateVirtualMemory (184) atende só base nula/ZeroBits=0/flags=0x3000/PAGE_RW,
 > em Passive. Reserva+commit privado, first-fit após a imagem inteira, base 64 KiB,
@@ -989,13 +1032,17 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > 0x18FC0, 0x18C90, 0x139B0 e 0x14F14. Passa por bootstrap e automount de D:.
 > Namespace inicialmente sem D:, consulta/criação/open/close de links com handles
 > reais e alvo copiado; não conecta mídia à VFS. Próximo bloqueio:
-> AvSendTVEncoderOption (2), retorno 0x12769, args 0xFD000000, 6, 0, 0x27D38.
-> Investigar a opção 6 no caminho público de vídeo e continuar por demanda.
+> MmAllocateContiguousMemoryEx (166), retorno 0x12C01, args 0x12C000, 0,
+> 0x7FFFFFFF, 0x1000, 0x404. Modelar contiguidade física, endereço/alias guest,
+> faixa/alinhamento/proteção, erros sem efeito e snapshot. Reserva virtual com
+> frames fragmentados não satisfaz esse contrato. Encoder já consulta EEPROM,
+> usa cabo padrão (settings 0x00480101), guarda blanking e não herda framebuffer.
+> Modo/MMIO/framebuffer/apresentação ainda faltam; sem imagem produzida.
 > Filha roda primeiro, pai estacionado; término noreturn/RET restaura o pai.
 > Espera em filha terminada funciona; espera viva, yield/Sleep, preempção,
 > múltiplas filhas, NtClose de mutant/thread, liberação e abandono ainda faltam.
 > Não pular para main ou criar thread host. BIOS/mídia comercial não são necessárias.
-> Use Rust 1.98.1. Registro atual: 372 testes workspace/doctests e 165 casos
+> Use Rust 1.98.1. Registro atual: 380 testes workspace/doctests e 168 casos
 > nativos debug/release. Execução completa/framebuffer
 > seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
 > alpha, roadmap, changelog e evidências ao avançar.
