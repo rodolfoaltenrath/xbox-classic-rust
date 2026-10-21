@@ -1145,6 +1145,7 @@ Uma linha por marco concluído. Append-only.
 
 | 2026-10-20 | 4 / 5 | Reserva+commit privado guest (ADR-0043) | — | NtAllocateVirtualMemory, frames próprios zerados, first-fit após imagem completa e publicação planejada; KRNL v6/VMEM v1 com validação de Bus/MMU/bitmap; 354 testes workspace/doctests e 153 nativos debug/release; hello usa 64 KiB em 0x30000 e chega a PsCreateSystemThreadEx (255); 17/69 serviços |
 | 2026-10-21 | 3-AOT / 4 | NOP multibyte e raízes de startup da thread (ADR-0044) | — | NOP r/m16/r/m32 sem acesso ao operando; seis raízes/9454 blocos compilam e executam até PsCreateSystemThreadEx, ainda sem modelo; 357 testes workspace/doctests e 156 nativos debug/release; permanece 17/69 serviços |
+| 2026-10-21 | 4 / alpha | Bootstrap cooperativo de filha guest (ADR-0045) | — | Criação/identificação/término, pilha/TLS/TIB e prefixo KTHREAD próprios, continuação do pai e Clock único; propriedade por thread e espera em filha terminada; AOTS v2/KRNL v7/KMUT v3/THRD+TCXT v1; 365 testes workspace/doctests e 162 nativos debug/release; oito raízes/10444 blocos, próximo JMP 0x14E86 → 0x14F14; 20/69 serviços |
 
 ---
 
@@ -1153,10 +1154,11 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `17/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `20/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
-   de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
+   de escalonamento geral do nxdk hello. O bootstrap de uma filha existe (ADR-0045).
+   SHA-1 Init/Update/Final tem contexto opaco na RAM
    (ADR-0033), e a consulta integral usa a EEPROM explícita da sessão (ADR-0034).
    Espera e liberação de mutant estão implementadas sem bloquear o host (ADR-0035).
    Seções críticas (`291`, `277`, `294`, `306`) agora têm estrutura de 28 bytes
@@ -1181,13 +1183,15 @@ Em ordem:
    e ZeroBits=0, frames reais zerados e saídas validadas. KRNL v6/VMEM v1 salva
    regiões e confere Bus/MMU/bitmap; FRM0 v1 valida contagem/padding (ADR-0043).
    O hello usa 64 KiB em 0x30000 e passa heap+8 como contexto da thread.
-   **O próximo bloqueio é PsCreateSystemThreadEx (255)**, retorno `0x13BF1`:
-   pilha 0x10000, TLS 0x114, StartRoutine 0x18FC0, contexto 0x30008,
-   SystemRoutine 0x13C70. As duas entradas foram investigadas e incluídas como
-   raízes adicionais; NOP multibyte em 0x13C68 foi implementado e seis raízes
-   traduzem 9454 blocos (ADR-0044). O módulo ampliado executa até a mesma recusa,
-   sem criação de thread. Modelar threads guest com
-   handle/identidade, pilha/TLS, espera/término e snapshot das continuações.
+   PsCreateSystemThreadEx (255), KeGetCurrentThread (104) e término (258) agora
+   atendem o bootstrap de uma filha: pilha/TLS/TIB e prefixo KTHREAD próprios,
+   continuação do pai e Clock único, sem threads host. O hello passa por TLS/FLS
+   e StartRoutine; main_wrapper=0x18C90 e inicializador=0x139B0 acrescentam duas
+   raízes às seis anteriores: **10444 blocos**. O próximo bloqueio medido é
+   **JMP 0x14E86 → 0x14F14**, case de tabela do CRT ainda sem tradução.
+   Incluir/inferir o destino e continuar por demanda. Espera na filha terminada
+   funciona; espera viva, yield/Sleep, preempção, múltiplas filhas, NtClose e
+   liberação ainda faltam (ADR-0045). Os recursos são retidos nesta versão.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
    (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar

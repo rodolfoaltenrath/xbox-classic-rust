@@ -4,6 +4,7 @@ use xbox_core::Clock;
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_formats::Xbe;
+use xbox_kernel::dispatch::{CHILD_THREAD, ThreadPhase};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
 use crate::Result;
@@ -11,6 +12,7 @@ use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 
 mod msr;
 mod muldiv;
+mod threads;
 pub use msr::CpuProfile;
 pub use muldiv::{divide_values, multiply_values};
 pub use xbox_kernel::imports::entry as kernel_entry;
@@ -245,6 +247,7 @@ pub struct Session {
     pub state: State,
     pub bus: Bus,
     pub kernel: xbox_kernel::dispatch::Dispatcher,
+    parent: Option<threads::ThreadContext>,
 }
 
 impl Session {
@@ -259,6 +262,7 @@ impl Session {
         Ok(Self {
             state,
             bus,
+            parent: None,
             kernel: xbox_kernel::dispatch::Dispatcher::for_image(
                 xbe.header.base_address,
                 xbe.header.size_of_image,
@@ -281,8 +285,23 @@ impl Session {
     /// que o snapshot da sessão já exige. Assim um serviço faltante pode ser implementado
     /// e a execução retomada do snapshot, sem estado escondido no host.
     pub fn atender_kernel(&mut self) -> Result<()> {
+        use xbox_kernel::dispatch::ORDINAL_PS_TERMINATE_SYSTEM_THREAD;
+        if self.state.stopped_exit().is_some() {
+            return Err(
+                xbox_core::Error::format("CPU parada não pode atender novo serviço").into(),
+            );
+        }
         let call = self.kernel_call()?;
-        self.validate_kernel_return(&call)?;
+        let terminating = call.export.ordinal == ORDINAL_PS_TERMINATE_SYSTEM_THREAD;
+        if terminating {
+            if self.parent.is_none() {
+                return Err(
+                    xbox_kernel::dispatch::Erro::ThreadState("término sem pai suspenso").into(),
+                );
+            }
+        } else {
+            self.validate_kernel_return(&call)?;
+        }
         let atendimento = self.kernel.atender_com_clock(
             &mut self.bus,
             self.state.eip,
@@ -291,8 +310,42 @@ impl Session {
         )?;
         // O serviço pode escrever sobre a pilha de argumentos/retorno. Usar a
         // continuação capturada, sem nova leitura falível depois de publicar efeitos.
-        self.apply_kernel_return(&call, atendimento.eax);
+        if terminating {
+            // O kernel já validou o término; não retornar para código após noreturn.
+            if let Some(parent) = self.parent.take() {
+                parent.restore(&mut self.state);
+            }
+        } else {
+            self.apply_kernel_return(&call, atendimento.eax);
+            if let Some(child) = self.kernel.start_ready_thread() {
+                self.parent = Some(threads::ThreadContext::capture(&self.state));
+                self.state.regs = [0; 8];
+                self.state.regs[ESP] = child.esp();
+                self.state.eip = child.entry;
+                self.state.eflags = 2 | INTERRUPT_FLAG;
+                self.state.fs_base = child.tib();
+                self.state.repeat = None;
+                self.state.returned = false;
+            }
+        }
         Ok(())
+    }
+
+    pub fn has_parked_parent(&self) -> bool {
+        self.parent.is_some()
+    }
+
+    /// RET do `SystemRoutine` é término local da filha; o main deve consultar esta
+    /// fronteira antes de anunciar que o processo inteiro retornou.
+    pub fn complete_thread_return(&mut self) -> Result<bool> {
+        if !self.state.returned || self.parent.is_none() {
+            return Ok(false);
+        }
+        self.kernel.terminate_running_thread(self.state.regs[EAX])?;
+        if let Some(parent) = self.parent.take() {
+            parent.restore(&mut self.state);
+        }
+        Ok(true)
     }
 
     /// O dispatcher chama isto somente após implementar o serviço correspondente.
@@ -325,14 +378,19 @@ impl Session {
 
 impl Snapshot for Session {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTS", 1);
+        out.section("AOTS", 2);
         self.state.save(out);
         self.bus.save(out);
         self.kernel.save(out);
+        out.bool(self.parent.is_some());
+        if let Some(parent) = &self.parent {
+            parent.save(out);
+        }
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        if inp.section("AOTS", 1)? != 1 {
+        let version = inp.section("AOTS", 2)?;
+        if !matches!(version, 1 | 2) {
             return Err(SnapshotError::BadValue {
                 section: "AOTS",
                 what: "versão de sessão desconhecida",
@@ -343,7 +401,36 @@ impl Snapshot for Session {
         self.bus.load(inp)?;
         self.kernel.load(inp)?;
         self.kernel
-            .restore_memory_context(original_image, &self.bus)
+            .restore_memory_context(original_image, &self.bus)?;
+        self.parent = if version >= 2 && inp.bool()? {
+            let mut context = threads::ThreadContext::capture(&State::new(0));
+            context.load(inp)?;
+            context.validate(&self.bus)?;
+            Some(context)
+        } else {
+            None
+        };
+        if (self.kernel.current_thread() == CHILD_THREAD) != self.parent.is_some()
+            || self
+                .kernel
+                .child_thread()
+                .is_some_and(|child| child.phase == ThreadPhase::Ready)
+        {
+            return Err(SnapshotError::BadValue {
+                section: "AOTS",
+                what: "CPU, thread ativa e pai suspenso incoerentes",
+            });
+        }
+        if let Some(child) = self.kernel.child_thread().filter(|_| self.parent.is_some())
+            && (self.state.fs_base != child.tib()
+                || !(child.region.base..=child.stack_top()).contains(&self.state.regs[ESP]))
+        {
+            return Err(SnapshotError::BadValue {
+                section: "AOTS",
+                what: "CPU ativa diverge do TLS/pilha da filha",
+            });
+        }
+        Ok(())
     }
 }
 

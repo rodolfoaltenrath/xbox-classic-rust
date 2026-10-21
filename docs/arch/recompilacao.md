@@ -181,9 +181,9 @@ guest sem nome; seções sob demanda, ambiente XAPI e escalonamento continuam
 pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
-`Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v7, memória e estado `KRNL` v6 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1 /
-`STIM` v1 / `IRQL` v1 / `VMEM` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
+`Session` possui CPU, bus, dispatcher HLE e continuação do pai. O snapshot integral `AOTS` v2
+inclui `AOTC` v7, memória e estado `KRNL` v7 / `KMUT` v3 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1 / `VMEM` v1 / `THRD` v1 / `TCXT` v1, com regiões virtuais, handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -262,7 +262,16 @@ KRNL v6/VMEM v1 salva regiões sem duplicar os frames do Bus. Session confere
 headers, posse de RAM, permissões e ausência de aliases privados indevidos.
 KRNL v1–v5 migra sem regiões, recuperando o intervalo do XBE correspondente na
 carga de Session. FRM0 v1 valida bitmap/contagem/padding antes do commit.
-Formato atual: AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/VMEM v1
+Formato nessa entrega: AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/VMEM v1
+
+O [ADR-0045](../adr/0045-bootstrap-thread-guest.md) acrescenta uma filha guest
+cooperativa: o pai fica estacionado, a filha tem pilha/TLS/TIB próprios e entra
+em SystemRoutine(StartRoutine, Context). KeGetCurrentThread expõe só o prefixo
+KTHREAD requerido pelo bootstrap. O término restaura registradores/flags/FS do
+pai; Clock/retired/perfil de CPU/IRQL permanecem únicos. Sem threads host ou Bus
+compartilhado. Espera imediata em filha terminada é suportada; preempção, yield,
+espera bloqueante e múltiplas filhas não. AOTS v2/KRNL v7/KMUT v3 acrescentam
+THRD/TCXT v1 e migram versões anteriores sem filha/pai suspenso.
 ([ADR-0043](../adr/0043-alocacao-virtual-guest.md)).
 
 ## Evidência e limites

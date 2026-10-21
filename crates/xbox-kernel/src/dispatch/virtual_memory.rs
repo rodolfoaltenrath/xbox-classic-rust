@@ -256,8 +256,10 @@ impl VirtualMemory {
         }
         *bus.mmu_mut() = mmu;
         *bus.frames_mut() = allocator;
-        bus.escrever_u32(GuestVirt(base_out), base)?;
-        bus.escrever_u32(GuestVirt(size_out), size)?;
+        if base_out != 0 {
+            bus.escrever_u32(GuestVirt(base_out), base)?;
+            bus.escrever_u32(GuestVirt(size_out), size)?;
+        }
         let at = self
             .allocations
             .partition_point(|region| region.base < base);
@@ -269,8 +271,38 @@ impl VirtualMemory {
     }
 }
 
+impl VirtualMemory {
+    /// Recurso privado do kernel, planejado como as demais regiões committed.
+    pub(super) fn allocate_resource(
+        &mut self,
+        bus: &mut Bus,
+        size: u32,
+    ) -> Result<Option<VirtualAllocation>, Erro> {
+        self.validate_bus(bus).map_err(Erro::MemoriaVirtual)?;
+        let Some(image) = self.image else {
+            return Err(Erro::MemoriaVirtual("imagem ausente"));
+        };
+        if size == 0
+            || !size.is_multiple_of(PAGE)
+            || size / PAGE > bus.frames().livres()
+            || self.allocations.len() >= MAX_VIRTUAL_ALLOCATIONS
+        {
+            return Ok(None);
+        }
+        let Some(base) = size
+            .checked_add(PAGE)
+            .and_then(|guarded| find_base(bus, image, guarded))
+        else {
+            return Ok(None);
+        };
+        let region = VirtualAllocation { base, size };
+        let result = self.publish(bus, region, 0, 0)?;
+        Ok((result.eax == STATUS_SUCCESS).then_some(region))
+    }
+}
+
 // Inspeção do snapshot não marca Accessed/Dirty nem acessa MMIO.
-fn peek_word(bus: &Bus, address: u32) -> Option<u32> {
+pub(super) fn peek_word(bus: &Bus, address: u32) -> Option<u32> {
     let mut bytes = [0; 4];
     for (offset, byte) in bytes.iter_mut().enumerate() {
         let (pa, perm) = bus
@@ -296,7 +328,7 @@ fn find_base(bus: &Bus, image: ImageRange, size: u32) -> Option<u32> {
         base = align(occupied + PAGE, GRANULARITY)?;
     }
 }
-fn physical_word(bus: &Bus, pointer: u32) -> [GuestPhys; 4] {
+pub(super) fn physical_word(bus: &Bus, pointer: u32) -> [GuestPhys; 4] {
     std::array::from_fn(|i| {
         bus.mmu()
             .consultar(GuestVirt(pointer + i as u32))

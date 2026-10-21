@@ -4,8 +4,7 @@ use std::collections::BTreeMap;
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 
-/// Identidade reservada para a única thread do perfil AOT atual.
-/// O scheduler futuro deverá fornecer a identidade da thread em execução.
+/// Identidade reservada para a thread inicial; a filha usa `CHILD_THREAD`.
 pub const INITIAL_THREAD: u32 = 1;
 /// Limite de recursos do perfil, independente da memória disponível no host.
 pub const MAX_MUTANTS: usize = 4096;
@@ -66,6 +65,25 @@ impl Default for Mutants {
 impl Mutants {
     pub(super) fn get(&self, handle: u32) -> Option<&Mutant> {
         self.objects.get(&handle)
+    }
+
+    pub(super) const fn next_handle(&self) -> u32 {
+        self.next
+    }
+    pub(super) fn reserve_handle(&mut self) {
+        self.next += 4;
+    }
+    pub(super) fn has_owner(&self, thread: u32) -> bool {
+        self.objects
+            .values()
+            .any(|object| object.owner == Some(thread))
+    }
+    pub(super) fn owners_valid(&self, child_exists: bool) -> bool {
+        self.objects.values().all(|object| {
+            object
+                .owner
+                .is_none_or(|owner| owner == INITIAL_THREAD || child_exists && owner == 2)
+        })
     }
 
     /// Reserva lógica, ainda sem efeito: o handle só existe após o store guest.
@@ -140,7 +158,7 @@ impl Snapshot for Mutants {
     fn save(&self, out: &mut SnapshotWriter) {
         // v2 permite recursão acima de 1, que a espera do ADR-0035 passou a produzir.
         // A v1 só representava os estados iniciais de criação.
-        out.section("KMUT", 2);
+        out.section("KMUT", 3);
         out.u32(self.next);
         out.u32(self.objects.len() as u32);
         for (&handle, object) in &self.objects {
@@ -155,8 +173,8 @@ impl Snapshot for Mutants {
             section: "KMUT",
             what,
         };
-        let version = inp.section("KMUT", 2)?;
-        if !matches!(version, 1 | 2) {
+        let version = inp.section("KMUT", 3)?;
+        if !matches!(version, 1..=3) {
             return Err(bad("versão de objetos desconhecida"));
         }
         let next = inp.u32()?;
@@ -174,14 +192,14 @@ impl Snapshot for Mutants {
                 return Err(bad("handle inválido, duplicado ou fora de ordem"));
             }
             // v1 só sabia gravar os estados de criação; v2 aceita recursão adquirida.
-            // As duas exigem coerência entre proprietário e contagem, e só a
-            // identidade de thread que existe neste perfil.
+            // v3 acrescenta a filha; KRNL/THRD confere se ela realmente existe.
             let coerente = match (owner, recursion) {
                 // Livre com contagem zero, ou adquirido uma vez: os dois estados que a
                 // v1 sabia gravar.
                 (0, 0) | (INITIAL_THREAD, 1) => true,
                 // Recursão acima de 1 só a partir da v2, que a espera introduziu.
                 (INITIAL_THREAD, n) => version >= 2 && (2..=MAX_RECURSION).contains(&n),
+                (2, n) => version >= 3 && (1..=MAX_RECURSION).contains(&n),
                 _ => false,
             };
             if !coerente {

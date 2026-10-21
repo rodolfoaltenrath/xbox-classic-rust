@@ -130,8 +130,9 @@ No perfil TLS nxdk, a área fica no topo da pilha: `align16(raw + zero_fill) + 4
 bytes, com slot apontando ao payload alinhado. O índice contém o deslocamento
 negativo em palavras a partir de `FS:[4]`. Template e zero-fill são inicializados;
 ESP e retorno sentinela ficam abaixo da área. O tamanho é limitado a meia pilha.
-Callbacks e alinhamento acima de 16 bytes são recusados. Apenas o perfil inicial
-de uma thread está implementado; o CRT pode escrever novamente o mesmo índice.
+Callbacks e alinhamento acima de 16 bytes são recusados. O perfil inicial é
+complementado pelo bootstrap de uma filha guest do ADR-0045; o CRT pode escrever
+novamente o mesmo índice.
 
 FS é uma base guest explícita em `State`, aplicada aos operandos de memória;
 LEA usa só o offset. Inferência estática não confunde leitura por FS com um
@@ -186,17 +187,20 @@ flags aritméticas indefinidas. O código gerado usa funções por bloco, com at
 diretório novo/vazio:
 
 ```powershell
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
 Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
 Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
 o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
-são **9027 blocos** e o bloqueio real é **PsCreateSystemThreadEx (255)**, retorno
-`0x13BF1`, após frequência PCI, troca de LONG, tempo guest, IRQL e alocação de 64 KiB.
-Isso ainda é execução inicial, sem framebuffer.
-Contrato/evidência atual: [ADR-0043](../adr/0043-alocacao-virtual-guest.md).
+são **9027 blocos**, e as entradas de SystemRoutine/StartRoutine elevam para 9454
+(ADR-0044). A criação agora funciona: uma filha com pilha/TLS/TIB próprios executa
+bootstrap, TLS/FLS e StartRoutine enquanto o pai aguarda. Duas raízes reveladas
+pela execução, main_wrapper=0x18C90 e inicializador=0x139B0, elevam para **10444
+blocos**. O bloqueio medido é **JMP 0x14E86 → 0x14F14**, case do CRT ainda sem
+tradução. Ainda sem framebuffer ou execução completa.
+Contrato/evidência atual: [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
 
 Na retomada Windows de 2026-10-21, incluir também as entradas de thread
 `0x13C70` (SystemRoutine) e `0x18FC0` (StartRoutine) revelou NOP multibyte em
@@ -211,22 +215,32 @@ cópia e snapshot não dependem de registro host. Final preserva o contexto por
 política local. Limites: [ADR-0033](../adr/0033-sha1-contexto-guest.md).
 
 O padrão AOT usa EEPROM sintética NTSC-M/português do gerador existente. API
-permite bytes explícitos; origem e conteúdo ficam em KRNL v6/EEPR v1 no snapshot atual.
+permite bytes explícitos; origem e conteúdo ficam em KRNL v7/EEPR v1 no snapshot atual.
 Não há leitura automática de arquivo/BIOS, ligação com SystemConfig ou persistência.
 Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
 
 `Session` possui `kernel: Dispatcher`; a API atual é `session.atender_kernel()`.
 Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por
-`Snapshot` (`AOTS` v1), e não só `state`/`bus`. O snapshot CPU agora é `AOTC`
+`Snapshot` (`AOTS` v2), e não só `state`/`bus`. O snapshot CPU agora é `AOTC`
 v7, com perfil de CPU/MSRs guest. Regenerar projetos antigos que passavam um dispatcher externo.
 
 Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem registro
-host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
-KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
+host por endereço. `OwningThread` é a identidade guest ativa (pai 1, filha 2),
+não um ponteiro KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-O formato atual é AOTS v1/AOTC v7/KRNL v6/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1/VMEM v1. Detalhes das seções críticas:
+O formato atual é AOTS v2/AOTC v7/KRNL v7/KMUT v3/THRD v1/TCXT v1, além de
+EEPR/PCIC/STIM/IRQL/VMEM v1. Detalhes das seções críticas:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
+
+O bootstrap de uma filha preserva registradores/flags/FS do pai; Clock/retired,
+perfil de CPU e IRQL são únicos. Término noreturn ou RET local restaura o pai;
+espera na filha terminada funciona. Recursos ficam retidos. Não há preempção,
+yield/Sleep, espera viva/timeout, segunda filha ou NtClose/liberação. O prefixo
+KTHREAD exposto termina em TlsData+0x28, com página seguinte ausente; o da thread
+inicial não foi modelado. Validação atual: 365 testes workspace/doctests e 162
+nativos debug/release (146 nos demais hosts). Perfil, fontes, snapshot e falhas
+no [ADR-0045](../adr/0045-bootstrap-thread-guest.md).
 
 RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
 registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000

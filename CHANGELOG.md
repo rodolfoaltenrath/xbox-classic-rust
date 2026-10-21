@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: bootstrap cooperativo de uma filha guest, com PsCreateSystemThreadEx,
+  KeGetCurrentThread e PsTerminateSystemThread (20/69 serviços). Pilha/TLS/TIB
+  próprios, prefixo KTHREAD limitado, continuação do pai, Clock único e propriedade
+  de mutants/seções críticas por identidade ativa. Espera em filha terminada e RET
+  local; variantes não modeladas recusam. AOTS v2/KRNL v7/KMUT v3 com THRD/TCXT v1
+  e migração. 365 testes workspace/doctests e 162 nativos debug/release; hello
+  executa o bootstrap, oito raízes/10444 blocos, para no JMP 0x14E86 → 0x14F14.
+  Escalonamento geral e framebuffer pendentes (ADR-0045).
+
 - Fase 3-AOT/alpha: NOP multibyte r/m16/r/m32 baixa para Nop sem calcular/acessar
   seu operando; flags, orçamento, tempo e snapshot preservados. As entradas
   SystemRoutine/StartRoutine acrescentam duas raízes: 9454 blocos traduzem,

@@ -2,11 +2,11 @@
 //!
 //! Layout e assinaturas: nxdk 14d5ee9, lib/xboxkrnl/{xboxdef,xboxkrnl}.h (CC0).
 //! O evento embutido tem lista vazia e não sinalizada neste perfil sem scheduler.
-//! `OwningThread` contém a identidade sintética `INITIAL_THREAD`, não um KTHREAD físico.
+//! `OwningThread` contém a identidade guest ativa (1/2), não um ponteiro KTHREAD.
 
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
-use super::{Atendimento, Erro, INITIAL_THREAD, Resultado, descrever_argumentos, ram_range};
+use super::{Atendimento, Erro, Resultado, descrever_argumentos, ram_range};
 use crate::imports::Call;
 
 pub const SECTION_SIZE: usize = 28;
@@ -89,11 +89,11 @@ pub(super) fn initialize(bus: &mut Bus, call: &Call) -> Resultado {
     section.write(bus, address)
 }
 
-pub(super) fn enter(bus: &mut Bus, call: &Call, attempt: bool) -> Resultado {
+pub(super) fn enter(bus: &mut Bus, call: &Call, attempt: bool, current: u32) -> Resultado {
     let address = call.argument(bus, 0)?;
     let mut section = Section::read(bus, call, address)?;
     let owner = section.word(OWNER);
-    if owner != 0 && owner != INITIAL_THREAD {
+    if owner != 0 && owner != current {
         if attempt {
             return Ok(Atendimento { eax: 0 }); // FALSE, sem adquirir nem alterar.
         }
@@ -120,17 +120,17 @@ pub(super) fn enter(bus: &mut Bus, call: &Call, attempt: bool) -> Resultado {
     }
     section.set(LOCK, recursion);
     section.set(RECURSION, recursion + 1);
-    section.set(OWNER, INITIAL_THREAD);
+    section.set(OWNER, current);
     section.write(bus, address)?;
     Ok(Atendimento {
         eax: u32::from(attempt),
     })
 }
 
-pub(super) fn leave(bus: &mut Bus, call: &Call) -> Resultado {
+pub(super) fn leave(bus: &mut Bus, call: &Call, current: u32) -> Resultado {
     let address = call.argument(bus, 0)?;
     let mut section = Section::read(bus, call, address)?;
-    if section.word(OWNER) != INITIAL_THREAD {
+    if section.word(OWNER) != current {
         return Err(invalid(
             call,
             "liberação sem propriedade pela thread guest atual",

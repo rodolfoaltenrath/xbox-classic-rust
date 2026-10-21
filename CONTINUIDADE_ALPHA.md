@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`94d222a`** e nas alterações
-locais do **ADR-0044**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-21**, com base no commit **`777f5db`** e nas alterações
+locais do **ADR-0045**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -35,13 +35,15 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
-RDMSR e a leitura PCI do PLL já estão implementados. O fluxo com quatro raízes
-tinha 9027 blocos; com as entradas de startup da thread, **seis raízes traduzem
-9454 blocos**. O fluxo executado passa pela troca de LONG e por KeQuerySystemTime (128),
+RDMSR e a leitura PCI do PLL já estão implementados. Com as entradas de startup,
+main_wrapper e um inicializador, **oito raízes traduzem 10444 blocos**.
+O fluxo executado passa pela troca de LONG e por KeQuerySystemTime (128),
 que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
 prioridade explícita da CPU guest, independente de IF. Reserva+commit já entrega
-64 KiB zerados em 0x30000, que o CRT usa. O bloqueio atual é
-**PsCreateSystemThreadEx (255)**, retorno `0x13BF1`, criação da thread de main. A frequência calculada pelo hello foi conferida em RAM:
+64 KiB zerados em 0x30000, que o CRT usa. Uma filha guest com pilha/TLS próprios
+já executa bootstrap e StartRoutine, mantendo o pai estacionado. O bloqueio
+atual é **JMP indireto 0x14E86 → 0x14F14**, dentro do CRT.
+A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
@@ -52,9 +54,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange, tempo de sistema, IRQL e reserva+commit privado; 17/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | RDMSR, perfil de CPU e NOP multibyte implementados; 9454 blocos com seis raízes; execução das entradas de thread ainda pendente | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa pela alocação de 64 KiB; para em PsCreateSystemThreadEx (255); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 3 | Kernel mínimo | **Serviços anteriores e bootstrap de uma filha guest com identificação/término e pilha/TLS próprios; 20/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 4 | ISA necessária | 10444 blocos com oito raízes; próximo destino não recompilado 0x14F14 | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 5 | Execução integrada | Bootstrap e StartRoutine executam; pai estacionado; para no JMP 0x14E86 → 0x14F14; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -145,7 +147,7 @@ Commit: **`478c76d` — `feat(kernel): add nxdk TLS initialization and AOT impor
 | TLS nxdk | `align16(raw + zero_fill) + 4`; slot autorreferente e índice negativo |
 | Proteções | Patches em dados RO restauram permissões; páginas executáveis não são alteradas |
 | ABI | Stdcall limpa argumentos; cdecl deixa a limpeza ao chamador; fastcall usa ECX/EDX e limpa só a parte na pilha |
-| Estado de execução | CPU, RAM, continuações e objetos HLE; usar snapshot integral de Session (AOTS v1) |
+| Estado de execução | CPU, RAM, contextos e objetos HLE; usar snapshot integral de Session (AOTS v2) |
 | Falta de suporte | Erro identificável; não retornar sucesso genérico para avançar |
 
 O perfil limita TLS a meia pilha e recusa callbacks e alinhamentos acima de
@@ -537,7 +539,46 @@ Registro nessa entrega: **15/69 serviços**, 3/3 dados; **342 testes workspace/d
 de kernel e cinco nativos cobrem tempo/ABI, falhas, snapshot, migração e replay.
 Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
 [ADR-0041](docs/adr/0041-tempo-sistema-guest.md); logs `target/system-time-*`.
-Threads, execução completa e framebuffer continuam pendentes.
+Threads, execução completa e framebuffer continuavam pendentes nessa entrega.
+
+### Bootstrap de uma filha guest (ADR-0045, estado atual)
+
+PsCreateSystemThreadEx (255), KeGetCurrentThread (104) e PsTerminateSystemThread
+(258) elevam o catálogo a **20/69 serviços**. Uma filha, identidade 2, executa
+enquanto o pai, identidade 1, aguarda com continuação explícita. Pilha/TLS/TIB
+próprios são RAM real zerada; o bootstrap guest inicializa slot/template/TLS/FLS.
+O prefixo KTHREAD termina em TlsData+0x28 no fim da página; acessar os campos
+seguintes falha na página ausente. Não representa ETHREAD completo.
+
+Session preserva registradores/flags/FS do pai, sem copiar Clock/retired ou
+perfil de CPU/IRQL. Mutants e seções críticas usam a identidade ativa. Handles
+são compartilhados sem colisão entre tipos. Término noreturn ou RET local
+restaura o pai; espera na filha terminada retorna WAIT_0. Recursos ficam retidos.
+OOM, saídas inválidas/aliases e variantes recusadas não publicam criação parcial.
+
+**Limites:** uma filha por sessão, sem suspensão/debugger/extensão; Passive;
+pilha 64 KiB–1 MiB, TLS zero ou 4+16*n até meia pilha. A filha roda primeiro:
+sem preempção, yield/Sleep ou garantia de progresso do pai durante laço da filha.
+Espera viva/timeout, NtClose/liberação, KTHREAD da thread inicial e abandono de
+mutant seguem ausentes. Término com mutant adquirido é recusado.
+
+Snapshot atual: **AOTS v2, AOTC v7, KRNL v7, KMUT v3, THRD/TCXT v1**, além de
+EEPR/PCIC/STIM/IRQL/VMEM v1. Valida objetos/handle/região, Bus/MMU/bitmap,
+TIB/KTHREAD/guarda, código e consistência dos contextos. Formatos antigos migram
+sem filha/pai; erro de carga exige descartar a sessão.
+
+O hello real passou por criação, KeGetCurrentThread, TLS/FLS e StartRoutine.
+CALL 0x18FF4 revelou main_wrapper=0x18C90; acrescentar a raiz deu 10170 blocos.
+O inicializador 0x139B0, chamado em 0x18E84, elevou a **10444 blocos**. As oito
+raízes são `0x19110`, `0x145E0`, `0x205E0`, `0x20889`, `0x13C70`, `0x18FC0`,
+`0x18C90`, `0x139B0`. O próximo bloqueio medido é **UnknownTarget no JMP
+0x14E86 → 0x14F14**, case de tabela do CRT. Investigar esse destino e continuar
+por demanda; o corpo de main/framebuffer ainda não foi demonstrado.
+
+Validação: **365 testes workspace/doctests e 162 nativos debug/release**
+(146 nos demais hosts), mais execução do main gerado com RET da filha.
+Clippy global/fmt/diff aprovados. Fontes, perfil, migração e reprodução no
+[ADR-0045](docs/adr/0045-bootstrap-thread-guest.md); logs `target/threads-*`.
 
 ### IRQL explícito da CPU guest (ADR-0042)
 
@@ -655,9 +696,9 @@ Trabalho restante:
 2. ~~Implementar um dispatcher para `Exit::KernelCall`~~ — concluído acima.
 3. Levantar a ordem das chamadas de inicialização a partir do CRT e do código
    compilado; implementar cada serviço necessário com teste de comportamento.
-4. Criar um modelo explícito de threads guest suficiente para a thread de `main`,
-   com TLS próprio, espera/retomada e término conforme o caminho usado pelo nxdk.
-   Não confundir o perfil inicial existente com esse escalonamento.
+4. Ampliar o bootstrap de threads do ADR-0045 quando o caminho executado exigir:
+   yield/Sleep, espera viva, progresso do pai e ciclo de vida dos handles.
+   Uma filha cooperativa já existe, mas não é um scheduler geral.
 5. Acrescentar memória/objetos, sincronização, tempo, arquivos e outros serviços
    conforme os caminhos realmente necessários. Manter os demais como erros claros.
 
@@ -867,7 +908,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 156 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 162 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -888,12 +929,12 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 94d222a + alterações locais do ADR-0044.
-> A entrega 1 tem aceite local; TLS/ABI existe, mas faltam threads/serviços para
-> concluir o hello. Kernel: 17/69 serviços com variantes limitadas, 3/3 dados.
-> Snapshot: AOTS v1, AOTC v7, KRNL v6, KMUT v2, EEPR v1, PCIC v1, STIM v1,
-> IRQL v1, VMEM v1. Clock único; tempo UTC padrão sintético 2000-01-01. IRQL
-> é estado da CPU guest independente de IF. Sem scheduler, KTHREAD ou IRQ/APC/DPC.
+> alterar código. Base documentada: 777f5db + alterações locais do ADR-0045.
+> A entrega 1 tem aceite local; TLS/ABI e bootstrap de uma filha existem, mas
+> faltam serviços/escalonamento para concluir o hello. Kernel: 20/69, 3/3 dados.
+> Snapshot: AOTS v2, AOTC v7, KRNL v7, KMUT v3, THRD/TCXT v1, além de
+> EEPR/PCIC/STIM/IRQL/VMEM v1. Clock/retired/perfil de CPU/IRQL únicos. Sem
+> scheduler geral ou IRQ/APC/DPC; prefixo KTHREAD da filha termina em TlsData+0x28.
 > NtAllocateVirtualMemory (184) atende só base nula/ZeroBits=0/flags=0x3000/PAGE_RW,
 > em Passive. Reserva+commit privado, first-fit após a imagem inteira, base 64 KiB,
 > tamanho 4 KiB, frames próprios zerados, validação integral/sem efeitos parciais.
@@ -902,15 +943,15 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > Snapshot confere posse/permissões/aliases/headers. KRNL v1–v5 migra sem alocações e
 > Session recupera o intervalo do XBE correspondente; erros exigem descartar a sessão.
 > FRM0 v1 agora valida bitmap/contagem/padding antes do commit. Nenhum unsafe novo.
-> Hello: 9454 blocos; raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70 e 0x18FC0.
-> NOP multibyte foi necessário para traduzir os caminhos de startup (ADR-0044).
-> Alocação real: 0x30000, 64 KiB, 16 frames RW; CRT passa heap+8 à nova thread.
-> Próximo bloqueio: PsCreateSystemThreadEx (255), stdcall/40, retorno 0x13BF1.
-> Args: 0x7000FE88, 0, 0x10000, 0x114, 0, 0x18FC0, 0x30008, 0, 0, 0x13C70.
-> Modelar threads guest com pilha/TLS, handle/identidade, SystemRoutine/StartRoutine,
-> espera/término e snapshot. Conferir CRT e raízes AOT antes; não pular para main
-> ou iniciar thread host. Memória comercial/BIOS não são necessárias.
-> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 357 testes
-> workspace/doctests e 156 casos nativos debug/release. Execução completa/framebuffer
+> Hello: 10444 blocos; raízes 0x19110, 0x145E0, 0x205E0, 0x20889, 0x13C70,
+> 0x18FC0, 0x18C90 e 0x139B0. Passa por criação, TLS/FLS, StartRoutine e
+> main_wrapper. Próximo bloqueio: UnknownTarget no JMP 0x14E86 → 0x14F14,
+> case de tabela do CRT ainda sem tradução. Incluir/inferir e continuar por demanda.
+> Filha roda primeiro, pai estacionado; término noreturn/RET restaura o pai.
+> Espera em filha terminada funciona; espera viva, yield/Sleep, preempção,
+> múltiplas filhas, NtClose/liberação e abandono de mutant ainda faltam.
+> Não pular para main ou criar thread host. BIOS/mídia comercial não são necessárias.
+> Use Rust 1.98.1. Registro atual: 365 testes workspace/doctests e 162 casos
+> nativos debug/release. Execução completa/framebuffer
 > seguem pendentes. Preserve AOT/bus/estado explícito e atualize continuidade,
 > alpha, roadmap, changelog e evidências ao avançar.

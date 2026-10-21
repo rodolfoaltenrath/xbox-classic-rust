@@ -129,6 +129,30 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
     );
     assert!(run.contains("EAX=62, instruções=37"), "{run}");
     check_stopped_main(cli, &output, &cargo, &target);
+    check_thread_main(cli, &output, &cargo, &target);
+}
+
+fn check_thread_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    let project = output.join("thread-main");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/thread_ret.xbe"))
+            .arg("--out")
+            .arg(&project)
+            .args(["--entry", "0x11080", "--entry", "0x11100"]),
+    );
+    let run = check(
+        Command::new(cargo)
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(project.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target),
+    );
+    assert!(
+        run.contains("EAX=0,") && run.contains("chamadas atendidas=2"),
+        "{run}"
+    );
 }
 
 fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
@@ -168,9 +192,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "156 passed"
+        "162 passed"
     } else {
-        "140 passed"
+        "146 passed"
     }
 }
 

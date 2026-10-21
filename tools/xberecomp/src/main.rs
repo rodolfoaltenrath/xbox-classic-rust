@@ -140,6 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..FATIAS {
         match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
             Exit::Returned => {
+                if session.complete_thread_return()? { continue; }
                 println!(
                     "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
                     session.state.regs[0], session.state.retired, session.kernel.atendidas()

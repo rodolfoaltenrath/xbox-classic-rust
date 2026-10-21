@@ -33,10 +33,12 @@ O [homebrew nxdk hello](docs/dev/homebrew.md) já tem build local reproduzida e
 inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
 SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
-Agora para em `PsCreateSystemThreadEx` (255). Há **17/69 serviços**, com variantes
-limitadas; threads e framebuffer seguem pendentes. As seis raízes explícitas no
-[guia do homebrew](docs/dev/homebrew.md) traduzem 9454 blocos, incluindo entradas
-de startup da thread; traduzi-las ainda não implementa sua execução.
+Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o pai
+estacionado; há **20/69 serviços**, com variantes limitadas. Oito raízes explícitas
+no [guia do homebrew](docs/dev/homebrew.md) traduzem 10444 blocos. O bloqueio atual
+é outro destino indireto ainda não recompilado, `0x14E86 → 0x14F14`, dentro do CRT.
+Escalonamento geral, execução completa e framebuffer seguem pendentes
+([ADR-0045](docs/adr/0045-bootstrap-thread-guest.md)).
 
 ## Demonstração de recompilação
 

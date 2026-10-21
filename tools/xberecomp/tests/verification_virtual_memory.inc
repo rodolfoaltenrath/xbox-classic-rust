@@ -70,6 +70,8 @@ mod virtual_memory_verification {
         let kernel=legacy.windows(4).rposition(|tag|tag==b"KRNL").unwrap();
         let vm=legacy.windows(4).rposition(|tag|tag==b"VMEM").unwrap();legacy.truncate(vm);
         legacy[kernel+4..kernel+8].copy_from_slice(&5u32.to_le_bytes());
+        let session=legacy.windows(4).position(|tag|tag==b"AOTS").unwrap();
+        legacy[session+4..session+8].copy_from_slice(&1u32.to_le_bytes());
         let mut restored=loaded();let mut inp=SnapshotReader::new(&legacy).unwrap();Snapshot::load(&mut restored,&mut inp).unwrap();
         assert_eq!(inp.remaining(),0);assert!(restored.kernel.virtual_memory().image().is_some());
         first(&mut s);boundary(&mut s);finish(&mut s);

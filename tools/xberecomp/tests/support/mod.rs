@@ -27,6 +27,7 @@ mod sha;
 mod shifts;
 mod strings;
 mod system_time;
+mod threads;
 mod timing;
 mod virtual_memory;
 
@@ -76,6 +77,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&pci::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
+    main.push_str(&threads::sources(output));
     main.push_str(&msr::sources(output));
     main.push_str(&control::sources(output));
     main.push_str(&nop::sources(output));

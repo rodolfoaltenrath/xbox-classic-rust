@@ -681,3 +681,24 @@ Essas entradas revelaram o NOP em `0x13C68`; com ele, as seis raízes traduzem
 O próximo trabalho continua sendo o modelo guest com identidade, pilha/TLS,
 SystemRoutine, contextos, espera/término e snapshot. Fonte e evidência:
 [ADR-0044](../adr/0044-nop-multibyte-raizes-thread.md).
+
+### Bootstrap de thread guest (ADR-0045, estado atual)
+
+Session executa uma filha com pilha/TLS/TIB próprios enquanto guarda a continuação
+do pai. O guest passa por SystemRoutine/StartRoutine; o kernel implementa criação,
+KeGetCurrentThread e término, com 20/69 serviços. Clock, retired, perfil de CPU e
+IRQL são únicos. Mutants e seções críticas usam a identidade ativa. Espera na
+filha terminada funciona; espera viva, preempção, yield/Sleep, múltiplas filhas,
+NtClose e liberação seguem pendentes.
+
+O main gerado trata RET da filha como término local antes de anunciar retorno
+do processo. Snapshot AOTS v2/KRNL v7/KMUT v3 acrescenta THRD/TCXT v1; versões
+antigas migram sem filha/pai suspenso. Usar Snapshot de Session completo.
+
+O hello executa bootstrap/TLS/FLS e revela duas raízes novas: `0x18C90`
+(main_wrapper) e `0x139B0` (inicializador). Somadas às seis anteriores, traduzem
+10444 blocos. O módulo executado para no **JMP 0x14E86 → 0x14F14**, próximo case
+a incluir/inferir. Ainda sem execução completa ou framebuffer. Validação atual:
+365 testes workspace/doctests, 162 casos gerados debug/release (146 fora de
+x86_64). Fontes, variantes, snapshot e comando completo no
+[ADR-0045](../adr/0045-bootstrap-thread-guest.md).

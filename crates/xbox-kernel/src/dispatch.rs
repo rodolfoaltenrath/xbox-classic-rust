@@ -32,6 +32,7 @@ mod nvram;
 mod pci;
 mod sha;
 mod system_time;
+mod threads;
 mod virtual_memory;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use irql::Irql;
@@ -41,6 +42,7 @@ pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, 
 pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use system_time::SystemTimeReference;
+pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
 pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
     STATUS_INVALID_PARAMETER, STATUS_NO_MEMORY, VirtualAllocation, VirtualMemory,
@@ -65,6 +67,9 @@ pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
 pub const ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 184;
+pub const ORDINAL_KE_GET_CURRENT_THREAD: u32 = 104;
+pub const ORDINAL_PS_CREATE_SYSTEM_THREAD_EX: u32 = 255;
+pub const ORDINAL_PS_TERMINATE_SYSTEM_THREAD: u32 = 258;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
 pub const ORDINAL_XC_SHA_FINAL: u32 = 337;
@@ -92,11 +97,14 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_INTERLOCKED_EXCHANGE,
     ORDINAL_KE_GET_CURRENT_IRQL,
+    ORDINAL_KE_GET_CURRENT_THREAD,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
     ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
+    ORDINAL_PS_CREATE_SYSTEM_THREAD_EX,
+    ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
     ORDINAL_RTL_ENTER_CRITICAL_SECTION,
     ORDINAL_RTL_INIT_ANSI_STRING,
     ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION,
@@ -129,6 +137,8 @@ pub struct Atendimento {
 /// Falha ao atender uma chamada de kernel.
 #[derive(Debug, thiserror::Error)]
 pub enum Erro {
+    #[error("estado de thread guest inconsistente: {0}")]
+    ThreadState(&'static str),
     #[error("estado de memória virtual guest inconsistente: {0}")]
     MemoriaVirtual(&'static str),
     /// Falta de Clock explícito ou referência fora do intervalo de `LARGE_INTEGER`.
@@ -192,6 +202,7 @@ pub struct Dispatcher {
     // Prioridade da única CPU guest, não da thread host nem de EFLAGS.IF.
     irql: Irql,
     virtual_memory: VirtualMemory,
+    threads: threads::Threads,
 }
 
 impl Dispatcher {
@@ -219,7 +230,43 @@ impl Dispatcher {
         original: Option<ImageRange>,
         bus: &Bus,
     ) -> Result<(), SnapshotError> {
-        self.virtual_memory.restore_context(original, bus)
+        self.virtual_memory.restore_context(original, bus)?;
+        self.threads
+            .validate(&self.mutants, &self.virtual_memory, Some(bus))
+    }
+
+    pub fn current_thread(&self) -> u32 {
+        self.threads.current()
+    }
+    pub const fn child_thread(&self) -> Option<GuestThread> {
+        self.threads.child
+    }
+
+    /// Só a sessão coordena a continuação CPU após consumir a criação Ready.
+    pub fn start_ready_thread(&mut self) -> Option<GuestThread> {
+        let child = self.threads.child.as_mut()?;
+        if child.phase != ThreadPhase::Ready {
+            return None;
+        }
+        child.phase = ThreadPhase::Running;
+        Some(*child)
+    }
+
+    pub fn terminate_running_thread(&mut self, status: u32) -> Result<(), Erro> {
+        if self.current_thread() != CHILD_THREAD {
+            return Err(Erro::ThreadState(
+                "término da thread inicial ainda sem modelo",
+            ));
+        }
+        if self.mutants.has_owner(CHILD_THREAD) {
+            return Err(Erro::ThreadState(
+                "término com mutants adquiridos exige abandono ainda sem modelo",
+            ));
+        }
+        if let Some(child) = &mut self.threads.child {
+            child.phase = ThreadPhase::Terminated(status);
+        }
+        Ok(())
     }
 
     /// Origem explícita; sem leitura automática de arquivo ou alteração dos bytes.
@@ -316,6 +363,35 @@ impl Dispatcher {
         let export = call.export;
 
         let resultado = match export.ordinal {
+            ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(
+                bus,
+                &call,
+                &mut self.virtual_memory,
+                &mut self.mutants,
+                self.irql,
+            ),
+            ORDINAL_PS_TERMINATE_SYSTEM_THREAD => {
+                let status = call.argument(bus, 0)?;
+                self.terminate_running_thread(status)?;
+                Ok(Atendimento { eax: 0 })
+            }
+            ORDINAL_KE_GET_CURRENT_THREAD => {
+                if self.current_thread() == CHILD_THREAD {
+                    Ok(Atendimento {
+                        eax: self
+                            .threads
+                            .child
+                            .ok_or(Erro::ThreadState("filha ausente"))?
+                            .object(),
+                    })
+                } else {
+                    Err(threads::variant(
+                        bus,
+                        &call,
+                        "KTHREAD da thread inicial ainda não modelado",
+                    ))
+                }
+            }
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_HAL_READ_WRITE_PCI_SPACE => self.pci.transfer(bus, &call),
             ORDINAL_INTERLOCKED_EXCHANGE => interlocked::exchange(bus, &call),
@@ -331,9 +407,15 @@ impl Dispatcher {
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION => critical::initialize(bus, &call),
-            ORDINAL_RTL_ENTER_CRITICAL_SECTION => critical::enter(bus, &call, false),
-            ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION => critical::enter(bus, &call, true),
-            ORDINAL_RTL_LEAVE_CRITICAL_SECTION => critical::leave(bus, &call),
+            ORDINAL_RTL_ENTER_CRITICAL_SECTION => {
+                critical::enter(bus, &call, false, self.current_thread())
+            }
+            ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION => {
+                critical::enter(bus, &call, true, self.current_thread())
+            }
+            ORDINAL_RTL_LEAVE_CRITICAL_SECTION => {
+                critical::leave(bus, &call, self.current_thread())
+            }
             ORDINAL_XC_SHA_INIT => sha::init(bus, &call),
             ORDINAL_XC_SHA_UPDATE => sha::update(bus, &call),
             ORDINAL_XC_SHA_FINAL => sha::finish(bus, &call),
@@ -358,8 +440,8 @@ impl Dispatcher {
 
     /// `NTSTATUS NtWaitForSingleObject(HANDLE, BOOLEAN Alertable, PLARGE_INTEGER Timeout)`
     ///
-    /// Só sabe esperar em mutant, que é o único objeto que este kernel cria. A espera
-    /// **nunca bloqueia a thread do host**: com uma thread guest, ou a aquisição é
+    /// Espera imediata em mutant ou thread já terminada. A espera
+    /// **nunca bloqueia a thread do host**: ou a aquisição é
     /// imediata, ou o estado é um que este perfil não representa e vira erro
     /// identificável. É assim que o `mtx_lock` do nxdk chega aqui — handle, `FALSE`,
     /// timeout nulo — esperando `STATUS_WAIT_0`.
@@ -388,11 +470,16 @@ impl Dispatcher {
             return variante("espera com timeout ainda não modelada");
         }
 
-        // Todo handle existente neste kernel vem de `NtCreateMutant`; nenhum outro
-        // serviço cria objeto. Então handle fora da tabela é genuinamente inválido, e
-        // não "objeto de tipo que não modelamos" — se outro tipo passar a existir, este
-        // caminho precisa distinguir os dois casos.
-        let Some(aquisicao) = self.mutants.acquire(handle, INITIAL_THREAD) else {
+        if let Some(child) = self.child_thread().filter(|child| child.handle == handle) {
+            return if matches!(child.phase, ThreadPhase::Terminated(_)) {
+                Ok(Atendimento { eax: STATUS_WAIT_0 })
+            } else {
+                variante("espera de thread viva exige yield/escalonamento ainda não modelado")
+            };
+        }
+
+        // O handle de thread foi distinguido acima; os demais pertencem a mutants.
+        let Some(aquisicao) = self.mutants.acquire(handle, self.current_thread()) else {
             return Ok(Atendimento {
                 eax: STATUS_INVALID_HANDLE,
             });
@@ -403,8 +490,7 @@ impl Dispatcher {
             Aquisicao::LimiteDeRecursao => Ok(Atendimento {
                 eax: STATUS_MUTANT_LIMIT_EXCEEDED,
             }),
-            // Inalcançável com uma thread só. Se acontecer, é bug nosso ou feature
-            // nova: relatar, nunca bloquear o host nem devolver sucesso.
+            // Outro proprietário exige yield ainda ausente neste perfil de bootstrap.
             Aquisicao::OutroProprietario(_) => {
                 variante("espera bloqueante exige scheduler de threads guest")
             }
@@ -434,7 +520,7 @@ impl Dispatcher {
             });
         }
 
-        let Some(liberacao) = self.mutants.release(handle, INITIAL_THREAD) else {
+        let Some(liberacao) = self.mutants.release(handle, self.current_thread()) else {
             return Ok(Atendimento {
                 eax: STATUS_INVALID_HANDLE,
             });
@@ -477,11 +563,14 @@ impl Dispatcher {
                 eax: STATUS_ACCESS_VIOLATION,
             });
         }
-        let Some((handle, object)) = self.mutants.prepare(initial_owner) else {
+        let Some((handle, mut object)) = self.mutants.prepare(initial_owner) else {
             return Ok(Atendimento {
                 eax: STATUS_INSUFFICIENT_RESOURCES,
             });
         };
+        if initial_owner {
+            object.owner = Some(self.current_thread());
+        }
         // O store inteiro é validado pelo Bus antes de escrever; uma falta não
         // publica objeto, não consome handle e não deixa metade da saída escrita.
         bus.escrever_bytes(GuestVirt(output), &handle.to_le_bytes())?;
@@ -506,7 +595,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 6);
+        out.section("KRNL", 7);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -515,10 +604,11 @@ impl Snapshot for Dispatcher {
         self.system_time.save(out);
         self.irql.save(out);
         self.virtual_memory.save(out);
+        self.threads.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 6)?;
+        let version = inp.section("KRNL", 7)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -555,6 +645,11 @@ impl Snapshot for Dispatcher {
         if version >= 6 {
             virtual_memory.load(inp)?;
         }
+        let mut threads = threads::Threads::default();
+        if version >= 7 {
+            threads.load(inp)?;
+        }
+        threads.validate(&mutants, &virtual_memory, None)?;
         *self = Self {
             atendidas,
             recusadas,
@@ -564,6 +659,7 @@ impl Snapshot for Dispatcher {
             system_time,
             irql,
             virtual_memory,
+            threads,
         };
         Ok(())
     }
