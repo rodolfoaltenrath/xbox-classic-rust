@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`516e667`** e nas alterações
-locais do **ADR-0041**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`4fddd87`** e nas alterações
+locais do **ADR-0042**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -37,8 +37,9 @@ descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
 RDMSR e a leitura PCI do PLL já estão implementados. Com quatro raízes explícitas,
 **9027 blocos** passam pela troca de LONG e por KeQuerySystemTime (128),
-que usa a referência UTC guest e o Clock da sessão. O bloqueio atual é
-**KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos. A frequência calculada pelo hello foi conferida em RAM:
+que usa a referência UTC guest e o Clock da sessão. A consulta de IRQL já usa
+prioridade explícita da CPU guest, independente de IF. O bloqueio atual é
+**NtAllocateVirtualMemory (184)**, retorno `0x20E68`, reserva/commit de 64 KiB. A frequência calculada pelo hello foi conferida em RAM:
 **733333333 Hz**, coerente com o Clock do projeto.
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
@@ -49,9 +50,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange e tempo de sistema; 15/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas, leitura PCI de clock, InterlockedExchange, tempo de sistema e IRQL; 16/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa pela consulta de tempo; para em KeGetCurrentIrql (103); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | Passa pela consulta de IRQL; para em NtAllocateVirtualMemory (184); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -161,7 +162,7 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
 | Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
-| Bloqueio de execução atual | KeGetCurrentIrql (103), stdcall/0, retorno 0x20E09, sem argumentos |
+| Bloqueio de execução atual | NtAllocateVirtualMemory (184), stdcall/20, retorno 0x20E68; BaseAddress=0, RegionSize=0x10000, flags=0x3000, proteção=4 |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -525,15 +526,51 @@ O hello mantém quatro raízes/9027 blocos. Na consulta real, Clock=704 ciclos,
 CurrentTime=`125911584000000009`, saída `0x7000FDD8`; os oito bytes e o Clock
 inalterado foram conferidos por teste local. O CRT libera depois o lock em
 `0x29158`, que passa de 1 para 0. A frequência continua 733333333 Hz.
-O próximo bloqueio é **KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos.
-Modelar IRQL guest explícito, com snapshot e contrato para futuras transições;
-não confundir IRQL com EFLAGS.IF ou retornar um literal para ignorar o assert.
+Naquela entrega o bloqueio seguinte era **KeGetCurrentIrql (103)**, retorno
+`0x20E09`, sem argumentos. O contexto explícito de IRQL e seu snapshot foram
+implementados no ADR-0042, descrito a seguir.
 
-Registro atual: **15/69 serviços**, 3/3 dados; **342 testes workspace/doctests** e
+Registro nessa entrega: **15/69 serviços**, 3/3 dados; **342 testes workspace/doctests** e
 **145 nativos debug/release** (129 fora de x86_64), Rust 1.98.1. Seis novos testes
 de kernel e cinco nativos cobrem tempo/ABI, falhas, snapshot, migração e replay.
 Clippy global/fmt/diff aprovados. Fontes, limites e reprodução no
 [ADR-0041](docs/adr/0041-tempo-sistema-guest.md); logs `target/system-time-*`.
+Threads, execução completa e framebuffer continuam pendentes.
+
+### IRQL explícito da CPU guest (ADR-0042)
+
+`KeGetCurrentIrql` (103), stdcall/0, consulta o `Irql` guardado pelo dispatcher
+para a única CPU guest. O contexto inicial é **Passive (0)**; Apc (1) e Dispatch
+(2) também são representáveis/configuráveis por `Dispatcher::with_irql` para uma
+sessão nova. A consulta retorna KIRQL com extensão zero em EAX e preserva flags,
+registradores fora de EAX/ESP/EIP, Clock, retired, RAM e nível. Não lê argumentos;
+stdcall/0 remove só a palavra de retorno. CLI modifica IF e não modifica IRQL.
+
+**KRNL v5/IRQL v1** persiste o nível em um byte. AOTS v1/AOTC v7/KMUT v2/EEPR v1/
+PCIC v1/STIM v1 permanecem; IF segue em AOTC, sem prioridade duplicada. KRNL
+v1–v4 migram para Passive, sem inferir de IF nem herdar contexto de destino.
+Carga de kernel continua transacional, com recusa de versões/níveis desconhecidos.
+
+Este é um perfil de consulta de prioridade lógica. Não há entrega de IRQ/APC/DPC,
+DIRQLs, APIC/PIC/KPCR físico, scheduler ou fiscalização de IRQL em todas as APIs.
+KfRaiseIrql/KfLowerIrql continuam ausentes e recusam sem alterar prioridade;
+o construtor de contexto não é uma transição de prioridade.
+
+No hello real, a consulta em `0x20E09` devolveu Passive com **IF=0**, preservando
+CPU/Clock. O hello mantém quatro raízes/9027 blocos e avança até
+**NtAllocateVirtualMemory (184)**, retorno **0x20E68**. Argumentos:
+`0x7000FD94, 0, 0x7000FD98, 0x3000, 4`; os ponteiros contêm **BaseAddress=0**
+e **RegionSize=0x10000 (64 KiB)**. Próximo passo: reserva/commit e alocação virtual
+guest reais, reutilizando Bus/MMU/frames, com alinhamento, permissões, zero inicial,
+saídas validadas e snapshot; não usar endereço host ou ponteiro fixo para avançar.
+
+Registro atual: **16/69 serviços**, 3/3 dados; **346 testes workspace/doctests** e
+**148 nativos debug/release** (132 fora de x86_64), Rust 1.98.1. Quatro novos testes
+de kernel e três nativos cobrem nível/ABI/IF, tail-call, falha/retry e snapshot.
+O teste de diagnóstico sem argumentos passou a usar KeGetCurrentThread (104),
+ainda ausente. Clippy global/fmt/diff aprovados. Fontes e reprodução no
+[ADR-0042](docs/adr/0042-irql-guest.md), logs `target/irql-*`; teste local do XBE
+real em `target/alpha-hello-msr-ratio-20261020/tests/irql_effect.rs`.
 Threads, execução completa e framebuffer continuam pendentes.
 
 Trabalho restante:
@@ -648,7 +685,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é KeGetCurrentIrql após o ADR-0041. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038 e PCI no ADR-0039; o bloqueio atual é NtAllocateVirtualMemory após o ADR-0042. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -730,7 +767,7 @@ cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 
 Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
 O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
-PCI, InterlockedExchange e tempo de sistema; para em KeGetCurrentIrql (103), sem framebuffer. Com três raízes, falta o case
+PCI, InterlockedExchange, tempo de sistema e IRQL; para em NtAllocateVirtualMemory (184), sem framebuffer. Com três raízes, falta o case
 `0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
 execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
@@ -754,7 +791,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 145 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 148 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -775,22 +812,24 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 516e667 + alterações locais do ADR-0041.
+> alterar código. Base documentada: 4fddd87 + alterações locais do ADR-0042.
 > A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
-> concluir o hello. Kernel: 15/69 serviços com variantes limitadas, 3/3 dados.
-> Não há scheduler ou KTHREAD real. Snapshot: AOTS v1, AOTC v7, KRNL v4,
-> KMUT v2, EEPR v1, PCIC v1, STIM v1. MSR 0x10/RDTSC e consultas de tempo usam
-> o Clock único da sessão. RetailClockV1 centraliza CPU/PLL; o hello calcula
-> 733333333 Hz. KeQuerySystemTime (128) usa SystemTimeReference: padrão sintético
-> 2000-01-01 UTC + ciclos convertidos a 100 ns. Referência configurável/salva em
-> STIM; KRNL v1–v3 migram para o padrão. Session passa Clock por atender_com_clock;
-> atender sem Clock recusa a consulta, sem presumir tempo zero. HLE não avança Clock.
+> concluir o hello. Kernel: 16/69 serviços com variantes limitadas, 3/3 dados.
+> Não há scheduler ou KTHREAD real. Snapshot: AOTS v1, AOTC v7, KRNL v5, KMUT v2,
+> EEPR v1, PCIC v1, STIM v1, IRQL v1. Clock único compartilhado com TSC e tempo
+> absoluto; SystemTimeReference padrão sintético 2000-01-01 UTC. CPU/PLL do perfil
+> RetailClockV1 são coerentes; hello calcula 733333333 Hz.
+> KeGetCurrentIrql (103) consulta prioridade lógica explícita da única CPU guest,
+> inicialmente Passive (0). Apc/Dispatch são contextos representáveis, sem IRQ/APC/DPC.
+> IRQL é independente de IF; CLI não o altera. KRNL v1–v4 migram para Passive.
+> KfRaiseIrql/KfLowerIrql continuam ausentes. Não há KPCR/APIC físico ou DIRQL.
 > Hello: 9027 blocos, --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
-> O teste real confirmou CurrentTime=125911584000000009 aos 704 ciclos em 0x7000FDD8.
-> Próximo bloqueio: KeGetCurrentIrql (103), stdcall/0, retorno 0x20E09, sem argumentos.
-> Modelar IRQL guest explícito, snapshot e relação com futuras transições; não
-> confundir com IF nem retornar constante só para passar pelo assert de memória.
-> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 342 testes
-> workspace/doctests e 145 casos nativos debug/release. Threads/execução completa/
+> O teste real conferiu Passive com IF=0 e avanço até NtAllocateVirtualMemory (184),
+> stdcall/20, retorno 0x20E68. Argumentos: 0x7000FD94, 0, 0x7000FD98, 0x3000, 4;
+> *BaseAddress=0 e *RegionSize=0x10000 (64 KiB). Modelar reserva/commit, alinhamento,
+> permissões, zero inicial, validação de saídas e snapshot da alocação; reutilizar
+> Bus/MMU/alocador, sem endereços host ou ponteiros fixos. Conferir contratos antes.
+> Use Rust 1.98.1; neste PC está no cache do usuário. Registro atual: 346 testes
+> workspace/doctests e 148 casos nativos debug/release. Threads/execução completa/
 > framebuffer seguem pendentes. Preserve AOT/bus/estado explícito e atualize
 > continuidade, alpha, roadmap, changelog e evidências ao avançar.

@@ -141,9 +141,9 @@ fn snapshot_preserva_referencia_configurada_e_rejeita_corrupcao_transacionalment
     }
     for (version, ticks) in [(0u32, 0u64), (2, 0), (1, u64::MAX)] {
         let mut bad = snapshot.clone();
-        let at = bad.len() - 16;
+        let at = bad.windows(4).position(|tag| tag == b"STIM").unwrap();
         bad[at + 4..at + 8].copy_from_slice(&version.to_le_bytes());
-        bad[at + 8..].copy_from_slice(&ticks.to_le_bytes());
+        bad[at + 8..at + 16].copy_from_slice(&ticks.to_le_bytes());
         assert!(
             restored
                 .load(&mut SnapshotReader::new(&bad).unwrap())

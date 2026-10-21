@@ -98,8 +98,8 @@ fn cdecl_mostra_as_primeiras_palavras_e_diz_que_nao_declara_quantidade() {
 
 #[test]
 fn servico_sem_argumentos_descreve_nenhum() {
-    // `KeGetCurrentIrql` (103) é stdcall/0.
-    let (mut bus, pc, regs) = chamada(103, &[]);
+    // `KeGetCurrentThread` (104) ainda ausente, stdcall/0.
+    let (mut bus, pc, regs) = chamada(104, &[]);
     let mut d = Dispatcher::new();
     let texto = d.atender(&mut bus, pc, &regs).unwrap_err().to_string();
     assert!(texto.contains("nenhum"), "{texto}");

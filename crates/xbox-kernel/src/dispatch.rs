@@ -16,8 +16,9 @@
 //!
 //! ## Estado
 //!
-//! [`Dispatcher`] guarda contadores, referência UTC, EEPROM, perfil PCI e mutexes guest serializáveis. A sessão AOT é
-//! dona deste estado; salvar só CPU/RAM não preserva os objetos de kernel.
+//! [`Dispatcher`] guarda contadores, referência UTC, IRQL da CPU, EEPROM, perfil PCI
+//! e mutexes guest serializáveis. A sessão AOT é dona deste estado; salvar só
+//! CPU/RAM não preserva os objetos de kernel ou a prioridade lógica da CPU.
 
 use xbox_core::error::SnapshotError;
 use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
@@ -25,12 +26,14 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod critical;
 mod interlocked;
+mod irql;
 mod mutants;
 mod nvram;
 mod pci;
 mod sha;
 mod system_time;
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
+pub use irql::Irql;
 use mutants::Mutants;
 pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSION, Mutant};
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
@@ -54,6 +57,7 @@ pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
+pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
 pub const ORDINAL_XC_SHA_INIT: u32 = 335;
 pub const ORDINAL_XC_SHA_UPDATE: u32 = 336;
@@ -81,6 +85,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_INTERLOCKED_EXCHANGE,
+    ORDINAL_KE_GET_CURRENT_IRQL,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
@@ -175,6 +180,8 @@ pub struct Dispatcher {
     eeprom: EepromState,
     pci: PciConfig,
     system_time: SystemTimeReference,
+    // Prioridade da única CPU guest, não da thread host nem de EFLAGS.IF.
+    irql: Irql,
 }
 
 impl Dispatcher {
@@ -209,6 +216,20 @@ impl Dispatcher {
 
     pub const fn system_time(&self) -> &SystemTimeReference {
         &self.system_time
+    }
+
+    /// Contexto inicial explícito da única CPU guest. Não executa uma transição
+    /// de prioridade nem entrega interrupções pendentes.
+    pub fn with_irql(irql: Irql) -> Self {
+        Self {
+            irql,
+            ..Self::default()
+        }
+    }
+
+    /// Autoridade de IRQL deste perfil; independente de EFLAGS.IF.
+    pub const fn irql(&self) -> Irql {
+        self.irql
     }
 
     /// Chamadas atendidas por um serviço implementado.
@@ -266,6 +287,9 @@ impl Dispatcher {
             ORDINAL_EX_QUERY_NON_VOLATILE_SETTING => self.eeprom.query(bus, &call),
             ORDINAL_HAL_READ_WRITE_PCI_SPACE => self.pci.transfer(bus, &call),
             ORDINAL_INTERLOCKED_EXCHANGE => interlocked::exchange(bus, &call),
+            ORDINAL_KE_GET_CURRENT_IRQL => Ok(Atendimento {
+                eax: u32::from(self.irql.level()),
+            }),
             ORDINAL_KE_QUERY_SYSTEM_TIME => self.system_time.query(bus, &call, clock),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
@@ -447,17 +471,18 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 4);
+        out.section("KRNL", 5);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
         self.eeprom.save(out);
         self.pci.save(out);
         self.system_time.save(out);
+        self.irql.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 4)?;
+        let version = inp.section("KRNL", 5)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -484,6 +509,12 @@ impl Snapshot for Dispatcher {
         if version >= 4 {
             system_time.load(inp)?;
         }
+        // v1–v4 não modelavam IRQL, nem entregavam IRQ/DPC/APC. O contexto de
+        // entrada passa explicitamente a PASSIVE, sem inferência de EFLAGS.IF.
+        let mut irql = Irql::default();
+        if version >= 5 {
+            irql.load(inp)?;
+        }
         *self = Self {
             atendidas,
             recusadas,
@@ -491,6 +522,7 @@ impl Snapshot for Dispatcher {
             eeprom,
             pci,
             system_time,
+            irql,
         };
         Ok(())
     }

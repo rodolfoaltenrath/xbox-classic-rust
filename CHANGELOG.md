@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: KeGetCurrentIrql (103), stdcall/0, consulta o IRQL explícito da
+  única CPU guest, independente de CLI/IF. Padrão Passive; Apc/Dispatch são
+  contextos representáveis, sem transições ou entrega de IRQ/APC/DPC. KRNL v5/
+  IRQL v1 preserva o nível e migra v1–v4. 346 testes workspace/doctests e 148
+  nativos debug/release. O hello consulta Passive com IF=0 e chega a
+  NtAllocateVirtualMemory (184), retorno 0x20E68, pedido de 64 KiB;
+  16/69 serviços (ADR-0042).
+
 - Fase 4/alpha: KeQuerySystemTime (128), stdcall/4 VOID, escreve o tempo de sistema
   guest em oito bytes após validação integral. Referência UTC sintética explícita
   (2000-01-01), configurável e derivada do Clock único; sem hora host ou retired.

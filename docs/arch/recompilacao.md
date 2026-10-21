@@ -1,8 +1,8 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0041. O hello nxdk inicia nativamente com TLS/imports, 15 serviços
-e perfil de CPU/PCI guest; passa pela consulta de tempo e chega a KeGetCurrentIrql.
+ADRs 0013–0042. O hello nxdk inicia nativamente com TLS/imports, 16 serviços
+e perfil de CPU/PCI guest; passa pela consulta de IRQL e chega a NtAllocateVirtualMemory.
 Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
@@ -182,7 +182,8 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v7, memória e estado `KRNL` v3 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1, com handles, propriedade e
+inclui `AOTC` v7, memória e estado `KRNL` v5 / `KMUT` v2 / `EEPR` v1 / `PCIC` v1 /
+`STIM` v1 / `IRQL` v1, com handles, propriedade, prioridade lógica e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -237,9 +238,19 @@ referência os ciclos convertidos a 100 ns com u128 e limite de LARGE_INTEGER.
 Valida a saída inteira como RAM gravável antes dos oito bytes little-endian;
 contexto ausente, overflow, MMIO e ponteiros inválidos recusam explicitamente.
 KRNL v4/STIM v1 salva somente a referência; Clock continua em AOTC/CLK0, sem
-contador duplicado. KRNL v1–v3 migram para o padrão. Formato integral atual:
+contador duplicado. KRNL v1–v3 migram para o padrão. Formato dessa entrega:
 AOTS v1/AOTC v7/KRNL v4/KMUT v2/EEPR v1/PCIC v1/STIM v1
 ([ADR-0041](../adr/0041-tempo-sistema-guest.md)).
+
+O dispatcher guarda também Irql, prioridade lógica da única CPU guest,
+inicialmente Passive. KeGetCurrentIrql lê esse estado, com KIRQL estendido a u32
+em EAX, sem argumentos ou efeitos sobre flags/Clock/RAM. CLI modifica apenas IF,
+sem alterar IRQL. Apc/Dispatch são contextos iniciais representáveis; DIRQL e
+transições Raise/Lower ainda não têm modelo. Não há IRQ/APC/DPC, KPCR/APIC físico
+ou cópia de prioridade por thread. KRNL v5/IRQL v1 salva o nível e migra KRNL
+v1–v4 para Passive independentemente de IF e do contexto de destino.
+Formato integral atual: AOTS v1/AOTC v7/KRNL v5/KMUT v2/EEPR v1/PCIC v1/STIM v1/IRQL v1
+([ADR-0042](../adr/0042-irql-guest.md)).
 
 ## Evidência e limites
 
@@ -248,7 +259,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 145 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 148 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

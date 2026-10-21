@@ -602,12 +602,36 @@ PCIC v1 e o Clock em AOTC/CLK0. KRNL v1–v3 migram para o padrão, sem herdar a
 configuração de destino. Carga transacional, saída parcial/MMIO/RO/overflow,
 continuação sobre a pilha e chamadas pendentes são cobertas por testes.
 
-O hello continua com quatro raízes/9027 blocos. Aos 704 ciclos, a consulta real
-escreve 125911584000000009 em 0x7000FDD8 e avança até **KeGetCurrentIrql (103)**,
-retorno **0x20E09**, sem argumentos. Próximo passo: IRQL guest explícito e snapshot,
-sem confundir com IF ou usar literal para ignorar o assert do SDK.
+Naquela entrega, o hello manteve quatro raízes/9027 blocos. Aos 704 ciclos, a
+consulta real escreveu 125911584000000009 em 0x7000FDD8 e avançou até
+**KeGetCurrentIrql (103)**, retorno **0x20E09**. O modelo explícito de IRQL e seu
+snapshot foram implementados no ADR-0042, descrito a seguir.
 
 Validação: **342 testes workspace/doctests e 145 nativos debug/release**, seis
 novos testes de kernel e cinco nativos, mais teste local sobre o XBE real;
 **15/69 serviços**. Fontes, contrato e logs:
 [ADR-0041](../adr/0041-tempo-sistema-guest.md).
+
+## Consulta de IRQL explícito — ADR-0042
+
+KeGetCurrentIrql (103), stdcall/0, consulta o Irql guardado pelo kernel para a
+única CPU guest. Padrão Passive (0), com Apc (1) e Dispatch (2) representáveis
+como contexto inicial. CLI e EFLAGS.IF não alteram IRQL. A consulta estende KIRQL
+a u32 em EAX e preserva flags/Clock/retired/RAM; a continuação remove só a palavra
+de retorno. Tail-call e chamada pendente usam o contrato existente de Session.
+
+KRNL v5/IRQL v1 salva o nível em um byte. KRNL v1–v4 migram para Passive, sem
+inferência de IF ou herança do destino. Carga de kernel é transacional, recusando
+versões/níveis sem modelo e truncamento. AOTS v1/AOTC v7/KMUT v2/EEPR v1/PCIC v1/
+STIM v1 permanecem. Raise/Lower, DIRQL, IRQ/APC/DPC e KPCR/APIC físicos faltam;
+configurar o contexto inicial não executa transições ou entrega de eventos.
+
+O hello mantém quatro raízes/9027 blocos e consulta Passive com IF=0. O próximo
+bloqueio é **NtAllocateVirtualMemory (184)**, stdcall/20, retorno **0x20E68**:
+argumentos 0x7000FD94, 0, 0x7000FD98, 0x3000, 4; *BaseAddress=0 e
+*RegionSize=0x10000 (64 KiB). Próximo passo: alocação virtual guest com reserva/
+commit, alinhamento, permissões, zero inicial, validação de saídas e snapshot.
+
+Validação: **346 testes workspace/doctests e 148 nativos debug/release**, quatro
+novos testes de kernel e três nativos, mais teste local do XBE real; **16/69 serviços**.
+Fontes, contrato e logs: [ADR-0042](../adr/0042-irql-guest.md).

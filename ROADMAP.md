@@ -1141,6 +1141,8 @@ Uma linha por marco concluído. Append-only.
 
 | 2026-10-20 | 4 / 5 | Tempo de sistema guest (ADR-0041) | — | KeQuerySystemTime deriva 100 ns do Clock único e referência UTC explícita; KRNL v4/STIM v1 com migração; 342 testes workspace/doctests e 145 nativos debug/release; saída real conferida aos 704 ciclos, hello chega a KeGetCurrentIrql (103); 15/69 serviços |
 
+| 2026-10-20 | 4 / 5 | Consulta de IRQL guest (ADR-0042) | — | KeGetCurrentIrql lê prioridade explícita da única CPU, independente de IF; KRNL v5/IRQL v1 com migração; 346 testes workspace/doctests e 148 nativos debug/release; hello consulta Passive com IF=0 e chega a NtAllocateVirtualMemory (184), pedido de 64 KiB; 16/69 serviços |
+
 ---
 
 ### Próxima ação
@@ -1148,7 +1150,7 @@ Uma linha por marco concluído. Append-only.
 Em ordem:
 
 1. **Alpha, integração dos marcos 2 e 3/6:** os dados exportados têm representação
-   (ADR-0022) e o dispatcher existe com `15/69` serviços com variantes limitadas.
+   (ADR-0022) e o dispatcher existe com `16/69` serviços com variantes limitadas.
    NtCreateMutant já cria objeto/handle guest; Session guarda kernel e seu
    snapshot integral (ADR-0032). Faltam os serviços de inicialização e o modelo
    de threads do nxdk hello. SHA-1 Init/Update/Final tem contexto opaco na RAM
@@ -1169,9 +1171,13 @@ Em ordem:
    explícita no power-on, padrão sintético 2000-01-01. KRNL v4/STIM v1 preserva a
    referência e migra KRNL v1–v3. Aos 704 ciclos, o hello recebeu
    125911584000000009 em RAM, sem avanço temporal no atendimento (ADR-0041).
-   **O próximo bloqueio é KeGetCurrentIrql (103)**, retorno `0x20E09`, sem argumentos.
-   Modelar IRQL guest explícito, snapshot e futuras transições/interrupções;
-   não confundir com EFLAGS.IF ou retornar um literal para passar pelo assert.
+   KeGetCurrentIrql (103) consulta a prioridade explícita da única CPU guest,
+   independente de IF. KRNL v5/IRQL v1 salva o nível e migra v1–v4 para Passive;
+   Raise/Lower e entrega de IRQ/APC/DPC continuam ausentes (ADR-0042).
+   **O próximo bloqueio é NtAllocateVirtualMemory (184)**, retorno `0x20E68`:
+   BaseAddress=0, RegionSize=0x10000, flags=0x3000 e proteção=4. Modelar reserva/
+   commit e alocação virtual guest, reutilizando Bus/MMU/frames, com alinhamento,
+   permissões, zero inicial, saídas validadas e snapshot do estado de alocação.
    BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
    (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar
