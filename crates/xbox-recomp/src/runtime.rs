@@ -9,7 +9,9 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 use crate::Result;
 use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 
+mod msr;
 mod muldiv;
+pub use msr::CpuProfile;
 pub use muldiv::{divide_values, multiply_values};
 pub use xbox_kernel::imports::entry as kernel_entry;
 
@@ -76,6 +78,8 @@ pub struct State {
     /// PC de INT3 que gerou #BP. EIP já aponta à instrução seguinte; a exceção
     /// continua pendente até existir tratamento explícito, não por novo poll.
     pub breakpoint: Option<u32>,
+    /// Configuração funcional de CPU/MSRs guest; independente da CPU host.
+    pub cpu_profile: CpuProfile,
 }
 
 impl State {
@@ -91,6 +95,7 @@ impl State {
             clock: Clock::new(),
             halted: None,
             breakpoint: None,
+            cpu_profile: CpuProfile::XboxRetailV1,
         }
     }
 
@@ -125,7 +130,7 @@ impl State {
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 6);
+        out.section("AOTC", 7);
         for r in self.regs {
             out.u32(r);
         }
@@ -149,10 +154,17 @@ impl Snapshot for State {
         if let Some(pc) = self.breakpoint {
             out.u32(pc);
         }
+        out.u32(self.cpu_profile as u32);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 6)?;
+        let version = inp.section("AOTC", 7)?;
+        if version == 0 {
+            return Err(SnapshotError::BadValue {
+                section: "AOTC",
+                what: "versão de CPU AOT desconhecida",
+            });
+        }
         for r in &mut self.regs {
             *r = inp.u32()?;
         }
@@ -197,6 +209,12 @@ impl Snapshot for State {
                 what: "breakpoint incompatível com CPU suspensa ou retornada",
             });
         }
+        // v1–v6 não liam MSRs: migração explícita para o primeiro perfil funcional.
+        self.cpu_profile = if version >= 7 {
+            CpuProfile::from_id(inp.u32()?)?
+        } else {
+            CpuProfile::XboxRetailV1
+        };
         Ok(())
     }
 }

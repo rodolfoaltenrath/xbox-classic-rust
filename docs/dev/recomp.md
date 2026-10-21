@@ -506,5 +506,37 @@ demais hosts), em debug/release, cobrem consulta, erros, aliases e snapshot,
 incluindo imagem fornecida com hash esperado calculado independentemente.
 O relatório registra **6/69 serviços**. O hello passou pela consulta e parou
 em **NtWaitForSingleObject (233)**, retorno `0x16B99`, argumentos `4, 0, 0`.
-O próximo trabalho é aquisição/espera real de mutex. Sem framebuffer ainda.
+O próximo trabalho nessa etapa era aquisição/espera real de mutex. Sem framebuffer ainda.
 Detalhes e logs: [ADR-0034](../adr/0034-consulta-eeprom-sessao.md).
+
+## Sincronização e perfil de MSRs guest — ADRs 0035–0038
+
+Espera/liberação de mutant e seções críticas recursivas já têm estado guest
+efetivo; casos que exigem scheduler continuam recusados. O kernel tem 12/69
+serviços, com variantes limitadas. Seções críticas usam os 28 bytes Xbox na RAM,
+sem tabela host por endereço (ADR-0037).
+
+RDMSR consulta ECX completo e publica EDX:EAX, preservando flags e outros
+registradores. `State::cpu_profile` é `CpuProfile::XboxRetailV1` (ID 1):
+MSR 0x10 lê o mesmo Clock de RDTSC; 0x2A devolve a configuração nominal
+0x01040000, bus 133⅓ MHz × razão 5,5. Demais campos são sintéticos, não dump de
+Xbox. Outros índices dão erro com PC/índice sem efeitos ou cobrança do passo.
+WRMSR/CPL/CR4/#GP via IDT continuam pendentes; não há RDMSR host.
+
+O snapshot integral atual é AOTS v1 com **AOTC v7**, bus, KRNL v2, KMUT v2 e
+EEPR v1. AOTC v7 acrescenta o perfil de CPU e migra v1–v6 explicitamente para
+o perfil 1; Clock continua único, com custo sintético do perfil de tempo 1.
+IDs desconhecidos, versão zero e truncamentos são recusados.
+
+Com `--entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889`, o hello
+traduz **9027 blocos** e executa até **HalReadWritePCISpace (46)**, retorno
+`0x2064D`, leitura de quatro bytes do offset PCI `0x6C` (bus 0, slot `0x60`).
+A última raiz é o case que retorna multiplicador 55; a tabela passa por um slot
+de pilha ainda não inferido. Não é remoção de código ou desvio do construtor.
+
+Validação: **322 testes workspace/doctests e 131 casos nativos em debug/release**
+(115 fora de x86_64), Rust 1.98.1. Os seis casos novos de Rust emitido cobrem
+preservação, TSC de 64 bits, erro/retry, tempo/orçamento/polls, snapshot integral
+e falta de store posterior à leitura. Próximo passo: configuração PCI guest e
+clock do chipset para atender o serviço 46. Threads/execução completa/framebuffer
+permanecem abertos. Contrato e fontes: [ADR-0038](../adr/0038-rdmsr-perfil-cpu-guest.md).

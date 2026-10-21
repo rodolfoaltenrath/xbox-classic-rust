@@ -1,8 +1,9 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0037. O hello nxdk inicia nativamente com TLS/imports e 12 serviços;
-o próximo construtor exige RDMSR. Execução completa, renderização e áudio pendem.
+ADRs 0013–0038. O hello nxdk inicia nativamente com TLS/imports, 12 serviços
+e perfil de CPU/MSRs guest; a execução chega à leitura PCI de frequência.
+Execução completa, renderização e áudio pendem.
 
 ## Pipeline implementado
 
@@ -72,7 +73,7 @@ limites de `unsafe`, já documentados pelo subsistema de memória.
 
 LOCK fora de CMPXCHG, overrides de segmento fora do perfil FS, endereçamento geral
 de 16 bits, CALL/RET de 16 bits, CALL/JMP far, INS/OUTS, REPNE fora de CMPS/SCAS,
-RDMSR, x87/MMX/SSE (exceto SFENCE) e
+WRMSR, MSRs fora do perfil, x87/MMX/SSE (exceto SFENCE) e
 outras instruções são recusados com PC e diagnóstico.
 Jumps para o meio de uma instrução, sobreposição de instruções/seções, alvos fora
 de bytes executáveis, código truncado e código gravável também são erros. A análise
@@ -99,7 +100,7 @@ da inferência de destinos. Cada bloco é uma função não inlineada; o dispatc
 seleciona um ponteiro de função e faz uma chamada, que retorna antes da próxima.
 Isso corrige o estouro de pilha host do emissor monolítico. CALL/RET guest
 continuam explícitos em EIP/ESP/RAM, sem recursão de chamadas nativas. Orçamento
-continua em blocos; sequências longas passam a ceder mais cedo. AOTC permanece v6
+continua em blocos; sequências longas passam a ceder mais cedo. Essa entrega manteve AOTC v6
 ([ADR-0031](../adr/0031-blocos-aot-pilha-host.md)).
 
 `State` contém os oito registradores, EIP, EFLAGS, contador de instruções concluídas
@@ -113,8 +114,8 @@ representa a pilha do jogo, permitindo salvar a continuação com uma call pende
 `run(state, bus, blocks)` devolve `Exit::Budget`, `Exit::Returned`, `Exit::KernelCall`,
 `Exit::Halted`, `Exit::Breakpoint` ou erro recuperável. RDTSC lê o Clock guest; o perfil AOT cobra um ciclo virtual
 por instrução/elemento REP concluído, sem alegar precisão de ciclos físicos.
-Snapshot AOTC v6 guarda perfil, Clock, parada por HLT e breakpoint pendente.
-Versões v1–v5 migram sem breakpoint, v1–v4 com CPU ativa; v1–v3 recebem Clock zero.
+Snapshot AOTC v7 guarda perfis de CPU/tempo, Clock, HLT e breakpoint pendente.
+Versões v1–v6 recebem o perfil de CPU inicial, v1–v5 migram sem breakpoint, v1–v4 com CPU ativa; v1–v3 recebem Clock zero.
 O agendador do core ainda precisa ser integrado a esse relógio único
 ([ADR-0025](../adr/0025-relogio-aot-rdtsc.md)).
 CLI limpa IF do guest no perfil privilegiado. HLT preserva flags, avança EIP e
@@ -128,7 +129,7 @@ acrescentam tempo ([ADR-0027](../adr/0027-int3-breakpoint-aot.md)).
 SFENCE chama a barreira do bus. Stores síncronos na arena exclusiva já têm a
 ordenação exigida; não há fila a publicar nem fence de GPU nesta etapa. Introduzir
 observadores concorrentes ou escrita diferida exige ampliar esse contrato
-([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). AOTC continua v6.
+([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). Essa entrega manteve AOTC v6.
 CMOVcc usa as 16 condições existentes e origem de 16/32 bits capturada antes
 da condição, mesmo se falsa. Flags e o destino em condição falsa são preservados;
 leituras faltantes continuam falhando. Word preserva a metade alta do registrador.
@@ -136,7 +137,7 @@ Não há estado novo ([ADR-0029](../adr/0029-cmovcc.md)).
 BSF/BSR calculam índices em origem de 16/32 bits e definem ZF. O perfil preserva
 o destino em origem zero e normaliza CF/PF/AF/SF/OF para zero, pois são indefinidos
 na referência clássica. IF/DF são preservados; uma leitura faltante não altera
-CPU. AOTC continua v6 ([ADR-0030](../adr/0030-bsf-bsr.md)).
+CPU. Essa entrega manteve AOTC v6 ([ADR-0030](../adr/0030-bsf-bsr.md)).
 Orçamento zero preserva o estado e informa uma parada já existente. Falhas de memória deixam EIP na instrução que
 falhou. REP pode retomar no elemento pendente depois que o host resolver a falta;
 não há entrega automática ao kernel. Nas outras instruções, a retomada após erro
@@ -150,6 +151,15 @@ páginas de uma escrita antes de alterar RAM, evitando store parcial na falta.
 O runtime não consulta relógio de parede. Instruções/elementos REP concluídos
 avançam o Clock pelo custo sintético do perfil, independentemente de `retired`.
 Integrar o scheduler do core ao mesmo Clock continua pendente.
+
+RDMSR tem operação própria e consulta ECX antes de escrever EDX:EAX. O perfil
+`CpuProfile::XboxRetailV1` (ID 1) está em State e no AOTC v7: 0x10 lê o mesmo
+Clock de RDTSC; 0x2A lê a configuração nominal 0x01040000 (bus 133⅓ MHz × 5,5).
+Demais campos desse registro são sintéticos, sem efeitos de APIC/energia/erros.
+Outros índices dão UnsupportedMsr com PC/índice, sem efeitos ou cobrança do passo;
+WRMSR/CPUID/CPL/CR4/#GP por IDT seguem pendentes. v1–v6 migram para o perfil 1;
+o perfil de tempo continua 1. Não há contador MSR próprio ou RDMSR do host
+([ADR-0038](../adr/0038-rdmsr-perfil-cpu-guest.md)).
 
 ## Loader experimental
 
@@ -172,7 +182,7 @@ pendentes. `raw_size > virtual_size` é recusado. Limites e fontes no
 [ADR-0021](../adr/0021-tls-imports-aot.md) e [guia homebrew](../dev/homebrew.md).
 
 `Session` possui CPU, bus e dispatcher HLE. O snapshot integral `AOTS` v1
-inclui `AOTC` v6, memória e estado `KRNL` v2 / `KMUT` v2 / `EEPR` v1, com handles, propriedade e
+inclui `AOTC` v7, memória e estado `KRNL` v2 / `KMUT` v2 / `EEPR` v1, com handles, propriedade e
 contador de alocação determinísticos. Salvar CPU/RAM isoladamente não preserva
 objetos. O retorno HLE é capturado e validado antes de executar efeitos; depois
 do serviço, o runtime aplica essa continuação sem reler a pilha já modificada.
@@ -210,7 +220,7 @@ soma 7, grava o resultado em `0x12020` e retorna. O resultado esperado é EAX=62
 memória=62 e 37 instruções concluídas. Não é código de jogo nem XBE nxdk.
 
 O teste de integração executa a CLI, compila o código gerado em um projeto Cargo
-separado e executa 125 testes nativos em x86_64. Além da primeira prova, cobre
+separado e executa 131 testes nativos em x86_64. Além da primeira prova, cobre
 subregistradores, extensões, LEA, frames e casos especiais de ESP, pilha de 16 bits e
 read-modify-write de byte na memória.
 

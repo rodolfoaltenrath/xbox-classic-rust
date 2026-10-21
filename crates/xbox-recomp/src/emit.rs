@@ -204,6 +204,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         }
         Operation::Nop => {}
         Operation::ReadTimestamp => emit_timestamp(out),
+        Operation::ReadMsr => emit_msr(out),
         Operation::ClearInterrupts => {
             line(out, "s.eflags &= !xbox_recomp::runtime::INTERRUPT_FLAG;");
         }
@@ -275,6 +276,13 @@ fn emit_timestamp(out: &mut String) {
     line(out, "let timestamp = s.clock.tsc();");
     line(out, "s.regs[0] = timestamp as u32;");
     line(out, "s.regs[2] = (timestamp >> 32) as u32;");
+}
+
+fn emit_msr(out: &mut String) {
+    // Consultar antes de tocar EAX/EDX: índice sem modelo não tem efeitos.
+    line(out, "let value = s.read_msr(s.regs[1])?;");
+    line(out, "s.regs[0] = value as u32;");
+    line(out, "s.regs[2] = (value >> 32) as u32;");
 }
 
 fn emit_count_branch(out: &mut String, kind: CountBranch, counter: Width, target: u32, next: u32) {

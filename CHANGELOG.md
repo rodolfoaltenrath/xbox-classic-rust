@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT/alpha: RDMSR com perfil guest explícito de CPU, leitura de TSC pelo
+  mesmo Clock de RDTSC e configuração nominal EBL_CR_POWERON em 0x2A. Outros MSRs
+  recusam com PC/índice, sem efeitos; sem instrução privilegiada host ou novo unsafe.
+  AOTC v7 salva o perfil e migra v1–v6. 322 testes workspace/doctests e 131 casos
+  nativos debug/release. Com quatro raízes explícitas, o hello traduz 9027 blocos
+  e chega a HalReadWritePCISpace (46), leitura em offset 0x6C (ADR-0038).
+
 - Fase 4/alpha: família de seções críticas (291/277/294/306), com estrutura Xbox
   de 28 bytes na RAM guest, aquisição recursiva, liberação e TryEnter com BOOLEAN.
   Contenção bloqueante/esperadores/exceções recusam explicitamente; validação integral

@@ -253,6 +253,8 @@ pub enum Operation {
     },
     Ret(u16),
     ReadTimestamp,
+    /// RDMSR: índice em ECX, resultado EDX:EAX, somente MSRs do perfil guest.
+    ReadMsr,
     /// Perfil Xbox privilegiado: limpa IF guest, sem executar CLI no host.
     ClearInterrupts,
     /// Suspende a CPU guest e entrega o controle ao host.

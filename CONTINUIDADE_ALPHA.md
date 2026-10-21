@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-20**, com base no commit **`8145562`** e nas alterações
-locais do **ADR-0037**, ainda sem novo commit nesta referência. Este documento
+Atualizado em **2026-10-20**, com base no commit **`0365320`** e nas alterações
+locais do **ADR-0038**, ainda sem novo commit nesta referência. Este documento
 registra o contexto necessário para continuar o projeto sem o histórico da conversa.
 Antes de trabalhar, confira `git status`, os commits posteriores e as instruções
 locais: o código pode ter evoluído depois desta referência.
@@ -35,25 +35,25 @@ Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 **Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
-Com as duas raízes anteriores, agora para no construtor `0x205E0` ainda não
-traduzido (`UnknownTarget`, CALL em `0x18E23`). Acrescentar essa raiz revela
-**RDMSR em `0x207C6`**, com `ECX=0x2A`, na inicialização da frequência de CPU.
+RDMSR e o perfil nominal de CPU/MSRs já estão implementados. Com quatro raízes
+explícitas, **9027 blocos** executam até **HalReadWritePCISpace (46)**, retorno
+`0x2064D`, leitura de quatro bytes no offset PCI `0x6C` (bus 0, slot `0x60`).
 A execução integrada completa e o framebuffer ainda estão pendentes.
 Jogos comerciais ainda não executam.
 
-## As seis entregas e o estado das duas já trabalhadas
+## As seis entregas e o estado atual
 
 | Passo | Entrega | Situação nesta referência | Critério para concluir |
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Dados, dispatcher, mutants, SHA-1, EEPROM e seções críticas; 12/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
-| 4 | ISA necessária | BSF/BSR implementados; fluxo descoberto do hello traduz (8725 instruções); entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | Passa por Init da seção crítica; nova raiz de construtor exige RDMSR; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 4 | ISA necessária | RDMSR e perfil de CPU implementados; 9027 blocos com quatro raízes; entradas de threads/callbacks ainda precisam de aceite | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
+| 5 | Execução integrada | Passa por RDMSR/cálculo do multiplicador; para em HalReadWritePCISpace (46); aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | Pendente | Apresentar uma imagem produzida pela execução do homebrew |
 
-Há **duas entregas de implementação registradas em commits**, mas isso não
-significa dois aceites completos do alpha. O passo 2 depende de partes do passo 3
+Há diversas entregas de implementação registradas, mas isso não significa
+aceites completos do alpha. O passo 2 depende de partes do passo 3
 para fechar sua integração. As seis entregas não são uma estimativa de seis
 commits, seis dias ou uma garantia de compatibilidade.
 
@@ -158,8 +158,8 @@ no passo 3 abaixo. O scheduler continua pendente.
 | Template TLS | `0x2A000..0x2A110`, 272 bytes; zero-fill 0 |
 | Índice TLS | Endereço `0x28108` |
 | Callbacks/alinhamento | Sem callbacks; characteristics `0x00300000`, alinhamento 4 |
-| Análise AOT atual | 8791 com `--entry 0x19110 --entry 0x145E0`; incluir `--entry 0x205E0` revela RDMSR em `0x207C6` |
-| Bloqueio de execução atual | UnknownTarget: CALL `0x18E23` → construtor `0x205E0`; Init da seção crítica já atendido |
+| Análise AOT atual | 9027 instruções/blocos com raízes 0x19110, 0x145E0, 0x205E0 e 0x20889 |
+| Bloqueio de execução atual | HalReadWritePCISpace (46), retorno 0x2064D; leitura 0, 0x60, 0x6C, 0x7000FE9C, 4, 0 |
 | ISA antes bloqueante, agora implementada | `LOCK CMPXCHG` em `0x209C3`; `SETE` em `0x209C9` (ADR-0024) |
 
 Os três dados importados são `LaunchDataPage` (164), `PsThreadObjectType` (259)
@@ -381,7 +381,7 @@ e `get_cpu_multiplier`: consulta EBL_CR_POWERON e potencialmente PCI. A próxima
 entrega precisa modelar CPU/MSRs guest em conjunto com o Clock, sem usar RDMSR
 host ou valores escolhidos só para desviar do caminho.
 
-Registro atual: **12/69 serviços**, 3/3 dados; **317 testes workspace/doctests**,
+Registro nessa entrega: **12/69 serviços**, 3/3 dados; **317 testes workspace/doctests**,
 **125 casos nativos debug/release** (109 nos demais hosts). Nove testes novos de
 kernel e três gerados cobrem layout, recursão, faltas, ABI, retry e snapshot.
 O Clippy Linux também exigiu conversão verificada de `usize` para `i64` antes de
@@ -395,6 +395,35 @@ em `~/.cache/obsidian/toolchain/usr`; comandos em `docs/dev/homebrew.md`.
 Esses caches são locais, não acompanham o Git. Logs desta entrega têm prefixo
 `target/critical-`; o projeto hello executável está em
 `target/alpha-hello-critical-20261020`.
+
+### RDMSR, perfil de CPU e próximo serviço PCI (ADR-0038)
+
+RDMSR lê ECX e publica EDX:EAX sem tocar flags ou os demais registradores.
+`CpuProfile::XboxRetailV1` (ID 1) é explícito em State: MSR 0x10 lê o mesmo Clock
+que RDTSC; 0x2A devolve 0x01040000 (bus nominal 133⅓ MHz × razão 5,5). Demais
+bits dessa configuração são zero por política sintética, não dump físico.
+Índices sem modelo produzem erro com PC/índice, sem alterar CPU/RAM nem cobrar o
+passo; WRMSR/CPL/CR4/entrega de #GP continuam pendentes. Não há RDMSR host.
+
+**AOTC agora é v7**, com ID de perfil de CPU no final do payload; v1–v6 migram
+explicitamente para o perfil 1. AOTS v1/KRNL v2/KMUT v2/EEPR v1 permanecem.
+O perfil de custos de tempo continua 1 e os MSRs não ganham relógio próprio.
+
+Com a raiz `0x205E0`, o hello traduz 9024 blocos e passa por RDMSR. O JMP em
+`0x2081E` encontra o case `0x20889`, que devolve multiplicador 55 (5,5 × 10).
+A tabela passa por slot de pilha e ainda não é inferida; declarar esse destino
+observado com `--entry 0x20889` traduz 9027 blocos. O erro real passa a ser
+**HalReadWritePCISpace (46)**, retorno `0x2064D`, argumentos
+`0, 0x60, 0x6C, 0x7000FE9C, 4, 0`. A origem é o construtor de frequência em
+`lib/winapi/profiling.c` do nxdk fixado. A próxima entrega deve modelar a
+configuração PCI guest/clock do chipset necessária a essa leitura, sem inventar
+um valor para desviar do cálculo.
+
+Registro atual: **12/69 serviços**, 3/3 dados; **322 testes workspace/doctests** e
+**131 casos nativos debug/release** (115 fora de x86_64), no Rust 1.98.1. Cinco
+novos testes do recompilador/runtime e seis gerados cobrem efeitos, limites,
+retry e migração/snapshot. Evidências: [ADR-0038](docs/adr/0038-rdmsr-perfil-cpu-guest.md),
+logs `target/msr-*`. Projeto de execução atual: `target/alpha-hello-msr-ratio-20261020`.
 
 Trabalho restante:
 
@@ -508,7 +537,7 @@ continuar explícito. Com ela, 8769 instruções/blocos compilam e executam até
 **NtCreateMutant (192)**, retorno reportado `0x18CFA` (CALL em `0x18CF4`),
 argumentos `0x28EEC, 0, 0`. O nxdk chama isso em `threads/mtx_init.c`.
 Esse bloqueio levou à implementação de mutants e espera/liberação nos ADRs
-0032/0035. O bloqueio atual de MSR está descrito no ADR-0037. O dispatcher
+0032/0035. RDMSR foi implementado no ADR-0038; o bloqueio atual é PCI. O dispatcher
 continua recusando serviços ausentes.
 Preservar semântica de flags, acessos, atomicidade aplicável e falhas sem efeitos
 parciais; comparar com referências independentes quando apropriado.
@@ -584,16 +613,15 @@ No Windows usado como referência:
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-homebrew.sh
 cargo run --offline -p ordinal-report -- target/homebrew/hello.xbe
 cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Na referência atual, `check-memory` e `translate` com as duas raízes passam.
-O binário passa por mutex, SHA, EEPROM e Init da seção crítica e para em
-`UnknownTarget` para o construtor `0x205E0`, sem framebuffer. Acrescentar
-`--entry 0x205E0` revela RDMSR em `0x207C6` durante a tradução.
-Sem a primeira raiz, para em `UnknownTarget` para `0x19110`. Isso ainda não significa execução
-completa nem serviços suficientes. A tradução exige
+Na referência atual, `check-memory` e `translate` com as quatro raízes passam.
+O binário passa por mutex, SHA, EEPROM, Init da seção crítica e RDMSR e para em
+HalReadWritePCISpace (46), sem framebuffer. Com três raízes, falta o case
+`0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
+execução completa nem serviços suficientes. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
 
@@ -615,7 +643,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 125 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 131 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -636,7 +664,7 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
-> alterar código. Base documentada: 8145562 + alterações locais do ADR-0037.
+> alterar código. Base documentada: 0365320 + alterações locais do ADR-0038.
 > A entrega 1 tem aceite local; TLS/ABI existe, mas faltam serviços/threads para
 > concluir o hello real. O kernel tem 12/69 serviços com variantes limitadas:
 > RtlInitAnsiString, criação/espera/liberação de mutant, SHA-1, EEPROM integral
@@ -644,20 +672,22 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > a identidade inicial é 1. Seções críticas têm 28 bytes na RAM guest; bloqueio,
 > esperadores e exceções continuam recusados. SHA usa contexto opaco HLE próprio.
 > Session possui o dispatcher e atender_kernel() não recebe argumento.
-> Snapshot integral: AOTS v1, AOTC v6, KRNL v2, KMUT v2, EEPR v1. Preservar CPU,
-> bus, kernel e chamada pendente; CPU/bus isolados não bastam.
-> O hello reconstruído no Linux tem o mesmo hash da referência nxdk fixada.
-> Traduz/compila/inicia com --entry 0x19110 --entry 0x145E0 (8791 blocos), passa
-> por Init da seção crítica e para no CALL 0x18E23 → construtor 0x205E0.
-> Acrescentar --entry 0x205E0 revela RDMSR em 0x207C6, ECX=0x2A.
-> O fonte nxdk lib/winapi/profiling.c consulta EBL_CR_POWERON para calcular
-> frequência de CPU; pode exigir PCI em seguida. Próximo passo: contrato explícito
-> de MSRs/CPU guest coerente com o Clock. Não executar RDMSR host nem escolher
-> valor apenas para contornar código. Novas raízes podem revelar mais ISA.
-> CLI/HLT, INT3/#BP, RDTSC, SFENCE, CMPXCHG/LOCK, SETcc, CMOVcc, BSF/BSR e
-> CLC/STC/CMC existem. Ainda não há IRQ/NMI, IDT/SEH ou retomada automática.
+> Snapshot integral: AOTS v1, AOTC v7, KRNL v2, KMUT v2, EEPR v1. AOTC v7 guarda
+> CpuProfile::XboxRetailV1 (ID 1); v1–v6 migram explicitamente. MSR 0x10 e RDTSC
+> compartilham o Clock. 0x2A devolve 0x01040000: configuração nominal de bus
+> 133⅓ MHz × razão 5,5; outros bits são zero por política sintética, não dump.
+> RDMSR não usa host e índices sem modelo recusam sem efeitos; WRMSR/CPL/#GP
+> ainda faltam. Tempo continua sintético, um ciclo por passo, perfil de tempo 1.
+> O hello tem o mesmo hash nxdk fixado. Traduz 9027 blocos e executa com
+> --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889.
+> A última raiz é o case do multiplicador; a tabela passa por slot de pilha.
+> O bloqueio real é HalReadWritePCISpace (46), retorno 0x2064D, argumentos
+> 0, 0x60, 0x6C, 0x7000FE9C, 4, 0, chamado por tsc_freq_init do nxdk.
+> Próximo passo: configuração PCI guest/clock do chipset e essa leitura, sem
+> escrever um valor escolhido só para evitar o cálculo. Novas raízes podem
+> revelar mais ISA/serviços. Ainda faltam threads, execução completa e framebuffer.
 > Use Rust 1.98.1, fixado no projeto; neste PC está no cache do usuário.
-> Registro atual: 317 testes workspace/doctests e 125 casos nativos debug/release.
-> Preserve o AOT em Rust, o bus e estado explícito. Não use sucesso genérico ou
-> fixtures como prova do hello funcional. Atualize continuidade, alpha, roadmap,
-> changelog e evidências; threads, execução completa e framebuffer seguem abertos.
+> Registro atual: 322 testes workspace/doctests e 131 casos nativos debug/release.
+> Preserve AOT em Rust, bus e estado explícito. Atualize continuidade, alpha,
+> roadmap, changelog e evidências. Não use sucesso genérico ou fixtures como
+> prova do hello funcional.

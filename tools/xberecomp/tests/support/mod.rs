@@ -13,6 +13,7 @@ mod double_shifts;
 mod exchange;
 mod indirect;
 mod kernel;
+mod msr;
 mod muldiv;
 mod nvram;
 mod ordering;
@@ -64,6 +65,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&nvram::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
+    main.push_str(&msr::sources(output));
     main.push_str(&control::sources(output));
     main.push_str(&breakpoint::sources(output));
     main.push_str(&ordering::sources(output));

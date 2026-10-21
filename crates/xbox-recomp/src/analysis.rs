@@ -622,6 +622,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Retnd => Operation::Ret(0),
         Code::Retnd_imm16 => Operation::Ret(i.immediate16()),
         Code::Rdtsc => Operation::ReadTimestamp,
+        Code::Rdmsr => Operation::ReadMsr,
         Code::Cli => Operation::ClearInterrupts,
         Code::Hlt => Operation::Halt,
         Code::Int3 => Operation::Breakpoint,

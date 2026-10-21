@@ -1135,6 +1135,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-20 | 3-AOT | CLC/STC/CMC e raiz do construtor global (ADR-0036) | — | Três flag ops com teste que compara EFLAGS inteiro; entram no braço que não invalida o rastreamento de destinos; `--entry 0x145E0` cobre a tabela de inicializadores do CRT; 8769 → 8791 blocos |
 | 2026-10-20 | 4 / 5 | Hello avança até seções críticas | — | 308 testes workspace/doctests e 122 nativos debug/release; o binário nativo passa por mutex, SHA, EEPROM e construtores globais e para em `RtlInitializeCriticalSection` (291), objeto `0x2810C` |
 | 2026-10-20 | 4 / 3-AOT | Seções críticas guest e retomada Linux (ADR-0037) | — | Init/Enter/Leave/TryEnter, 28 bytes em RAM, recursão e snapshot sem estado host; 12/69 serviços, 317 testes workspace/doctests e 125 nativos debug/release; hello passa por Init, chega ao construtor 0x205E0; essa raiz revela RDMSR em 0x207C6 |
+| 2026-10-20 | 3-AOT / 5 | RDMSR e perfil de CPU guest (ADR-0038) | — | TSC compartilhado com RDTSC, EBL_CR_POWERON nominal, erros sem efeitos e AOTC v7 com migração; 322 testes workspace/doctests e 131 nativos debug/release; quatro raízes traduzem 9027 blocos e o hello chega a HalReadWritePCISpace (46) |
 
 ---
 
@@ -1151,13 +1152,16 @@ Em ordem:
    Espera e liberação de mutant estão implementadas sem bloquear o host (ADR-0035).
    Seções críticas (`291`, `277`, `294`, `306`) agora têm estrutura de 28 bytes
    na RAM guest, recursão, liberação e TryEnter; contenção bloqueante recusa
-   (ADR-0037). Com `--entry 0x19110 --entry 0x145E0`, 8791 blocos executam além
-   de Init até o CALL `0x18E23` → construtor `0x205E0` não traduzido.
-   **Acrescentar `--entry 0x205E0` revela RDMSR em `0x207C6`**, `ECX=0x2A`,
-   usado em `lib/winapi/profiling.c` do nxdk para determinar a frequência da CPU.
-   Próximo trabalho: contrato de CPU/MSRs guest coerente com o Clock, sem executar
-   RDMSR host ou devolver valor apenas para evitar o caminho. BSF/BSR destravaram
-   a tradução anterior; separar blocos corrigiu a pilha host (ADRs 0030/0031).
+   (ADR-0037). RDMSR e o perfil nominal de CPU/MSRs já estão implementados:
+   0x10 compartilha o Clock com RDTSC, 0x2A informa bus/razão nominais,
+   índices sem modelo recusam sem efeitos. AOTC v7 salva o perfil (ADR-0038).
+   Com raízes `0x19110`, `0x145E0`, `0x205E0` e `0x20889`, **9027 blocos**
+   executam até **HalReadWritePCISpace (46)**, retorno `0x2064D`, argumentos
+   `0, 0x60, 0x6C, 0x7000FE9C, 4, 0`, no construtor de frequência nxdk.
+   Próximo trabalho: configuração PCI guest/clock do chipset e atendimento dessa
+   leitura, sem escrever valor escolhido apenas para evitar o cálculo.
+   BSF/BSR destravaram a tradução anterior; separar blocos corrigiu a pilha host
+   (ADRs 0030/0031).
    Novas raízes de callbacks/threads podem revelar
    mais ISA. O framebuffer e o aceite integrado ainda estão pendentes.
 2. **Fase 4:** continuar os serviços mínimos efetivamente usados pelo homebrew,

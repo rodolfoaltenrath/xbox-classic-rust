@@ -102,9 +102,12 @@ da sessão; nessa entrega a execução parou em **NtWaitForSingleObject (233)**,
 retorno `0x16B99`, argumentos `4, 0, 0`. Espera/liberação de mutant foram
 implementadas no ADR-0035, e o construtor global `0x145E0` exigiu raiz adicional
 e CLC/STC/CMC (ADR-0036). Init de seção crítica foi atendido no ADR-0037.
-Agora o CALL em `0x18E23` chega ao construtor `0x205E0`, ainda fora dos alvos
-traduzidos. Incluí-lo revela RDMSR em `0x207C6`, `ECX=0x2A`, no cálculo da
-frequência de CPU em `lib/winapi/profiling.c`.
+Nessa etapa o CALL em `0x18E23` chegou ao construtor `0x205E0`; incluí-lo
+revelou RDMSR em `0x207C6`, `ECX=0x2A`, no cálculo de frequência de CPU em
+`lib/winapi/profiling.c`. O ADR-0038 implementou RDMSR/perfil de CPU e
+incluiu o case observado do multiplicador (`0x20889`). Com quatro raízes,
+o hello executa até HalReadWritePCISpace (46), retorno `0x2064D`, argumentos
+`0, 0x60, 0x6C, 0x7000FE9C, 4, 0`. Configuração PCI guest ainda falta.
 A análise estática não oferece a lista completa da ISA necessária
 para futuros callbacks/threads.
 
@@ -125,8 +128,8 @@ de uma thread está implementado; o CRT pode escrever novamente o mesmo índice.
 FS é uma base guest explícita em `State`, aplicada aos operandos de memória;
 LEA usa só o offset. Inferência estática não confunde leitura por FS com um
 ponteiro absoluto do arquivo. Strings com segmento e os demais segmentos
-explícitos continuam recusados. Snapshot `AOTC` v6 salva FS, perfil/Clock, estado
-de HLT e breakpoint; v1–v5 migram sem breakpoint, v1–v4 com CPU ativa, e v1–v3
+explícitos continuam recusados. Snapshot `AOTC` v7 salva FS, perfil de CPU, perfil de tempo/Clock, estado
+de HLT e breakpoint; v1–v6 migram para o perfil de CPU inicial; v1–v5 migram sem breakpoint, v1–v4 com CPU ativa, e v1–v3
 recebem Clock zero, pois não
 guardavam tempo. RAM/MMU existentes
 guardam TLS e trampolins.
@@ -161,39 +164,30 @@ SFENCE chama `Bus::ordenar_escritas`: RAM é aplicada imediatamente e as visões
 virtual/física/DMA compartilham a arena exclusiva. Não há filas pendentes a
 drenar. Essa ordenação não implementa GPU ou MMIO; filas, write-combining ou DMA
 concorrente futuros exigem ampliar o protocolo e rever o acesso à arena
-([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). Snapshot permanece AOTC v6.
+([ADR-0028](../adr/0028-sfence-ordenacao-do-bus.md)). Essa entrega manteve AOTC v6; a versão atual é v7 (ADR-0038).
 
 CMOVcc lê a origem antes de testar a condição, inclusive se falsa, preservando
 faltas e efeitos de leitura do bus. Suporta word/dword, registrador/memória,
-FS/SIB e destinos SP/ESP, sem alterar flags. AOTC permanece v6; 32768 casos
+FS/SIB e destinos SP/ESP, sem alterar flags. Essa entrega manteve AOTC v6; 32768 casos
 comparados com CPU física no oráculo opcional
 ([ADR-0029](../adr/0029-cmovcc.md)).
 
 BSF/BSR definem ZF; o perfil preserva destino em origem zero e zera as demais
 flags aritméticas indefinidas. O código gerado usa funções por bloco, com até
-32 instruções, e preserva a pilha guest em RAM. AOTC continua v6. Reprodução em
+32 instruções, e preserva a pilha guest em RAM. AOTC atual é v7. Reprodução em
 diretório novo/vazio:
 
 ```powershell
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --out target/alpha-hello
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --out target/alpha-hello
 cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
 ```
 
-Sem a primeira entrada explícita, a execução para em `UnknownTarget` no CALL de
-`0x209D2` para `0x19110`. Com ambas são 8791 blocos, que executam até
-`UnknownTarget { pc: 0x18E23, target: 0x205E0 }`, após Init da seção crítica.
-Para reproduzir o novo bloqueio de tradução, use outro diretório novo:
-
-```sh
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --out target/alpha-hello-msr
-```
-
-O erro esperado é RDMSR em `0x207C6`. Isso ainda é execução inicial, sem
-framebuffer; não executar o MSR do host nem saltar o construtor para avançar.
-Contrato/evidência atual: [ADR-0037](../adr/0037-secoes-criticas-guest.md).
-Referências das etapas anteriores: [ADR-0030](../adr/0030-bsf-bsr.md) e
-[ADR-0031](../adr/0031-blocos-aot-pilha-host.md) e
-[ADR-0032](../adr/0032-mutants-guest-snapshot-sessao.md).
+Sem a primeira raiz, a execução para no CALL de `0x209D2` para `0x19110`.
+Com as três primeiras, 9024 blocos executam até JMP `0x2081E` → `0x20889`,
+o case do multiplicador 5,5 ainda não inferido pela análise. Com as quatro,
+são **9027 blocos** e o bloqueio real é **HalReadWritePCISpace (46)**, leitura
+de quatro bytes no offset `0x6C`. Isso ainda é execução inicial, sem framebuffer.
+Contrato/evidência atual: [ADR-0038](../adr/0038-rdmsr-perfil-cpu-guest.md).
 
 SHA-1 usa formato opaco próprio do perfil HLE, sem compatibilidade declarada
 com campos privados de um kernel físico. Seu estado está inteiramente na RAM:
@@ -208,15 +202,23 @@ Outros índices e escrita de EEPROM ainda faltam. Limites e políticas locais:
 
 `Session` possui `kernel: Dispatcher`; a API atual é `session.atender_kernel()`.
 Para preservar handles/objetos HLE, salvar/restaurar a `Session` inteira por
-`Snapshot` (`AOTS` v1), e não só `state`/`bus`. O snapshot CPU continua `AOTC`
-v6. Regenerar projetos antigos que passavam um dispatcher externo.
+`Snapshot` (`AOTS` v1), e não só `state`/`bus`. O snapshot CPU agora é `AOTC`
+v7, com perfil de CPU/MSRs guest. Regenerar projetos antigos que passavam um dispatcher externo.
 
 Seções críticas mantêm evento, contagens e proprietário na RAM guest, sem registro
 host por endereço. `OwningThread=1` é uma identidade sintética do perfil, não
 KTHREAD. Init/Enter/Leave são VOID; TryEnter retorna BOOLEAN. Contenção bloqueante,
 esperadores e overflow recusam sem efeitos; Init valida 28 bytes antes do store.
-AOTS v1/AOTC v6/KRNL v2/KMUT v2/EEPR v1 permanecem. Detalhes:
+AOTS v1/KRNL v2/KMUT v2/EEPR v1 permanecem; AOTC foi para v7 no ADR-0038. Detalhes:
 [ADR-0037](../adr/0037-secoes-criticas-guest.md).
+
+RDMSR opera sobre ECX completo e escreve EDX:EAX, preservando flags/outros
+registradores. O perfil funcional nominal `XboxRetailV1` lê 0x2A como 0x01040000
+(bus 133⅓ MHz × razão 5,5; demais campos sintéticos) e 0x10 como o mesmo Clock
+de RDTSC. Não há RDMSR host. MSR sem modelo dá erro de suporte, sem #GP/IDT
+implícito, efeitos ou cobrança do passo; WRMSR continua recusado. AOTC v7 salva
+ID de perfil 1; v1–v6 migram para ele. Evidência: 322 testes workspace/doctests e
+131 casos nativos debug/release, Rust 1.98.1 (ADR-0038).
 
 ## Referências públicas
 
