@@ -40,7 +40,7 @@ mod video_verification {
         // Migração KRNL v8 reinicia o encoder e mantém a EEPROM guardada.
         let mut source=loaded();source.kernel=Dispatcher::with_eeprom(eeprom(0x00800300,0x80000));
         let initial=saved(&source);let at=initial.windows(4).rposition(|v|v==b"AVST").unwrap();let mut old=initial[..at].to_vec();old.push(0);
-        let at=old.windows(4).position(|v|v==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&8u32.to_le_bytes());
+        let at=old.windows(4).position(|v|v==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&8u32.to_le_bytes());let aots=old.windows(4).position(|v|v==b"AOTS").unwrap();old[aots+4..aots+8].copy_from_slice(&2u32.to_le_bytes());
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(!restored.kernel.video().enabled());
         boundary(&mut restored,2);handle(&mut restored);assert_eq!(restored.bus.ler_u32(GuestVirt(0x12100)).unwrap(),0x00880301);
         let mut s=loaded();s.kernel=Dispatcher::with_eeprom(eeprom(0x00400200,0));

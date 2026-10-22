@@ -4,7 +4,7 @@
 //! Vive aqui, e não no template do `main`, para ser testável sem compilar um projeto
 //! gerado: o código nativo entra como o fechamento `run`, e a janela como o fechamento
 //! `apresentar`. Nenhum dos dois é conhecido por este módulo.
-use super::{Exit, Session, State};
+use super::{Exit, Servico, Session, State};
 use crate::{Error, Result};
 use xbox_mem::Bus;
 
@@ -51,7 +51,8 @@ impl Session {
         A: FnMut(&Session) -> Result<bool>,
     {
         for _ in 0..limites.fatias {
-            let saida = run(&mut self.state, &mut self.bus, limites.blocos_por_fatia)?;
+            self.deliver_interrupts(&mut run, limites.blocos_por_fatia)?;
+            let saida = self.run_slice(&mut run, limites.blocos_por_fatia)?;
             self.publicar_tick_count()?;
             match saida {
                 Exit::Returned => {
@@ -85,7 +86,12 @@ impl Session {
                 // A CPU fica intacta: o estado pendente continua retomável.
                 Exit::KernelCall { .. } => {
                     let antes = self.state.clock.cycles();
-                    self.atender_kernel()?;
+                    // Uma espera que só termina com tempo e interrupções deixa o relógio
+                    // correr até o próximo vblank; o ISR e o DPC rodam no topo da próxima
+                    // volta, e a mesma chamada é repetida.
+                    if self.atender_kernel_ou_bloquear()? == Servico::Bloqueado {
+                        self.advance_to_next_vblank()?;
+                    }
                     if self.state.clock.cycles() != antes && apresentar(self)? {
                         return Ok(Desfecho::ParadoPeloHost);
                     }
@@ -102,6 +108,26 @@ impl Session {
             cycles: self.state.clock.cycles(),
             ms: self.state.clock.tick_count_ms(),
             eip: self.state.eip,
+        })
+    }
+}
+
+impl Session {
+    /// Roda uma fatia e, se ela falhar por acesso à memória, diz **qual instrução** falhou.
+    ///
+    /// O erro cru do Bus só tem o endereço acessado; sem o EIP, "falta em 0x40" não diz
+    /// quem dereferenciou. O Rust gerado grava `eip` no começo de cada instrução, então
+    /// ele aponta para a que falhou.
+    pub(super) fn run_slice<R>(&mut self, run: &mut R, blocks: u64) -> Result<Exit>
+    where
+        R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
+    {
+        run(&mut self.state, &mut self.bus, blocks).map_err(|error| match error {
+            Error::Memory(fault) => Error::MemoryAt {
+                pc: self.state.eip,
+                fault,
+            },
+            other => other,
         })
     }
 }

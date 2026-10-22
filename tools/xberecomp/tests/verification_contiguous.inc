@@ -34,7 +34,7 @@ mod contiguous_verification {
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();assert!(saved(&restored)==checkpoint);
         finish(&mut restored);assert!(saved(&restored)==complete);
         let at=initial.windows(4).rposition(|v|v==b"CMEM").unwrap();let mut old=initial[..at].to_vec();old.push(0);
-        let k=old.windows(4).position(|v|v==b"KRNL").unwrap();old[k+4..k+8].copy_from_slice(&9u32.to_le_bytes());
+        let k=old.windows(4).position(|v|v==b"KRNL").unwrap();old[k+4..k+8].copy_from_slice(&9u32.to_le_bytes());let aots=old.windows(4).position(|v|v==b"AOTS").unwrap();old[aots+4..aots+8].copy_from_slice(&2u32.to_le_bytes());
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.kernel.contiguous_memory().allocations().is_empty());
         boundary(&mut restored);handle(&mut restored,0x80020000);boundary(&mut restored);finish(&mut restored);assert!(saved(&restored)==complete);
         // Remover só os registros mantendo o Bus não pode esconder a janela possuída.

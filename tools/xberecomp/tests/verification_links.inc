@@ -43,7 +43,7 @@ mod links_verification {
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();
         assert!(saved(&restored)==checkpoint);finish(&mut restored);assert!(saved(&restored)==complete);
         let at=initial.windows(4).rposition(|tag|tag==b"SYML").unwrap();let mut old=initial[..at].to_vec();old.push(0); // AOTS v2: sem pai.
-        let at=old.windows(4).position(|tag|tag==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&7u32.to_le_bytes());
+        let at=old.windows(4).position(|tag|tag==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&7u32.to_le_bytes());let aots=old.windows(4).position(|v|v==b"AOTS").unwrap();old[aots+4..aots+8].copy_from_slice(&2u32.to_le_bytes());
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.kernel.drive_d_target().is_none());
         mount(&mut restored);boundary(&mut restored,203);handle(&mut restored);boundary(&mut restored,187);finish(&mut restored);
         assert!(saved(&restored)==complete);

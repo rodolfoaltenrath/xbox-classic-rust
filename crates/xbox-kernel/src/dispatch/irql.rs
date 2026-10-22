@@ -6,7 +6,7 @@ use xbox_core::snapshot::{Snapshot, SnapshotReader, SnapshotWriter};
 
 /// Níveis públicos nxdk que este perfil pode representar.
 /// DIRQLs e demais níveis exigem ampliar o modelo de interrupções.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Irql {
     /// Contexto inicial de execução do título, sem IRQ/APC/DPC entregue.

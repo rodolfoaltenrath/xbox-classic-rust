@@ -94,7 +94,7 @@ fn leitura_de_registrador_devolve_zero_declarado_e_e_registrada() {
     let bus = bus();
     // Zero é placeholder declarado, não comportamento de hardware; o que importa é que
     // a leitura não falha e que fica registrada, para a Fase 5 saber que foi lida.
-    assert_eq!(bus.ler_u32(GuestVirt(0xFD60_0100)).unwrap(), 0);
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD60_0104)).unwrap(), 0);
     let registros = bus.telemetria().registros();
     assert_eq!(registros.len(), 1);
     assert_eq!(registros[0].operacao, Operacao::Leitura);
@@ -104,7 +104,7 @@ fn leitura_de_registrador_devolve_zero_declarado_e_e_registrada() {
 #[test]
 fn telemetria_atribui_o_registrador_ao_dispositivo_certo() {
     let mut bus = bus();
-    bus.escrever_u32(GuestVirt(0xFD00_0140), 1).unwrap(); // PMC_INTR_EN_0
+    bus.escrever_u32(GuestVirt(0xFD00_0144), 1).unwrap(); // vizinho sem modelo do PMC_INTR_EN_0
     let r = &bus.telemetria().registros()[0];
     assert_eq!(
         r.motivo,
@@ -140,4 +140,48 @@ fn imagem_nao_pode_ocupar_a_janela_de_mmio() {
         erro.contains("reservada") || erro.contains("fora da imagem") || erro.contains("sobrepos"),
         "mensagem inesperada: {erro}"
     );
+}
+
+#[test]
+fn registradores_de_interrupcao_de_vblank_tem_modelo_e_nao_entram_na_telemetria() {
+    let mut bus = bus();
+    // O que o pbkit faz na instalação: limpa a pendência, habilita o vblank, liga o INTA.
+    bus.escrever_u32(GuestVirt(0xFD60_0100), 1).unwrap(); // PCRTC_INTR
+    bus.escrever_u32(GuestVirt(0xFD60_0140), 1).unwrap(); // PCRTC_INTR_EN
+    bus.escrever_u32(GuestVirt(0xFD00_0140), 1).unwrap(); // PMC_INTR_EN_0
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD60_0140)).unwrap(), 1);
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD00_0140)).unwrap(), 1);
+    assert_eq!(
+        bus.ler_u32(GuestVirt(0xFD00_0100)).unwrap(),
+        0,
+        "ainda sem vblank"
+    );
+    assert!(!bus.nv2a_irq().line_asserted());
+
+    bus.nv2a_irq_mut().raise_vblank();
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD60_0100)).unwrap(), 1);
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD00_0100)).unwrap(), 0x0100_0000);
+    assert!(bus.nv2a_irq().line_asserted());
+
+    // Escrever 1 em PCRTC_INTR limpa; a linha cai.
+    bus.escrever_u32(GuestVirt(0xFD60_0100), 1).unwrap();
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD00_0100)).unwrap(), 0);
+    assert!(!bus.nv2a_irq().line_asserted());
+
+    assert!(
+        bus.telemetria().registros().is_empty(),
+        "registrador modelado não é 'sem modelo': {:?}",
+        bus.telemetria().registros()
+    );
+}
+
+#[test]
+fn acesso_de_largura_diferente_aos_registradores_de_vblank_cai_na_telemetria() {
+    let mut bus = bus();
+    bus.escrever_u32(GuestVirt(0xFD60_0140), 1).unwrap();
+    // Um byte do registrador não tem semântica modelada: não pode alterar o estado.
+    bus.escrever_u8(GuestVirt(0xFD60_0140), 0).unwrap();
+    assert_eq!(bus.ler_u32(GuestVirt(0xFD60_0140)).unwrap(), 1);
+    assert_eq!(bus.telemetria().registros().len(), 1);
+    assert_eq!(bus.telemetria().registros()[0].tamanho, 1);
 }

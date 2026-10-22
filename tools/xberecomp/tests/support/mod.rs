@@ -18,6 +18,7 @@ mod encoder_filters;
 mod exchange;
 mod indirect;
 mod interlocked;
+mod interrupt;
 mod irql;
 mod kernel;
 mod links;
@@ -83,6 +84,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&contiguous::sources(output));
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));
+    main.push_str(&interrupt::sources(output));
     main.push_str(&sse::sources(output));
     main.push_str(&x87::sources(output));
     main.push_str(&video::sources(output));

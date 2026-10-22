@@ -67,6 +67,7 @@ pub mod bus;
 pub mod dispositivos;
 pub mod frames;
 pub mod mmu;
+pub mod nv2a_irq;
 pub mod regioes;
 
 pub use addr::{Acesso, ArenaOff, GuestPhys, GuestVirt, Perm};
@@ -75,6 +76,7 @@ pub use bus::Bus;
 pub use dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Registro, Telemetria};
 pub use frames::AlocadorDeFrames;
 pub use mmu::{Falta, Mmu, MotivoDeFalta};
+pub use nv2a_irq::Nv2aIrq;
 pub use regioes::{MapaFisico, Regiao};
 
 /// Fase do roadmap em que este subsistema é implementado.

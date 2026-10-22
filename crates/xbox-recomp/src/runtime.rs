@@ -13,6 +13,7 @@ use crate::Result;
 use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 
 mod drive;
+mod interrupts;
 mod msr;
 mod muldiv;
 pub mod sse;
@@ -275,6 +276,16 @@ pub enum Exit {
     },
 }
 
+/// Como terminou um atendimento de kernel pela sessão.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Servico {
+    /// O serviço rodou e o retorno foi aplicado.
+    Concluido,
+    /// A espera não termina sem tempo e interrupções: o retorno **não** foi aplicado e a
+    /// CPU continua na chamada pendente.
+    Bloqueado,
+}
+
 /// Sessão AOT com CPU, memória e estado HLE. O snapshot da sessão inclui os três.
 #[derive(Debug)]
 pub struct Session {
@@ -282,6 +293,8 @@ pub struct Session {
     pub bus: Bus,
     pub kernel: xbox_kernel::dispatch::Dispatcher,
     parent: Option<threads::ThreadContext>,
+    /// Vblanks já gerados pelo relógio guest (ADR-0055).
+    vblanks: u64,
 }
 
 impl Session {
@@ -297,6 +310,7 @@ impl Session {
             state,
             bus,
             parent: None,
+            vblanks: 0,
             kernel: xbox_kernel::dispatch::Dispatcher::for_image(
                 xbe.header.base_address,
                 xbe.header.size_of_image,
@@ -331,6 +345,18 @@ impl Session {
     /// que o snapshot da sessão já exige. Assim um serviço faltante pode ser implementado
     /// e a execução retomada do snapshot, sem estado escondido no host.
     pub fn atender_kernel(&mut self) -> Result<()> {
+        match self.atender_kernel_ou_bloquear()? {
+            Servico::Concluido => Ok(()),
+            // Quem chama aqui não entrega interrupções; seguir faria a mesma chamada
+            // bloquear para sempre.
+            Servico::Bloqueado => Err(crate::Error::WouldBlock { pc: self.state.eip }),
+        }
+    }
+
+    /// Como [`Self::atender_kernel`], mas uma espera que só termina com tempo e
+    /// interrupções devolve [`Servico::Bloqueado`] **sem aplicar o retorno**: a CPU segue
+    /// na chamada pendente e o mesmo atendimento pode ser repetido depois.
+    pub fn atender_kernel_ou_bloquear(&mut self) -> Result<Servico> {
         use xbox_kernel::dispatch::ORDINAL_PS_TERMINATE_SYSTEM_THREAD;
         if self.state.stopped_exit().is_some() {
             return Err(
@@ -376,6 +402,9 @@ impl Session {
                 self.state.clock.set(alvo);
                 self.publicar_tick_count()?;
             }
+            if self.kernel.take_block_request() {
+                return Ok(Servico::Bloqueado);
+            }
             self.apply_kernel_return(&call, atendimento.eax);
             if let Some(child) = self.kernel.start_ready_thread() {
                 self.parent = Some(threads::ThreadContext::capture(&self.state));
@@ -388,7 +417,7 @@ impl Session {
                 self.state.returned = false;
             }
         }
-        Ok(())
+        Ok(Servico::Concluido)
     }
 
     pub fn has_parked_parent(&self) -> bool {
@@ -438,7 +467,7 @@ impl Session {
 
 impl Snapshot for Session {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTS", 2);
+        out.section("AOTS", 3);
         self.state.save(out);
         self.bus.save(out);
         self.kernel.save(out);
@@ -446,11 +475,12 @@ impl Snapshot for Session {
         if let Some(parent) = &self.parent {
             parent.save(out);
         }
+        out.u64(self.vblanks);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTS", 2)?;
-        if !matches!(version, 1 | 2) {
+        let version = inp.section("AOTS", 3)?;
+        if !matches!(version, 1..=3) {
             return Err(SnapshotError::BadValue {
                 section: "AOTS",
                 what: "versão de sessão desconhecida",
@@ -490,6 +520,12 @@ impl Snapshot for Session {
                 what: "CPU ativa diverge do TLS/pilha da filha",
             });
         }
+        // v1–v2 não guardavam vblanks: parte do relógio, sem inventar atraso acumulado.
+        self.vblanks = if version >= 3 {
+            inp.u64()?
+        } else {
+            self.state.clock.cycles() / Self::vblank_period()
+        };
         Ok(())
     }
 }

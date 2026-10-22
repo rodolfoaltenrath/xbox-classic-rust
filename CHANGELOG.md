@@ -10,6 +10,18 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: **interrupções: vblank, ISR e DPC** (ADR-0055). `HalGetInterruptVector`,
+  `KeInitializeInterrupt`, `KeConnectInterrupt`, `KeDisconnectInterrupt`, `KeInitializeDpc`,
+  `KeInsertQueueDpc`, `KeRemoveQueueDpc` e `HalRegisterShutdownNotification`, com
+  `KINTERRUPT`/`KDPC` na memória do guest. Quatro registradores do NV2A (`PMC_INTR_0`,
+  `PMC_INTR_EN_0`, `PCRTC_INTR`, `PCRTC_INTR_EN`) ganham modelo no `Bus`; um vblank a cada
+  59,94 Hz do Clock único trava a pendência. `Session::conduzir` entrega o ISR e depois os
+  DPCs como chamadas guest aninhadas, atômicas para o host, e uma espera por evento que só o
+  DPC pulsa bloqueia, deixa o tempo correr até o vblank e repete a chamada. O pulso libera
+  quem espera. Snapshots: `BUS0` v2, `KRNL` v12, `KEVT` v2, `KINT` v2, `AOTS` v3 (migrações
+  testadas). 37/69 serviços do hello. Um erro de memória agora diz o EIP da instrução.
+  Declarados P10–P12. O `triangle` instala o ISR e o DPC e para em `pb_init`, que lê zero do
+  PLL da GPU e falha com -5: o começo da Fase 5, não uma falha da interrupção.
 - Fase 4/alpha: **eventos do kernel** (`NtCreateEvent`, `NtSetEvent`, `NtClearEvent`,
   `NtPulseEvent`; ADR-0054). Os handles compartilham o contador de mutants/threads/links;
   esperar um evento sinalizado funciona (o de sincronização é limpo), esperar um não

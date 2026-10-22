@@ -29,6 +29,7 @@ mod critical;
 mod delay;
 mod events;
 mod interlocked;
+mod interrupts;
 mod irql;
 mod links;
 mod mutants;
@@ -46,6 +47,7 @@ pub use contiguous::{
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use delay::PedidoDeTempo;
 use events::{EventOperation, Events};
+pub use interrupts::{GPU_IRQ, GuestCall};
 pub use irql::Irql;
 pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
 use mutants::Mutants;
@@ -84,6 +86,14 @@ pub const ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION: u32 = 306;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
+pub const ORDINAL_HAL_GET_INTERRUPT_VECTOR: u32 = 44;
+pub const ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION: u32 = 47;
+pub const ORDINAL_KE_CONNECT_INTERRUPT: u32 = 98;
+pub const ORDINAL_KE_DISCONNECT_INTERRUPT: u32 = 100;
+pub const ORDINAL_KE_INITIALIZE_DPC: u32 = 107;
+pub const ORDINAL_KE_INITIALIZE_INTERRUPT: u32 = 109;
+pub const ORDINAL_KE_INSERT_QUEUE_DPC: u32 = 119;
+pub const ORDINAL_KE_REMOVE_QUEUE_DPC: u32 = 137;
 pub const ORDINAL_NT_CLEAR_EVENT: u32 = 186;
 pub const ORDINAL_NT_CREATE_EVENT: u32 = 189;
 pub const ORDINAL_NT_PULSE_EVENT: u32 = 205;
@@ -138,6 +148,14 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
+    ORDINAL_HAL_GET_INTERRUPT_VECTOR,
+    ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION,
+    ORDINAL_KE_CONNECT_INTERRUPT,
+    ORDINAL_KE_DISCONNECT_INTERRUPT,
+    ORDINAL_KE_INITIALIZE_DPC,
+    ORDINAL_KE_INITIALIZE_INTERRUPT,
+    ORDINAL_KE_INSERT_QUEUE_DPC,
+    ORDINAL_KE_REMOVE_QUEUE_DPC,
     ORDINAL_NT_CLEAR_EVENT,
     ORDINAL_NT_CREATE_EVENT,
     ORDINAL_NT_PULSE_EVENT,
@@ -242,6 +260,7 @@ pub struct Dispatcher {
     recusadas: u64,
     mutants: Mutants,
     events: Events,
+    interrupts: interrupts::Interrupts,
     eeprom: EepromState,
     pci: PciConfig,
     system_time: SystemTimeReference,
@@ -256,6 +275,9 @@ pub struct Dispatcher {
     // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
     // ponto de salvamento (ver `Session::atender_kernel`).
     pending_time: Option<delay::PedidoDeTempo>,
+    // A espera atual não termina sem tempo e interrupções; só a sessão consome. Transiente
+    // como `pending_time`: a sessão o resolve antes de qualquer ponto de salvamento.
+    pending_block: bool,
 }
 
 impl Dispatcher {
@@ -307,6 +329,7 @@ impl Dispatcher {
                 section: "CMEM",
                 what,
             })?;
+        self.interrupts.validate(bus)?;
         self.video
             .validate_memory(&self.contiguous, &self.eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -432,6 +455,7 @@ impl Dispatcher {
         self.dispatch(bus, pc, regs, Some(clock))
     }
 
+    #[allow(clippy::too_many_lines)] // Tabela plana ordinal → serviço, uma linha por ordinal.
     fn dispatch(
         &mut self,
         bus: &mut Bus,
@@ -500,10 +524,18 @@ impl Dispatcher {
             }
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
-            ORDINAL_NT_CREATE_EVENT => self.nt_create_event(bus, &call),
-            ORDINAL_NT_SET_EVENT => self.nt_event_operation(bus, &call, EventOperation::Set),
-            ORDINAL_NT_CLEAR_EVENT => self.nt_event_operation(bus, &call, EventOperation::Clear),
-            ORDINAL_NT_PULSE_EVENT => self.nt_event_operation(bus, &call, EventOperation::Pulse),
+            ORDINAL_NT_CREATE_EVENT
+            | ORDINAL_NT_SET_EVENT
+            | ORDINAL_NT_CLEAR_EVENT
+            | ORDINAL_NT_PULSE_EVENT
+            | ORDINAL_HAL_GET_INTERRUPT_VECTOR
+            | ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION
+            | ORDINAL_KE_INITIALIZE_INTERRUPT
+            | ORDINAL_KE_CONNECT_INTERRUPT
+            | ORDINAL_KE_DISCONNECT_INTERRUPT
+            | ORDINAL_KE_INITIALIZE_DPC
+            | ORDINAL_KE_INSERT_QUEUE_DPC
+            | ORDINAL_KE_REMOVE_QUEUE_DPC => self.dispatch_signals(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
             ORDINAL_KE_DELAY_EXECUTION_THREAD => self.ke_delay_execution_thread(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
@@ -587,7 +619,16 @@ impl Dispatcher {
                 events::Espera::Satisfeita => Ok(Atendimento { eax: STATUS_WAIT_0 }),
                 // Só um scheduler ou uma interrupção o sinalizariam; nenhum existe.
                 events::Espera::Bloquearia => {
-                    variante("espera de evento não sinalizado exige scheduler ou interrupção")
+                    if self.interrupt_can_signal(bus) {
+                        // Há uma interrupção que pode sinalizar o evento: a sessão deixa o
+                        // tempo correr até o vblank, entrega ISR e DPC e repete esta
+                        // chamada. O retorno não é aplicado enquanto o bloqueio durar.
+                        self.events.register_waiter(handle);
+                        self.pending_block = true;
+                        Ok(Atendimento { eax: STATUS_WAIT_0 })
+                    } else {
+                        variante("espera de evento não sinalizado exige scheduler ou interrupção")
+                    }
                 }
             };
         }
@@ -708,7 +749,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 11);
+        out.section("KRNL", 12);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -722,10 +763,11 @@ impl Snapshot for Dispatcher {
         self.video.save(out);
         self.contiguous.save(out);
         self.events.save(out);
+        self.interrupts.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 11)?;
+        let version = inp.section("KRNL", 12)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -786,6 +828,13 @@ impl Snapshot for Dispatcher {
             events.load(inp)?;
         }
         events.validate(&mutants, &links, threads.child)?;
+        // v1–v11 não tinham interrupções nem DPCs: migram para listas vazias. A conferência
+        // contra a memória guest acontece em `restore_memory_context`, quando o Bus já
+        // foi restaurado.
+        let mut interrupts = interrupts::Interrupts::default();
+        if version >= 12 {
+            interrupts.load(inp)?;
+        }
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -797,6 +846,7 @@ impl Snapshot for Dispatcher {
             recusadas,
             mutants,
             events,
+            interrupts,
             eeprom,
             pci,
             system_time,
@@ -811,6 +861,7 @@ impl Snapshot for Dispatcher {
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço
             // de relógio que já foi aplicado (ou descartado) na sessão de origem.
             pending_time: None,
+            pending_block: false,
         };
         Ok(())
     }

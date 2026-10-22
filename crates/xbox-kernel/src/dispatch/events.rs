@@ -63,6 +63,11 @@ pub(super) enum Espera {
 #[derive(Debug, Default)]
 pub(super) struct Events {
     objects: BTreeMap<u32, Event>,
+    /// Evento pelo qual a chamada bloqueada atual espera (no máximo uma: há uma só CPU).
+    waiter: Option<u32>,
+    /// Um `NtPulseEvent` aconteceu enquanto `waiter` esperava: a próxima tentativa é
+    /// satisfeita sem que o evento fique sinalizado, que é o que o pulso significa.
+    released: bool,
 }
 
 impl Events {
@@ -98,12 +103,34 @@ impl Events {
                 event.signaled = false;
             }
             Espera::Satisfeita
+        } else if self.released && self.waiter == Some(handle) {
+            // Liberada por um pulso durante o bloqueio.
+            self.released = false;
+            self.waiter = None;
+            Espera::Satisfeita
         } else {
             Espera::Bloquearia
         })
     }
 
+    /// A chamada de espera vai bloquear em `handle`: um pulso a partir de agora a libera.
+    pub(super) fn register_waiter(&mut self, handle: u32) {
+        self.waiter = Some(handle);
+        self.released = false;
+    }
+
+    /// `NtPulseEvent`: libera quem espera por `handle`, sem deixar o evento sinalizado.
+    pub(super) fn pulse(&mut self, handle: u32) {
+        if self.waiter == Some(handle) {
+            self.released = true;
+        }
+    }
+
     pub(super) fn close(&mut self, handle: u32) -> bool {
+        if self.waiter == Some(handle) {
+            self.waiter = None;
+            self.released = false;
+        }
         self.objects.remove(&handle).is_some()
     }
 
@@ -138,7 +165,7 @@ fn bad(what: &'static str) -> SnapshotError {
 
 impl Snapshot for Events {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KEVT", 1);
+        out.section("KEVT", 2);
         out.u32(self.objects.len() as u32);
         for (&handle, event) in &self.objects {
             out.u32(handle);
@@ -148,10 +175,13 @@ impl Snapshot for Events {
             });
             out.bool(event.signaled);
         }
+        out.u32(self.waiter.unwrap_or(0));
+        out.bool(self.released);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        if inp.section("KEVT", 1)? != 1 {
+        let version = inp.section("KEVT", 2)?;
+        if !matches!(version, 1 | 2) {
             return Err(bad("versão desconhecida"));
         }
         let count = inp.u32()? as usize;
@@ -170,6 +200,17 @@ impl Snapshot for Events {
             objects.insert(handle, Event { kind, signaled });
             previous = handle;
         }
+        // v1 não guardava quem esperava: migra para ninguém.
+        let (waiter, released) = if version >= 2 {
+            (inp.u32()?, inp.bool()?)
+        } else {
+            (0, false)
+        };
+        if waiter != 0 && !objects.contains_key(&waiter) || waiter == 0 && released {
+            return Err(bad("espera pendente sobre evento inexistente"));
+        }
+        self.waiter = (waiter != 0).then_some(waiter);
+        self.released = released;
         self.objects = objects;
         Ok(())
     }
@@ -276,6 +317,9 @@ impl super::Dispatcher {
             EventOperation::Set => self.events.set(handle),
             EventOperation::Clear | EventOperation::Pulse => self.events.clear(handle),
         };
+        if operation == EventOperation::Pulse {
+            self.events.pulse(handle);
+        }
         Ok(Atendimento {
             eax: STATUS_SUCCESS,
         })

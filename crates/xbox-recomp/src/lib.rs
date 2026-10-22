@@ -88,6 +88,16 @@ pub enum Error {
     MisalignedSse { pc: u32, address: u32 },
     #[error("pilha x87: {0:?} (#IS)")]
     FpuStack(crate::runtime::x87::StackFault),
+    #[error(
+        "em 0x{pc:08X}: a espera só termina com tempo e interrupções, e este chamador não as entrega"
+    )]
+    WouldBlock { pc: u32 },
+    #[error("rotina de interrupção ou DPC em 0x{entry:08X} não retornou em {slices} fatias")]
+    InterruptStuck { entry: u32, slices: u32 },
+    #[error("rotina de interrupção ou DPC bloqueou em 0x{pc:08X}: ISR e DPC não podem esperar")]
+    BlockedInInterrupt { pc: u32 },
+    #[error("{fault} (instrução em EIP=0x{pc:08X})")]
+    MemoryAt { pc: u32, fault: xbox_mem::Falta },
     /// O apresentador do host falhou; o texto vem do erro dele, que este crate não conhece.
     #[error("apresentação: {0}")]
     Presentation(String),

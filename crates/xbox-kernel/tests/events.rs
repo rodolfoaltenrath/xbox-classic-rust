@@ -339,11 +339,10 @@ fn snapshot_preserva_eventos_e_migra_versoes_antigas_para_tabela_vazia() {
 fn snapshot_v10_sem_eventos_migra_para_tabela_vazia() {
     let d = Dispatcher::new();
     let mut bytes = salvar(&d);
-    // Um v10 é o v11 sem a seção `KEVT` final (tag, versão e contagem: 12 bytes), com a
-    // versão do contêiner KRNL em 10. A versão fica logo depois da tag da primeira seção.
+    // Um v10 é o corrente sem as seções `KEVT` e `KINT` finais, com a versão do contêiner
+    // KRNL em 10. A versão fica logo depois da tag da primeira seção.
     assert_eq!(&bytes[12..16], b"KRNL");
-    let corpo = bytes.len() - 12;
-    assert_eq!(&bytes[corpo..corpo + 4], b"KEVT");
+    let corpo = bytes.windows(4).rposition(|w| w == b"KEVT").unwrap();
     bytes.truncate(corpo);
     bytes[16..20].copy_from_slice(&10u32.to_le_bytes());
 

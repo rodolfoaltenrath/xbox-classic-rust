@@ -34,9 +34,10 @@ use xbox_core::{PAGE_SIZE, RAM_SIZE, Result};
 
 use crate::addr::{Acesso, ArenaOff, GuestPhys, GuestVirt, Perm};
 use crate::arena::Arena;
-use crate::dispositivos::{Contexto, Motivo, Operacao, Telemetria};
+use crate::dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Telemetria};
 use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
+use crate::nv2a_irq::Nv2aIrq;
 use crate::regioes::{MapaFisico, Regiao};
 
 /// O barramento de memória do console.
@@ -47,6 +48,7 @@ pub struct Bus {
     mapa: MapaFisico,
     frames: AlocadorDeFrames,
     telemetria: Telemetria,
+    nv2a_irq: Nv2aIrq,
     contexto: Cell<Contexto>,
 }
 
@@ -67,6 +69,7 @@ impl Bus {
             mapa: MapaFisico::novo(tamanho),
             frames: AlocadorDeFrames::novo(tamanho),
             telemetria: Telemetria::nova(),
+            nv2a_irq: Nv2aIrq::default(),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -99,6 +102,16 @@ impl Bus {
     /// O registro de acessos a MMIO não emulado.
     pub const fn telemetria(&self) -> &Telemetria {
         &self.telemetria
+    }
+
+    /// Os registradores de interrupção de vblank do NV2A (ADR-0055).
+    pub const fn nv2a_irq(&self) -> &Nv2aIrq {
+        &self.nv2a_irq
+    }
+
+    /// Idem, para o relógio de vblank travar a pendência.
+    pub const fn nv2a_irq_mut(&mut self) -> &mut Nv2aIrq {
+        &mut self.nv2a_irq
     }
 
     /// O mapa físico.
@@ -368,7 +381,16 @@ impl Bus {
                 .arena
                 .ler(off, destino)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
-            Regiao::Dispositivo { id, .. } => {
+            Regiao::Dispositivo { id, deslocamento } => {
+                // Os quatro registradores de interrupção de vblank têm modelo (ADR-0055);
+                // só o acesso de 32 bits alinhado conta, o resto segue sem modelo.
+                if id == Dispositivo::Nv2a
+                    && let Ok(bytes) = <&mut [u8; 4]>::try_from(&mut *destino)
+                    && let Some(valor) = self.nv2a_irq.read(deslocamento)
+                {
+                    *bytes = valor.to_le_bytes();
+                    return Ok(());
+                }
                 self.telemetria.registrar(
                     pa,
                     Operacao::Leitura,
@@ -440,7 +462,13 @@ impl Bus {
                 .arena
                 .escrever(off, origem)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
-            Regiao::Dispositivo { id, .. } => {
+            Regiao::Dispositivo { id, deslocamento } => {
+                if id == Dispositivo::Nv2a
+                    && let Ok(bytes) = <[u8; 4]>::try_from(origem)
+                    && self.nv2a_irq.write(deslocamento, u32::from_le_bytes(bytes))
+                {
+                    return Ok(());
+                }
                 self.telemetria.registrar(
                     pa,
                     Operacao::Escrita,
@@ -531,15 +559,16 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 1);
+        out.section("BUS0", 2);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
         self.frames.save(out);
+        self.nv2a_irq.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let _v = inp.section("BUS0", 1)?;
+        let versao = inp.section("BUS0", 2)?;
         let tamanho = inp.u64()? as usize;
         if tamanho != self.arena.len() {
             return Err(SnapshotError::BadValue {
@@ -550,6 +579,12 @@ impl Snapshot for Bus {
         self.arena.load(inp)?;
         self.mmu.load(inp)?;
         self.frames.load(inp)?;
+        // v1 não tinha os registradores de interrupção: migra para o estado de RESET.
+        if versao >= 2 {
+            self.nv2a_irq.load(inp)?;
+        } else {
+            self.nv2a_irq = Nv2aIrq::default();
+        }
         Ok(())
     }
 }
