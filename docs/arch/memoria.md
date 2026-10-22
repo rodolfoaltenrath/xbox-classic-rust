@@ -522,6 +522,21 @@ fuga por link simbólico aberta, que era barata de fechar.
 
 ---
 
+## Recorte PRAMDAC/NVPLL (ADR-0057)
+
+O Bus possui Nv2aPramdac, separado da RAM e do recorte de interrupções. Um bus
+novo inicia no perfil PublicReferenceV1: NVPLL_COEFF em PA 0xFD680500 tem reset
+0x00011C01, com acesso alinhado de 32 bits e readback do coeficiente programado.
+Frequência é derivada de M/N/P, sem relógio extra. Os parâmetros vêm de fontes
+públicas fixadas; não representam uma medição de console.
+
+Larguras/sobreposições não suportadas recusam. A validação de escrita confere
+esses acessos antes de escrever qualquer página anterior de RAM. Não há unsafe
+novo ou arena compartilhada. BUS0 v3 inclui NPLL v1; v1/v2 migram para
+LegacyUnmodeled, preservando os zeros com telemetria e descartes anteriores.
+Novo snapshot preserva também esse perfil legado. Ver
+[ADR-0057](../adr/0057-pramdac-perfil-clock.md) para formato, testes e limites.
+
 ## 13. O que a Fase 2 entrega
 
 Checklist de aceite, substituindo o do ROADMAP:

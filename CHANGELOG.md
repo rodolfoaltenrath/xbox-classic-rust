@@ -10,6 +10,22 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5: recorte PRAMDAC/NVPLL com perfil PublicReferenceV1, coeficiente
+  programável de 32 bits e frequência nominal derivada, sem novo relógio.
+  BUS0 v3/NPLL v1 preserva perfil/coeficiente; v1/v2 migram para o comportamento
+  legado sem modelo, sem alterar silenciosamente o replay. Larguras inválidas
+  recusam antes de efeitos parciais. Triangle passa do PLL e rejeita PFB_CFG0;
+  a falta em 0x40 ocorre na limpeza de pb_kill, antes do retorno previsto de
+  pb_init. 492 testes workspace/doctests e 209 casos gerados debug/release
+  (ADR-0057). Registro permanece 37/69 serviços; ainda sem GPU 3D.
+
+- Fase 5/preparação: scripts reproduzíveis para samples nxdk e investigação de
+  raízes AOT, preservando cada tentativa/log e propagando falhas. Build confere
+  SDK/submódulos fixados e grava manifesto/hashes; sete testes do orquestrador.
+  Inventário de evidência do PLL NV2A com revisões públicas e distinção entre
+  perfil de emulador e hardware medido; nenhum valor novo adotado no runtime
+  (ADR-0056).
+
 - Fase 4/alpha: **interrupções: vblank, ISR e DPC** (ADR-0055). `HalGetInterruptVector`,
   `KeInitializeInterrupt`, `KeConnectInterrupt`, `KeDisconnectInterrupt`, `KeInitializeDpc`,
   `KeInsertQueueDpc`, `KeRemoveQueueDpc` e `HalRegisterShutdownNotification`, com

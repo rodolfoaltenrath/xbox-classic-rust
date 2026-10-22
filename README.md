@@ -34,16 +34,15 @@ inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
 SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
 Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o pai
-estacionado; há **27/69 serviços**, com variantes limitadas. Nove raízes explícitas
+estacionado; há **37/69 serviços**, com variantes limitadas. Nove raízes explícitas
 no [guia do homebrew](docs/dev/homebrew.md) traduzem 10676 blocos. O hello já monta
-o link guest `D:` para seu diretório e chega à inicialização de vídeo. O bloqueio
-atual é o acesso MMIO ao DAC da rampa gamma. O programa já alocou e zerou a
-memória física contígua, configurou o modo 640×480×32 bits e registrou os pedidos
-de filtros de cintilação e suavização no encoder lógico.
-O runtime consegue ler as linhas do framebuffer por DMA; a saída ainda está
-desabilitada. Rampa gamma/MMIO, apresentação da imagem, escalonamento geral
-e execução completa seguem pendentes
-([ADR-0050](docs/adr/0050-pedidos-filtros-encoder.md)).
+o link guest `D:` para seu diretório, executa o main e apresenta "Hello nxdk!"
+em janela Win32. `Session::conduzir` controla orçamento e interrupção pelo host;
+eventos/ISR/DPC/vblank têm infraestrutura testada. A imagem usa bytes crus,
+sem aplicar gamma/filtros; não há escalonamento geral ou GPU 3D completa.
+O segundo alvo, triangle/pbkit, orienta o início da Fase 5. O NVPLL já possui
+perfil de clock explícito e snapshot, baseado em fontes públicas fixadas
+([ADR-0057](docs/adr/0057-pramdac-perfil-clock.md)). Jogos comerciais ainda não executam.
 
 ## Demonstração de recompilação
 

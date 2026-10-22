@@ -14,11 +14,19 @@ continuam sendo testes; não substituem esse marco.
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
 | 3. Kernel mínimo | memória contígua, modo, filtros, janela MMIO e espera por intervalo (ADR-0050, ADR-0051); 37/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
-| 5. Execução integrada | executa o `main` do hello; o host interrompe fechando a janela; orçamento fixo no template e vblank pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
+| 5. Execução integrada | executa main do hello; Session::conduzir, --fatias e interrupção pelo host; IRQ/vblank testados com fixtures | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | apresentado em janela Win32 (ADR-0052), imagem idêntica à RAM guest; só Windows, bytes crus (sem gamma/filtros — provisório, ROADMAP §16.1) | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
 
 As seis entregas são uma divisão de trabalho, não garantia de seis commits ou prazo.
 Dependências reais de kernel/ISA só serão conhecidas após compilar o alvo.
+
+A retomada de 2026-10-22 usa triangle/pbkit como segundo alvo. O recorte PRAMDAC
+do [ADR-0057](../adr/0057-pramdac-perfil-clock.md) acrescenta NVPLL programável,
+perfil público explícito e BUS0 v3/NPLL v1. Bus novo informa 0x00011C01 e
+233333324 Hz nominais. Snapshots BUS0 v1/v2 preservam o perfil antigo sem modelo;
+não passam a ter PLL válido por migração implícita. Outros registradores NV2A,
+PFIFO/pushbuffer/PGRAPH e renderização 3D continuam pendentes. Os registros por
+ADR abaixo incluem bloqueios históricos, não substituem a passagem de bastão.
 
 ## Alvo escolhido
 
@@ -140,9 +148,9 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **398 testes workspace/doctests** e **177 casos de
-Rust gerado em debug/release**, incluindo pedidos de filtros, modo de vídeo, DMA e snapshots. O Rust
-fixado é 1.98.1. O aceite integrado permanece aberto: o CRT cria a thread de
-`main` e ainda faltam serviços, execução completa e framebuffer. A primeira
+A validação atual tem **492 testes workspace/doctests** e **209 casos de
+Rust gerado em debug/release**, incluindo NVPLL, DMA e snapshots. O Rust
+fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
+passa do PLL e rejeita PFB_CFG0. O aceite não cobre GPU 3D ou scheduler geral. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não
 foi usada. A EEPROM padrão continua sintética, com bytes/origem explícitos.

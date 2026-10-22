@@ -28,6 +28,7 @@ mod nop;
 mod nvram;
 mod ordering;
 mod pci;
+mod pramdac;
 mod rotations;
 mod scan;
 mod sha;
@@ -85,6 +86,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));
     main.push_str(&interrupt::sources(output));
+    main.push_str(&pramdac::sources(output));
     main.push_str(&sse::sources(output));
     main.push_str(&x87::sources(output));
     main.push_str(&video::sources(output));

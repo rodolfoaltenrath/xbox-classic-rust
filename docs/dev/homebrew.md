@@ -1,5 +1,25 @@
 # Homebrew nxdk e fronteira do kernel
 
+## Segundo alvo e perfil NVPLL — 2026-10-22
+
+O triangle/pbkit usa as dez raízes documentadas na passagem de bastão, produzindo
+17883 blocos. O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
+coeficiente NVPLL programável, com perfil PublicReferenceV1 baseado em fontes
+públicas fixadas. Sessão nova lê 0x00011C01/233333324 Hz nominais; BUS0 v3/NPLL v1
+guarda perfil/coeficiente. BUS0 v1/v2 continuam sem modelo por migração explícita.
+
+O guest passa da verificação PLL e escreve os parâmetros PTIMER (ainda sem
+efeito de dispositivo), mas rejeita PFB_CFG0, que lê zero. A falta final em
+VA=0x40/PC=0x16EA2 ocorre em pb_start chamado por pb_kill, antes do retorno
+previsto de pb_init. Dois testes do alvo real confirmaram a cadeia EBP: caller
+0x18283 no perfil novo (PFB) e 0x18212 no legado (PLL). Não é evidência de que
+o sample já recebeu/ignorou o retorno -6/-5. Nenhum triângulo foi apresentado.
+
+Validação: 492 testes workspace/doctests e 209 casos gerados debug/release;
+dois testes locais ignorados do triangle comparam perfis e snapshot. Evidências:
+`target/pramdac-triangle.log` e o ADR-0057. Próximo: PFB com procedência e
+consistência com memória/PRAMIN, depois seguir os bloqueios observados.
+
 ## Build local
 
 Alvo: `samples/hello` do nxdk, revisão

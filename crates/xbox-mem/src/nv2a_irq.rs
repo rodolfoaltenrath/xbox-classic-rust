@@ -1,8 +1,8 @@
 //! Os quatro registradores do NV2A que formam a linha de interrupção do vblank.
 //!
 //! Isto **não** é o NV2A: é o recorte mínimo que o `pbkit` do nxdk lê e escreve para
-//! tratar o vblank (ADR-0055). Todo outro registrador do dispositivo continua sem modelo,
-//! lido como zero declarado e registrado pela telemetria.
+//! tratar o vblank (ADR-0055). O NVPLL tem recorte próprio em `nv2a_pramdac`
+//! (ADR-0057); os demais registradores continuam sem modelo e na telemetria.
 //!
 //! | Offset | Registrador | Modelo |
 //! |---|---|---|

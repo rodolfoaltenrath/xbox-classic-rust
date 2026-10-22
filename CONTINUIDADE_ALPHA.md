@@ -1,17 +1,178 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-21**, com base no commit **`d2e1b60`** (que já contém o
-ADR-0050) e nas alterações locais do **ADR-0051**, ainda sem commit nesta referência.
+Atualizado em **2026-10-22**, com base no commit **`9ad331e`** e alterações locais
+dos ADRs **0056/0057** (ferramentas/evidência e perfil PRAMDAC).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
 
-> **Como ler este arquivo.** O estado vigente está em "**Estado atual**" (logo abaixo) e
+> **Como ler este arquivo.** O estado vigente está na "**Passagem de bastão**" abaixo e
 > na tabela de contratos ("Fim da execução atual" e "Comando completo"). As seções
 > por ADR mais adiante são **registros datados**: frases como "Próximo bloqueio" ou "o
 > bloqueio atual" dentro delas descrevem o momento em que cada ADR foi escrito e estão
 > preservadas como histórico, não como estado vigente. Na dúvida, reproduza com o
 > comando completo da tabela de contratos antes de investigar qualquer bloqueio.
+
+## Passagem de bastão — estado em 2026-10-22
+
+*Escrito para uma LLM (ou pessoa) que assume o projeto sem o histórico da conversa.* Esta
+seção é o ponto de partida; o resto do arquivo são registros datados por ADR. Antes de
+tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
+
+### Regras do projeto que mudam o que você faz
+
+1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
+   executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
+   (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P12), com condição de saída.
+   Não promova um provisório a definitivo por omissão.
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0057) e cada
+   entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
+   O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
+   não implementa hardware novo.
+4. **Recusa é melhor que suposição.** Variante não implementada devolve
+   `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
+5. **Snapshots são versionados, com migração testada** (`BUS0` v3/`NPLL` v1, `KRNL` v12, `KEVT` v2,
+   `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
+   escreva o teste da migração.
+6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** (pedido
+   explícito do mantenedor). O mantenedor comita; sugira a mensagem.
+7. **Gate antes de entregar** (tudo precisa estar limpo):
+   `cargo fmt --all --check`,
+   `cargo clippy --workspace --all-targets --offline -- -D warnings`,
+   `cargo test --workspace --offline --no-fail-fast` (492 testes na revisão; o teste
+   `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
+   confere o **contador de casos gerados**, hoje `209 passed` em x86-64 e `193` fora dele —
+   some os testes novos ali).
+
+### O que foi feito (resumo por etapa)
+
+| Etapa | Entrega | ADR |
+|---|---|---|
+| Base | arquitetura (kernel HLE, GPU por pushbuffer, backends de CPU), endereços, arena, sandbox de arquivos, loader de XBE/XISO, MMU, bus, telemetria de MMIO | 0001–0012, 0020 |
+| AOT | recompilação estática: XBE → análise x86 (iced-x86) → IR → Rust gerado → binário nativo; flags, shifts, MUL/DIV, strings REP, controle indireto, relógio em ciclos, `Session { state, bus, kernel }` | 0013–0019, 0021, 0024–0031 |
+| Kernel mínimo | dados exportados, dispatcher, mutants, seções críticas, EEPROM, SHA-1, PCI, tempo de sistema, IRQL, memória virtual, thread filha, links/D:, vídeo (modo, framebuffer, filtros), memória contígua | 0022–0023, 0032–0050 |
+| Hello executa | janela MMIO do NV2A, `KeDelayExecutionThread` avançando o relógio, `main` do hello roda | 0051 |
+| Janela | framebuffer apresentado em janela Win32 (`--janela`), só Windows | 0052 |
+| 2026-10-22 | laço de execução em `Session::conduzir` + `--fatias N`; `KeTickCount`; **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC, WBINVD**; alinhamento 0 em `MmAllocateContiguousMemoryEx`; **eventos do kernel**; **interrupções, ISR, DPC e vblank** | 0053, 0054, 0055 |
+| Fase 5 inicial | evidência pública e scripts de reprodução; NVPLL programável com perfil explícito, BUS0 v3/NPLL v1 e preservação do legado | 0056, 0057 |
+
+Números hoje: **37 de 69** serviços do hello implementados (não é percentual de
+compatibilidade); **209** casos no Rust gerado; **492** testes workspace/doctests
+no gate padrão reproduzido nesta revisão. Os sete testes Python dos scripts são separados.
+
+### Estado do hello e do segundo sample
+
+- **Hello (`target/homebrew/hello.xbe`)**: executa o `main`, desenha "Hello nxdk!" e mostra
+  numa janela (1208 pixels idênticos à RAM). Comando completo e nove raízes na tabela de
+  contratos mais abaixo. Em release a primeira compilação leva 3–4 min (LTO fat).
+- **`triangle` (segundo sample, pbkit)**: foi compilado com o mesmo SDK e é o guia dos
+  próximos bloqueios. Estado: traduz com 10 raízes, passa pela inicialização de vídeo, cria o
+  evento de vblank e **instala o ISR e o DPC**. Em sessão nova, lê NVPLL=0x00011C01
+  (perfil PublicReferenceV1), escreve parâmetros PTIMER e rejeita **PFB_CFG0**
+  (0xFD100200), que ainda lê zero. Entra em pb_kill antes do retorno previsto -6;
+  a limpeza chama pb_start e falha em `[0 + 0x40]`, EIP=0x16EA2. **pb_init ainda
+  não retornou nesse caminho.** A cadeia EBP confirmou caller 0x18283 no novo
+  perfil e 0x18212 no legado (rejeição PLL). BUS0 v1/v2 preservam o perfil sem
+  modelo; iniciar sessão nova para adotar o novo PLL. Sem triângulo desenhado.
+
+Reproduzir o `triangle`:
+
+```bash
+# 1) compilar (no WSL; reaproveita o SDK que build-homebrew.sh já clonou)
+wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-nxdk-sample.sh triangle homebrew2
+# 2) traduzir com as 10 raízes conhecidas, compilar e rodar (Git Bash, raiz do repo)
+cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
+  --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
+  --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
+  --out target/homebrew2/proj
+cargo run --release --offline --manifest-path target/homebrew2/proj/Cargo.toml \
+  --target-dir target/homebrew2/tgt -- --fatias 4000
+# Para descobrir raízes de um XBE novo, automaticamente:
+bash scripts/find-translation-roots.sh <xbe> target/<pasta-nova> [raizes...]
+```
+
+(O Git Bash reescreve caminhos que começam com `/mnt/...`; chame o `wsl` pelo PowerShell
+ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.exe`
+(`llvm-objdump -d -M intel --start-address=... triangle.exe`); `awk` não existe lá.
+
+### O que tem que ser feito agora, em ordem
+
+1. **Modelar PFB_CFG0 com origem explícita e consistência de memória.** O
+   [ADR-0057](docs/adr/0057-pramdac-perfil-clock.md) já adota um perfil público do
+   NVPLL, programável, com fórmula derivada e snapshot. O próximo bloqueio é a
+   comparação `(PFB_CFG0 & 3) == 3` em 0x18271..0x1827E. Não escolher um número
+   apenas para passar o teste. `NV_PFB_CFG0=0x03070103` continua sem verificação
+   nesta investigação; é preciso conferir campos, fonte e relação com o modelo
+   de memória/PRAMIN. O PTIMER recebeu escritas mas ainda não as executa.
+2. **Modelo do NV2A (Fase 5), incremental e guiado pela telemetria.** Ordem sugerida, cada
+   passo com ADR e teste: (a) registradores lidos por `pb_init` (PFB, PBUS,
+   PTIMER); (b) `MmClaimGpuInstanceMemory` e a PRAMIN; (c) PFIFO/DMA do pushbuffer;
+   (d) PGRAPH e os métodos NV097 mínimos para limpar a tela e desenhar o triângulo.
+   Acompanhe o que o `triangle` toca com a telemetria que o `main` gerado já imprime.
+3. **Itens menores já mapeados** (cada um com condição de saída no ROADMAP §16.1):
+   escalonador de threads (P3); análise automática de jump tables (P5); apresentação em
+   Linux (P6, Fases 8/10); `KeTickCount` em tempo real (P7); MXCSR dinâmico e aritmética
+   x87 (P8/P9); DIRQL/IF/`STI` como máscara real (P10/P11); gamma e filtros na imagem
+   apresentada (P1/P2).
+4. **Para chegar a um jogo comercial** (longe): subir o limite de 65 536 instruções
+   alcançáveis da análise (`Discovery` em `analysis.rs`), áudio (APU), USB/controle,
+   armazenamento/XISO ligado à VFS, e muito mais do kernel. Não há percentual medido
+   de conclusão ou base para estimar prazo pela contagem de serviços/testes.
+
+### Revisão das ferramentas de passagem de bastão (ADR-0056)
+
+`find-translation-roots.sh` exige diretório novo, mantém `attempt-NN/` e logs de
+cada execução, mais `roots.txt` e `final-project.txt`. Não apaga projetos. Propaga
+falhas e distingue timeout/limite de um retorno normal. Funciona com executável
+com/sem `.exe`; o entry point já é incluído pelo analisador. Sete testes no WSL:
+`python3 scripts/tests/test_translation_roots.py`. Continua sendo busca por
+execução, sem resolver automaticamente jump tables na análise (P5).
+
+`build-nxdk-sample.sh` confere SDK/submódulos fixados e limpos, mantém build sem
+rede e grava `build-<sample>-manifest.txt` e `SHA256SUMS-<sample>`. O XBE permanece
+raw. Os scripts foram revisados depois da passagem de bastão original; a
+validação e os logs da revisão constam no ADR-0056.
+O script final de raízes rodou no Git Bash com as dez raízes do triangle,
+compilou 17883 blocos em release e preservou a tentativa. Retornou status 1 na
+falta conhecida em VA=0x40/PC=0x16EA2, sem acrescentar raiz falsa ou anunciar
+sucesso. O build revisado do sample também rodou no WSL. Gate: 486 testes
+workspace/doctests, 206 casos gerados e sete testes Python separados; fmt/Clippy
+limpos. A compilação inicial do triangle leva vários minutos além do timeout,
+que se aplica só à execução do guest.
+
+### Armadilhas que já custaram tempo
+
+- **Debug vs release:** o binário gerado em debug leva ~38 s até o primeiro `Sleep`
+  (21× mais lento). CPU a 100% ali é trabalho, não travamento.
+- **Cada serviço de kernel consome uma fatia** no `conduzir`. "47 chamadas atendidas" ao
+  esgotar o orçamento era o limite de 64 fatias, não um laço; use `--fatias`.
+- **Testes de migração de snapshot** constroem o snapshot antigo *cortando* o atual numa
+  tag e rebaixando versões (`KRNL`, `AOTS`). Ao acrescentar uma seção no fim, o corte pode
+  precisar de ajuste; veja `verification_contiguous.inc`, `verification_links.inc`,
+  `verification_video.inc` e `crates/xbox-kernel/tests/events.rs`.
+- **`cargo test` para no primeiro crate que falha**; use `--no-fail-fast` para ver todos.
+- **Git Bash e `sed`:** o delimitador `#` quebra com texto que contém `#`; use `|` ou o
+  editor de arquivos. Arquivos do repositório estão em LF no disco e CRLF no Git (aviso
+  esperado).
+- **Clippy pedante:** `too_many_lines` (100), `cast_possible_wrap`, `float_cmp`,
+  `unused_self`. `dispatch()` tem `#[allow(clippy::too_many_lines)]` justificado por ser a
+  tabela plana de ordinais.
+
+### Mapa rápido do código
+
+| Onde | O que há |
+|---|---|
+| `crates/xbox-recomp/src/analysis.rs`, `ir.rs`, `emit.rs`, `emit/{sse,x87}.rs` | decodificação (iced-x86) → IR → Rust gerado |
+| `crates/xbox-recomp/src/runtime.rs`, `runtime/{drive,interrupts,sse,x87,threads}.rs` | `State` (CPU), `Session`, `conduzir`, entrega de interrupções, semântica de SSE/x87 |
+| `crates/xbox-kernel/src/dispatch.rs`, `dispatch/*.rs` | dispatcher por ordinal e cada serviço (`events`, `interrupts`, `mutants`, `video`, `contiguous`...) |
+| `crates/xbox-kernel/src/loader/{data,mmio,startup}.rs` | imagem, dados exportados, janela MMIO, `KeTickCount` |
+| `crates/xbox-mem/src/{bus,mmu,nv2a_irq,dispositivos}.rs` | bus, MMU, os 4 registradores de vblank, telemetria de MMIO |
+| `crates/xbox-mem/src/nv2a_pramdac.rs` | perfil NVPLL e coeficiente autoritativo, frequência derivada, NPLL v1 |
+| `crates/xbox-platform/src/{display,windows}.rs` | `Apresentador` e a janela Win32 |
+| `tools/xberecomp/` | CLI `translate`; `template_main.rs.txt` é o `main` gerado; `tests/support/*.rs` + `tests/verification_*.inc` são os testes que rodam Rust gerado com x86 escrito à mão |
+| `scripts/` | `build-homebrew.sh` (hello), `build-nxdk-sample.sh`, `find-translation-roots.sh` |
+| `docs/adr/`, `ROADMAP.md`, `CHANGELOG.md` | decisões, plano (com §16.1 de provisórios) e histórico |
 
 ## Objetivo do software e do primeiro alpha
 
@@ -39,7 +200,7 @@ controle de execução pelo host e apresentação do framebuffer produzido pelo
 homebrew. Não há compromisso de executar jogos comerciais neste primeiro alpha.
 Controle, áudio e uma interface de mini console ficam para etapas posteriores.
 
-**Estado atual:** a demonstração própria já executa Rust recompilado. O fluxo
+**Estado até o ADR-0052 (histórico; o vigente está na "Passagem de bastão" acima):** a demonstração própria já executa Rust recompilado. O fluxo
 descoberto do hello traduz e inicia nativamente; passou por NtCreateMutant (192)
 e por XcSHAInit (335), consulta da EEPROM e inicialização de seção crítica.
 RDMSR e a leitura PCI do PLL já estão implementados. Com as entradas de startup,
@@ -104,7 +265,7 @@ Jogos comerciais ainda não executam.
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
 | 3 | Kernel mínimo | **Memória contígua, modo, filtros, janela MMIO do NV2A e espera por intervalo; 37/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | **Executa o `main` do hello** (`debugPrint` + `Sleep`); termina no orçamento do `main` gerado, sem serviço faltante; **o host interrompe a execução fechando a janela** (ADR-0052); orçamento ainda fixo no template e vblank por interrupção pendentes; aceite aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | **Executa o `main` do hello** (`debugPrint` + `Sleep`); `Session::conduzir`, limite `--fatias` e encerramento pela janela; ISR/DPC/vblank implementados e testados com fixtures, ainda sem ciclo completo confirmado no triangle; aceite integrado aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | **Apresentado em janela Win32** (`--janela`, ADR-0052): capturado de fora pelo SO, 640×480 1:1, 1208 pixels idênticos à RAM guest, "Hello nxdk!" × 4. **Limites:** só Windows; bytes crus, sem gamma nem filtros do encoder (provisório, ROADMAP §16.1 P1/P2); caminho "usuário fecha durante a execução" não exercitado por teste | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -1130,15 +1291,14 @@ No Windows usado como referência:
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-homebrew.sh
 cargo run --offline -p ordinal-report -- target/homebrew/hello.xbe
 cargo run --offline -p obsidian -- check-memory target/homebrew/hello.xbe
-cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --out target/alpha-hello
-cargo run --offline --manifest-path target/alpha-hello/Cargo.toml
+cargo run --offline -p xberecomp -- translate target/homebrew/hello.xbe --entry 0x19110 --entry 0x145E0 --entry 0x205E0 --entry 0x20889 --entry 0x13C70 --entry 0x18FC0 --entry 0x18C90 --entry 0x139B0 --entry 0x14F14 --out target/alpha-hello
+cargo run --release --offline --manifest-path target/alpha-hello/Cargo.toml -- --janela --fatias 4000
 ```
 
-Na referência atual, `check-memory` e `translate` com as seis raízes passam.
-O binário passa por mutex, SHA, EEPROM, Init da seção crítica, RDMSR e leitura
-PCI, InterlockedExchange, tempo de sistema, IRQL e alocação; para em PsCreateSystemThreadEx (255), sem framebuffer. Com três raízes, falta o case
-`0x20889`; sem a primeira raiz, falta o callback `0x19110`. Isso ainda não significa
-execução completa nem serviços suficientes. A tradução exige
+Com as nove raízes, o hello chega ao seu main e apresenta o framebuffer;
+limites de tempo/fatias e fechamento da janela controlam a execução. Isso não
+significa GPU completa ou compatibilidade comercial. Menos raízes podem
+reproduzir bloqueios históricos já superados. A tradução exige
 diretório de saída novo/vazio: se o nome já foi
 usado, escolher outro sem apagar trabalho anterior.
 
@@ -1160,7 +1320,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 177 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 209 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1179,6 +1339,19 @@ fazer push ou modificar o remoto. Ao avançar cada entrega, atualizar este arqui
 o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
+
+> Continue o Obsidian a partir da "Passagem de bastão — estado em 2026-10-22",
+> no início deste arquivo. Base de código verificada: 9ad331e; alterações locais
+> dos ADRs 0056/0057 (scripts/evidência e PRAMDAC). Confira Git antes de alterar.
+> Hello já executa main e apresenta em Win32; triangle passa do NVPLL público e
+> rejeita PFB_CFG0. Pb_kill chama pb_start e falha em VA=0x40, PC=0x16EA2, antes de
+> pb_init retornar. O ADR-0057 confere a cadeia EBP e a programação PTIMER; ainda
+> não há modelo PTIMER/PFB. BUS0 v3/NPLL v1 guarda perfil/coeficiente; v1/v2 migram
+> sem modelo. Próximo: PFB com procedência e coerência com memória/PRAMIN. Preserve
+> Clock único, posse exclusiva da arena e provisórios P1–P12. Scripts mantêm
+> tentativas/logs e exigem diretório novo. Mantenedor faz os commits.
+
+### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 
 > Continue o Obsidian a partir de CONTINUIDADE_ALPHA.md. Confira o Git antes de
 > alterar código. Base documentada: 0d77ba5 + alterações locais do ADR-0050.

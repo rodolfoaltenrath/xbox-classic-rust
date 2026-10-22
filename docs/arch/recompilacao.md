@@ -1,11 +1,12 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0050. O hello nxdk inicia nativamente com TLS/imports, 27 serviços
+ADRs 0013–0057. O hello nxdk inicia nativamente com TLS/imports, 37 serviços
 e perfil de CPU/PCI guest; executa o bootstrap de uma filha e configura o modo
-de vídeo sobre memória física contígua. A leitura das linhas está disponível;
-o encoder registra os pedidos de filtros. Rampa gamma/MMIO, execução completa,
-apresentação e áudio pendem.
+de vídeo sobre memória física contígua. Main e apresentação Win32 funcionam com
+bytes crus, sem gamma/filtros. Há infraestrutura de eventos/vblank/ISR/DPC;
+o segundo alvo triangle passa do NVPLL e rejeita PFB_CFG0, ainda sem modelo.
+GPU 3D, scheduler geral e áudio permanecem pendentes.
 
 ## Pipeline implementado
 

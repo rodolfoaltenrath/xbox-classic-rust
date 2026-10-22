@@ -38,6 +38,7 @@ use crate::dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Telemetria};
 use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
 use crate::nv2a_irq::Nv2aIrq;
+use crate::nv2a_pramdac::Nv2aPramdac;
 use crate::regioes::{MapaFisico, Regiao};
 
 /// O barramento de memória do console.
@@ -49,6 +50,7 @@ pub struct Bus {
     frames: AlocadorDeFrames,
     telemetria: Telemetria,
     nv2a_irq: Nv2aIrq,
+    nv2a_pramdac: Nv2aPramdac,
     contexto: Cell<Contexto>,
 }
 
@@ -70,6 +72,7 @@ impl Bus {
             frames: AlocadorDeFrames::novo(tamanho),
             telemetria: Telemetria::nova(),
             nv2a_irq: Nv2aIrq::default(),
+            nv2a_pramdac: Nv2aPramdac::default(),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -107,6 +110,10 @@ impl Bus {
     /// Os registradores de interrupção de vblank do NV2A (ADR-0055).
     pub const fn nv2a_irq(&self) -> &Nv2aIrq {
         &self.nv2a_irq
+    }
+    /// Perfil e coeficiente autoritativos; programação ocorre pelos acessos MMIO.
+    pub const fn nv2a_pramdac(&self) -> &Nv2aPramdac {
+        &self.nv2a_pramdac
     }
 
     /// Idem, para o relógio de vblank travar a pendência.
@@ -238,6 +245,19 @@ impl Bus {
         while !restante.is_empty() {
             let pa = self.mmu.traduzir(atual, Acesso::Escrita)?;
             let n = restante.len().min(bytes_ate_fim_da_pagina(atual));
+            if let Regiao::Dispositivo {
+                id: Dispositivo::Nv2a,
+                deslocamento,
+            } = self.mapa.classificar(pa)
+            {
+                self.nv2a_pramdac
+                    .validate_access(deslocamento, n)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
+            }
             if matches!(
                 self.mapa.classificar(pa),
                 Regiao::Tiled { .. } | Regiao::Buraco
@@ -382,6 +402,21 @@ impl Bus {
                 .ler(off, destino)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
             Regiao::Dispositivo { id, deslocamento } => {
+                if id == Dispositivo::Nv2a
+                    && self
+                        .nv2a_pramdac
+                        .validate_access(deslocamento, destino.len())
+                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
+                {
+                    destino.copy_from_slice(
+                        &self
+                            .nv2a_pramdac
+                            .coefficient()
+                            .expect("perfil validado")
+                            .to_le_bytes(),
+                    );
+                    return Ok(());
+                }
                 // Os quatro registradores de interrupção de vblank têm modelo (ADR-0055);
                 // só o acesso de 32 bits alinhado conta, o resto segue sem modelo.
                 if id == Dispositivo::Nv2a
@@ -463,6 +498,17 @@ impl Bus {
                 .escrever(off, origem)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
             Regiao::Dispositivo { id, deslocamento } => {
+                if id == Dispositivo::Nv2a
+                    && self
+                        .nv2a_pramdac
+                        .validate_access(deslocamento, origem.len())
+                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
+                {
+                    self.nv2a_pramdac.write(u32::from_le_bytes(
+                        origem.try_into().expect("largura validada"),
+                    ));
+                    return Ok(());
+                }
                 if id == Dispositivo::Nv2a
                     && let Ok(bytes) = <[u8; 4]>::try_from(origem)
                     && self.nv2a_irq.write(deslocamento, u32::from_le_bytes(bytes))
@@ -559,16 +605,23 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 2);
+        out.section("BUS0", 3);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
         self.frames.save(out);
         self.nv2a_irq.save(out);
+        self.nv2a_pramdac.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 2)?;
+        let versao = inp.section("BUS0", 3)?;
+        if !matches!(versao, 1..=3) {
+            return Err(SnapshotError::BadValue {
+                section: "BUS0",
+                what: "versão de bus desconhecida",
+            });
+        }
         let tamanho = inp.u64()? as usize;
         if tamanho != self.arena.len() {
             return Err(SnapshotError::BadValue {
@@ -584,6 +637,11 @@ impl Snapshot for Bus {
             self.nv2a_irq.load(inp)?;
         } else {
             self.nv2a_irq = Nv2aIrq::default();
+        }
+        if versao >= 3 {
+            self.nv2a_pramdac.load(inp)?;
+        } else {
+            self.nv2a_pramdac = Nv2aPramdac::legacy();
         }
         Ok(())
     }

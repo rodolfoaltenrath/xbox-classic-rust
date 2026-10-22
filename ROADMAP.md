@@ -1105,7 +1105,14 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P9 | **x87 só carga e armazenamento**: sem aritmética, sem palavras de controle/estado nem exceções (ADR-0053) | o `triangle` usa `fild`/`fstp`/`fldz`; aritmética ainda não foi alcançada | instruções x87 além das listadas são recusadas na análise, com o nome | implementar a aritmética quando um caminho executado a alcançar, com a precisão de 80 bits já exata na pilha |
 | P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
 | P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
-| P12 | **NV2A com quatro registradores modelados** (vblank); o resto lê zero declarado (ADR-0055) | o hello só escreve; o `triangle` já precisa de valores reais | `pb_init` lê o PLL, recebe 0 e falha com -5 | modelo do NV2A (Fase 5), com evidência de cada valor |
+| P12 | **NV2A parcial:** quatro registradores de vblank e NVPLL com perfil explícito (ADRs 0055/0057); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas | triangle passa do PLL, mas PFB_CFG0 lê zero e entra no ramo que prevê -6; a limpeza falha antes do retorno | modelo do NV2A (Fase 5), com evidência de cada valor |
+
+Investigação de evidência e ferramentas em 2026-10-22:
+[ADR-0056](docs/adr/0056-evidencia-nv2a-e-reproducao.md). O PLL lembrado foi
+localizado em revisão pública fixada do xemu e confrontado com o consumidor nxdk;
+isso documenta um perfil de emulador, não medição de console. Nenhum valor novo
+foi adotado no runtime; P1/P5/P12 permanecem abertos. Scripts de build/raízes
+preservam manifesto, tentativas e logs para reproduzir a próxima entrega.
 
 ## 17. Log de progresso
 
@@ -1183,6 +1190,14 @@ Uma linha por marco concluído. Append-only.
 ---
 
 ### Próxima ação
+
+Marco mais recente, 2026-10-22: [ADR-0057](docs/adr/0057-pramdac-perfil-clock.md),
+NVPLL programável/PublicReferenceV1, BUS0 v3/NPLL v1, migração v1/v2 preservando
+zero legado. Triangle configura parâmetros PTIMER e rejeita PFB_CFG0, ainda sem
+modelo. A cadeia guest confirmou que a falta em 0x40 ocorre em pb_start chamado
+por pb_kill, antes do retorno de pb_init. Próximo recorte: PFB com origem explícita,
+depois instância/PRAMIN e PFIFO conforme a execução exigir. 492 testes workspace/
+doctests e 209 casos gerados debug/release; serviços seguem 37/69.
 
 Em ordem:
 
