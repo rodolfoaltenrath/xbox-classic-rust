@@ -51,7 +51,9 @@ impl Session {
         A: FnMut(&Session) -> Result<bool>,
     {
         for _ in 0..limites.fatias {
-            match run(&mut self.state, &mut self.bus, limites.blocos_por_fatia)? {
+            let saida = run(&mut self.state, &mut self.bus, limites.blocos_por_fatia)?;
+            self.publicar_tick_count()?;
+            match saida {
                 Exit::Returned => {
                     if self.complete_thread_return()? {
                         continue;
@@ -99,6 +101,7 @@ impl Session {
             retired: self.state.retired,
             cycles: self.state.clock.cycles(),
             ms: self.state.clock.tick_count_ms(),
+            eip: self.state.eip,
         })
     }
 }

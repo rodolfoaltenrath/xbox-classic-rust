@@ -15,7 +15,9 @@ use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 mod drive;
 mod msr;
 mod muldiv;
+pub mod sse;
 mod threads;
+pub mod x87;
 pub use msr::CpuProfile;
 pub use muldiv::{divide_values, multiply_values};
 pub use xbox_kernel::imports::entry as kernel_entry;
@@ -52,6 +54,8 @@ pub const INTERRUPT_FLAG: u32 = 1 << 9;
 /// Não representa latência física do Pentium III, nem tempo de parede do host.
 pub const AOT_STEP_CYCLES: u64 = 1;
 const TIMING_PROFILE: u32 = 1;
+/// Valor de MXCSR após RESET/FNINIT: todas as exceções mascaradas, arredondamento ao mais próximo.
+pub const MXCSR_RESET: u32 = 0x1F80;
 
 /// Flags de entrada da instrução de comparação REP em andamento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +89,13 @@ pub struct State {
     pub breakpoint: Option<u32>,
     /// Configuração funcional de CPU/MSRs guest; independente da CPU host.
     pub cpu_profile: CpuProfile,
+    /// XMM0..XMM7 como quatro palavras de 32 bits (bits crus, sem `f32`, para igualdade e
+    /// snapshot exatos, inclusive NaN). A palavra 0 é a baixa.
+    pub xmm: [[u32; 4]; 8],
+    /// MXCSR. Só o valor inicial é modelado (ADR-0053, P8).
+    pub mxcsr: u32,
+    /// Pilha x87 de 80 bits. Só carga/armazenamento são modelados (ADR-0053, P9).
+    pub fpu: x87::Fpu,
 }
 
 impl State {
@@ -101,6 +112,9 @@ impl State {
             halted: None,
             breakpoint: None,
             cpu_profile: CpuProfile::XboxRetailV1,
+            xmm: [[0; 4]; 8],
+            mxcsr: MXCSR_RESET,
+            fpu: x87::Fpu::new(),
         }
     }
 
@@ -135,7 +149,7 @@ impl State {
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 7);
+        out.section("AOTC", 8);
         for r in self.regs {
             out.u32(r);
         }
@@ -160,10 +174,15 @@ impl Snapshot for State {
             out.u32(pc);
         }
         out.u32(self.cpu_profile as u32);
+        out.u32(self.mxcsr);
+        for lane in self.xmm.iter().flatten() {
+            out.u32(*lane);
+        }
+        self.fpu.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 7)?;
+        let version = inp.section("AOTC", 8)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "AOTC",
@@ -220,6 +239,18 @@ impl Snapshot for State {
         } else {
             CpuProfile::XboxRetailV1
         };
+        // v1–v7 não tinham SSE: migram para o estado de RESET, sem inventar valores.
+        if version >= 8 {
+            self.mxcsr = inp.u32()?;
+            for lane in self.xmm.iter_mut().flatten() {
+                *lane = inp.u32()?;
+            }
+            self.fpu.load(inp)?;
+        } else {
+            self.mxcsr = MXCSR_RESET;
+            self.xmm = [[0; 4]; 8];
+            self.fpu = x87::Fpu::new();
+        }
         Ok(())
     }
 }
@@ -271,6 +302,18 @@ impl Session {
                 xbe.header.size_of_image,
             )?,
         })
+    }
+
+    /// Copia o relógio guest para `KeTickCount`, o dado que o título lê direto da memória.
+    ///
+    /// Chamada onde o relógio muda por ação do host (espera atendida) e a cada fim de
+    /// fatia. Entre uma chamada e outra o contador fica parado — provisório, P7.
+    pub fn publicar_tick_count(&mut self) -> Result<()> {
+        xbox_kernel::loader::data::publish_tick_count(
+            &mut self.bus,
+            self.state.clock.tick_count_ms(),
+        )?;
+        Ok(())
     }
 
     pub fn kernel_call(&self) -> Result<xbox_kernel::imports::Call> {
@@ -331,6 +374,7 @@ impl Session {
                     return Err(crate::Error::TimeExhausted { pc: self.state.eip });
                 };
                 self.state.clock.set(alvo);
+                self.publicar_tick_count()?;
             }
             self.apply_kernel_return(&call, atendimento.eax);
             if let Some(child) = self.kernel.start_ready_thread() {

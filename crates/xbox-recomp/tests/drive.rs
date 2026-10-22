@@ -144,3 +144,63 @@ fn falha_do_run_e_do_apresentador_propagam() {
         .unwrap_err();
     assert!(e.to_string().contains("sem display"));
 }
+
+mod tick_count {
+    use super::*;
+    use xbox_kernel::loader::data::{DATA_RO_BASE, OFF_KE_TICK_COUNT};
+    use xbox_mem::GuestVirt;
+
+    const ENDERECO: GuestVirt = GuestVirt(DATA_RO_BASE + OFF_KE_TICK_COUNT);
+
+    fn sessao_com_tick() -> Session {
+        let xbe = xbox_formats::fixtures::xbe_com_imports(&[0xC3], &[156]).unwrap();
+        Session::load(&xbe).unwrap()
+    }
+
+    #[test]
+    fn imagem_sem_dados_importados_nao_falha_ao_publicar() {
+        let mut s = sessao();
+        s.publicar_tick_count().unwrap();
+        assert!(
+            s.bus.ler_u32(ENDERECO).is_err(),
+            "a região não deveria existir"
+        );
+    }
+
+    #[test]
+    fn comeca_em_zero_e_o_guest_nao_consegue_escrever() {
+        let mut s = sessao_com_tick();
+        assert_eq!(s.bus.ler_u32(ENDERECO).unwrap(), 0);
+        assert!(
+            s.bus.escrever_u32(ENDERECO, 7).is_err(),
+            "o guest só lê o contador do kernel"
+        );
+    }
+
+    #[test]
+    fn fim_de_fatia_publica_o_relogio_guest_em_milissegundos() {
+        let mut s = sessao_com_tick();
+        s.conduzir(
+            LIMITES,
+            |st, _, _| {
+                // 1,5 s de tempo guest decorridos durante a fatia.
+                let ciclos = xbox_core::Clock::hundred_ns_to_cycles(15_000_000).unwrap();
+                st.clock.set(ciclos);
+                st.returned = true;
+                Ok(Exit::Returned)
+            },
+            |_| Ok(false),
+        )
+        .unwrap();
+        let ms = s.bus.ler_u32(ENDERECO).unwrap();
+        assert!((1499..=1500).contains(&ms), "KeTickCount = {ms}");
+    }
+
+    #[test]
+    fn valor_de_32_bits_da_a_volta_em_vez_de_saturar() {
+        let mut s = sessao_com_tick();
+        let ms: u64 = (1 << 32) + 5;
+        xbox_kernel::loader::data::publish_tick_count(&mut s.bus, ms).unwrap();
+        assert_eq!(s.bus.ler_u32(ENDERECO).unwrap(), 5);
+    }
+}

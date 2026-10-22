@@ -71,7 +71,7 @@ pub enum Error {
         interrupts_enabled: bool,
     },
     #[error(
-        "execução interrompida após {blocks} blocos; {served} chamadas atendidas, {refused} recusadas; instruções={retired}, relógio guest={cycles} ciclos ({ms} ms)"
+        "execução interrompida após {blocks} blocos; {served} chamadas atendidas, {refused} recusadas; instruções={retired}, relógio guest={cycles} ciclos ({ms} ms); EIP=0x{eip:08X}"
     )]
     BudgetExhausted {
         blocks: u64,
@@ -80,7 +80,14 @@ pub enum Error {
         retired: u64,
         cycles: u64,
         ms: u64,
+        eip: u32,
     },
+    #[error(
+        "SSE em 0x{pc:08X}: acesso de 128 bits ao endereço 0x{address:08X}, não alinhado a 16 (#GP)"
+    )]
+    MisalignedSse { pc: u32, address: u32 },
+    #[error("pilha x87: {0:?} (#IS)")]
+    FpuStack(crate::runtime::x87::StackFault),
     /// O apresentador do host falhou; o texto vem do erro dele, que este crate não conhece.
     #[error("apresentação: {0}")]
     Presentation(String),

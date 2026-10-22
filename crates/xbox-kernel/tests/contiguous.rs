@@ -119,7 +119,7 @@ fn fragmentacao_oom_e_tamanhos_invalidos_nao_publicam_frames_ou_mapa() {
 fn variantes_de_protecao_alinhamento_e_irql_recusam_sem_alocar() {
     let (mut bus, mut d, regs) = setup();
     let used = bus.frames().usados();
-    for (index, value) in [(3, 0), (3, 16), (3, 0x3000), (4, 0x40), (4, 0x204), (4, 2)] {
+    for (index, value) in [(3, 16), (3, 0x3000), (4, 0x40), (4, 0x204), (4, 2)] {
         let mut a = args();
         a[index] = value;
         assert!(matches!(
@@ -245,4 +245,21 @@ fn recursos_contiguos_e_privados_nao_compartilham_frames() {
     assert!(!(0x20000..0x23000).contains(&pa.0));
     d.restore_memory_context(d.virtual_memory().image(), &bus)
         .unwrap();
+}
+#[test]
+fn alinhamento_zero_vira_pagina_e_aloca_igual_ao_de_4096() {
+    let (mut bus, mut d, regs) = setup();
+    let mut a = args();
+    a[3] = 0;
+    let com_zero = call(&mut bus, &mut d, &regs, a).unwrap();
+    assert_ne!(com_zero, 0, "alinhamento 0 deveria alocar");
+
+    let (mut outro_bus, mut outro, regs) = setup();
+    let com_pagina = call(&mut outro_bus, &mut outro, &regs, args()).unwrap();
+    assert_eq!(com_zero, com_pagina);
+    assert_eq!(d.contiguous_memory().allocations()[0].alignment, 4096);
+    assert_eq!(
+        d.contiguous_memory().allocations(),
+        outro.contiguous_memory().allocations()
+    );
 }

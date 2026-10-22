@@ -44,14 +44,14 @@ fn perfil_expoe_configuracao_nominal_e_tsc_do_clock_sem_efeitos() {
 }
 
 #[test]
-fn snapshot_v7_preserva_perfil_e_rejeita_id_desconhecido() {
+fn snapshot_v8_preserva_perfil_e_rejeita_id_desconhecido() {
     let mut state = State::new(0x11000);
     state.clock.advance(1234567890123);
     state.breakpoint = Some(0x10FFF);
     let mut out = SnapshotWriter::new();
     state.save(&mut out);
     let bytes = out.finish();
-    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 7);
+    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 8);
     let mut restored = State::new(0);
     let mut reader = SnapshotReader::new(&bytes).unwrap();
     restored.load(&mut reader).unwrap();
@@ -66,8 +66,10 @@ fn snapshot_v7_preserva_perfil_e_rejeita_id_desconhecido() {
     );
     for id in [0u32, 2, u32::MAX] {
         let mut bad = bytes.clone();
-        let tail = bad.len() - 4;
-        bad[tail..].copy_from_slice(&id.to_le_bytes());
+        // O id do perfil vem antes de MXCSR (4), XMM (8 × 16) e a pilha x87 (TOP, tags e
+        // 8 × 12 bytes): 4 + 128 + 104 bytes depois dele.
+        let tail = bad.len() - (4 + 4 + 128 + 104);
+        bad[tail..tail + 4].copy_from_slice(&id.to_le_bytes());
         assert!(matches!(
             State::new(0).load(&mut SnapshotReader::new(&bad).unwrap()),
             Err(xbox_core::SnapshotError::BadValue {
@@ -79,8 +81,8 @@ fn snapshot_v7_preserva_perfil_e_rejeita_id_desconhecido() {
 }
 
 #[test]
-fn snapshots_v1_a_v6_migram_para_perfil_guest_explicito() {
-    for version in 1..=6 {
+fn snapshots_v1_a_v7_migram_para_perfil_guest_e_sem_estado_de_ponto_flutuante() {
+    for version in 1..=7 {
         // Payload antigo construído independentemente de State::save.
         let mut out = SnapshotWriter::new();
         out.section("AOTC", version);
@@ -110,6 +112,9 @@ fn snapshots_v1_a_v6_migram_para_perfil_guest_explicito() {
             out.bool(true);
             out.u32(0x10FFF);
         }
+        if version >= 7 {
+            out.u32(1); // XboxRetailV1
+        }
         let bytes = out.finish();
         let mut state = State::new(0);
         let mut reader = SnapshotReader::new(&bytes).unwrap();
@@ -122,5 +127,9 @@ fn snapshots_v1_a_v6_migram_para_perfil_guest_explicito() {
             if version >= 6 { Some(0x10FFF) } else { None }
         );
         assert_eq!(state.read_msr(0x2A).unwrap(), 0x0104_0000);
+        // v1–v7 não tinham SSE nem x87: o estado migra para o de RESET.
+        assert_eq!(state.xmm, [[0; 4]; 8]);
+        assert_eq!(state.mxcsr, xbox_recomp::runtime::MXCSR_RESET);
+        assert_eq!(state.fpu.depth(), 0);
     }
 }

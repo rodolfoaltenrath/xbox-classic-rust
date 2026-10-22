@@ -4,6 +4,7 @@ use std::path::Path;
 use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_recomp::{analysis, emit};
 
+mod bit_test;
 mod blocks;
 mod breakpoint;
 mod conditional;
@@ -30,12 +31,14 @@ mod rotations;
 mod scan;
 mod sha;
 mod shifts;
+mod sse;
 mod strings;
 mod system_time;
 mod threads;
 mod timing;
 mod video;
 mod virtual_memory;
+mod x87;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
     let image = xbe_com_codigo(code).unwrap();
@@ -78,7 +81,10 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
+    main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));
+    main.push_str(&sse::sources(output));
+    main.push_str(&x87::sources(output));
     main.push_str(&video::sources(output));
     main.push_str(&display::sources(output));
     main.push_str(&encoder_filters::sources(output));

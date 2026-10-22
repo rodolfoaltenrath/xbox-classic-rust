@@ -89,6 +89,18 @@ pub enum BitScan {
     Reverse,
 }
 
+/// Operação de BT/BTS/BTR/BTC sobre o bit selecionado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BitTest {
+    /// `BT`: só copia o bit para CF.
+    Test,
+    /// `BTS`: liga o bit.
+    Set,
+    /// `BTR`: desliga o bit.
+    Reset,
+    /// `BTC`: inverte o bit.
+    Complement,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shift {
     Shl,
@@ -171,6 +183,97 @@ pub enum Condition {
     Greater,
 }
 
+/// Origem ou destino que é um registrador XMM ou memória.
+///
+/// A memória é um [`Operand::Mem`] com a largura-base `Dword`: operações escalares acessam
+/// 4 bytes; as empacotadas de 128 bits acessam quatro palavras consecutivas a partir do
+/// mesmo endereço efetivo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum XmmRm {
+    Xmm(usize),
+    Mem(Operand),
+}
+
+/// Lógica bit a bit de 128 bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SseLogic {
+    And,
+    AndNot,
+    Or,
+    Xor,
+}
+
+/// Aritmética escalar de precisão simples (`*SS`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SseArith {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Sqrt,
+    Min,
+    Max,
+}
+
+/// SSE escalar de precisão simples e as movimentações que o acompanham.
+///
+/// **Só o que alvos reais usaram.** Precisão dupla, inteiros empacotados, `LDMXCSR` e
+/// `STMXCSR` seguem recusados na análise, com o nome da instrução no erro.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sse {
+    /// `MOVSS`: com origem em memória zera as três palavras altas; registrador→registrador
+    /// preserva-as; com destino em memória grava só 4 bytes.
+    MoveScalar { dst: XmmRm, src: XmmRm },
+    /// `MOVAPS`/`MOVUPS`: 128 bits. `aligned` exige endereço múltiplo de 16 na memória.
+    MovePacked {
+        dst: XmmRm,
+        src: XmmRm,
+        aligned: bool,
+    },
+    /// `ANDPS`/`ANDNPS`/`ORPS`/`XORPS`. Memória de 128 bits exige alinhamento de 16.
+    Logic {
+        op: SseLogic,
+        dst: usize,
+        src: XmmRm,
+    },
+    /// `ADDSS` e família: opera na palavra baixa e preserva as altas.
+    Arith {
+        op: SseArith,
+        dst: usize,
+        src: XmmRm,
+    },
+    /// `CVTSI2SS`: inteiro de 32 bits com sinal → precisão simples.
+    FromInt { dst: usize, src: Operand },
+    /// `CVTTSS2SI` (truncando) / `CVTSS2SI` (arredonda ao par mais próximo).
+    ToInt {
+        dst: Operand,
+        src: XmmRm,
+        truncate: bool,
+    },
+    /// `UCOMISS`/`COMISS`: resultado em ZF/PF/CF, limpa OF/SF/AF.
+    Compare { left: usize, right: XmmRm },
+}
+
+/// Constante carregada por `FLDZ`/`FLD1`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum X87Constant {
+    Zero,
+    One,
+}
+
+/// x87: só carga e armazenamento (ADR-0053). Aritmética x87 é recusada na análise.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum X87 {
+    /// `FILD m16/m32/m64`: inteiro com sinal → ST(0), exato.
+    LoadInteger { source: Operand, bytes: u32 },
+    /// `FLD m32/m64/m80`: ponto flutuante → ST(0), sem perda.
+    LoadFloat { source: Operand, bytes: u32 },
+    /// `FLDZ`/`FLD1`.
+    LoadConstant(X87Constant),
+    /// `FST`/`FSTP m32/m64/m80`: arredonda ao par mais próximo ao estreitar.
+    Store { dst: Operand, bytes: u32, pop: bool },
+}
+
 /// IR explícita; nenhuma instrução desconhecida vira NOP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operation {
@@ -195,6 +298,13 @@ pub enum Operation {
         src: Operand,
     },
     Unary(Unary, Operand),
+    /// BT/BTS/BTR/BTC de 32 bits. Com destino em memória e deslocamento em registrador, o
+    /// bit pode estar fora da palavra endereçada (deslocamento com sinal, em bits).
+    BitTest {
+        kind: BitTest,
+        dst: Operand,
+        bit: Operand,
+    },
     Shift(Shift, Operand, Operand),
     Rotate(Rotate, Operand, Operand),
     DoubleShift(DoubleShift, Operand, Operand, Operand),
@@ -263,5 +373,12 @@ pub enum Operation {
     Breakpoint,
     /// SFENCE: ordenação de stores pelo contrato do bus, sem fence de GPU.
     StoreFence,
+    /// WBINVD: a memória guest é coerente, então escrever de volta o cache não tem efeito
+    /// observável. Não cobre INVD, que descartaria dados e continua recusado.
+    WriteBackCache,
+    /// SSE escalar de precisão simples.
+    Sse(Sse),
+    /// x87: carga e armazenamento.
+    X87(X87),
     Nop,
 }

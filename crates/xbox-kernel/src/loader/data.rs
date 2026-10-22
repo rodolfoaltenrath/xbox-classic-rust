@@ -12,6 +12,7 @@
 //! | `LaunchDataPage` (164) | `PLAUNCH_DATA_PAGE LaunchDataPage;` | **ponteiro de 4 bytes gravável**, começando nulo |
 //! | `PsThreadObjectType` (259) | `OBJECT_TYPE PsThreadObjectType;` | struct de 28 bytes num endereço estável |
 //! | `XeImageFileName` (326) | `ANSI_STRING XeImageFileName[1];` | struct de 8 bytes **mais** um buffer com o caminho |
+//! | `KeTickCount` (156) | `volatile ULONG KeTickCount;` | contador de ms que o **kernel** atualiza e o título só lê |
 //!
 //! Tratar os três como "uma tabela de zeros" seria errado de três maneiras distintas:
 //!
@@ -71,6 +72,8 @@ pub const OFF_IMAGE_FILE_NAME: u32 = 0x0100;
 pub const OFF_IMAGE_PATH: u32 = 0x0200;
 /// Deslocamento de `LaunchDataPage` na página gravável.
 pub const OFF_LAUNCH_DATA_PAGE: u32 = 0x0000;
+/// Deslocamento de `KeTickCount` na página somente-leitura.
+pub const OFF_KE_TICK_COUNT: u32 = 0x0300;
 
 /// Caminho NT da imagem exposto em `XeImageFileName`.
 ///
@@ -87,6 +90,8 @@ pub const ORDINAL_LAUNCH_DATA_PAGE: u32 = 164;
 pub const ORDINAL_PS_THREAD_OBJECT_TYPE: u32 = 259;
 /// Ordinal de `XeImageFileName`.
 pub const ORDINAL_XE_IMAGE_FILE_NAME: u32 = 326;
+/// Ordinal de `KeTickCount`.
+pub const ORDINAL_KE_TICK_COUNT: u32 = 156;
 
 /// Endereço guest de um dado exportado que já tem representação.
 ///
@@ -98,6 +103,7 @@ pub const fn address(ordinal: u32) -> Option<u32> {
         ORDINAL_LAUNCH_DATA_PAGE => Some(DATA_RW_BASE + OFF_LAUNCH_DATA_PAGE),
         ORDINAL_PS_THREAD_OBJECT_TYPE => Some(DATA_RO_BASE + OFF_THREAD_OBJECT_TYPE),
         ORDINAL_XE_IMAGE_FILE_NAME => Some(DATA_RO_BASE + OFF_IMAGE_FILE_NAME),
+        ORDINAL_KE_TICK_COUNT => Some(DATA_RO_BASE + OFF_KE_TICK_COUNT),
         _ => None,
     }
 }
@@ -165,13 +171,37 @@ pub fn install(bus: &mut Bus, caminho_da_imagem: &str) -> Result<()> {
     Ok(())
 }
 
+/// Publica o valor de `KeTickCount` (milissegundos desde o boot) na memória guest.
+///
+/// A página é somente-leitura **para o guest**: o título só lê o contador, então uma
+/// escrita dele seria um defeito a detectar. O kernel escreve pelo endereço físico, que
+/// não passa pela permissão da MMU — é o dono do dado, como o hardware seria.
+///
+/// O valor é de 32 bits e dá a volta em ~49,7 dias, como o `ULONG` do console.
+/// **Provisório:** só é atualizado quando o host chama esta função (fronteiras de
+/// serviço de kernel e fim de fatia). Um laço do guest que leia o contador sem nenhuma
+/// chamada de kernel o vê parado até o fim da fatia (ROADMAP §16.1, P7).
+pub fn publish_tick_count(bus: &mut Bus, milissegundos: u64) -> Result<()> {
+    // A região só existe quando a imagem importa algum dado do kernel (`install`). Sem
+    // ela ninguém lê o contador, e publicar seria falhar por um dado que não foi pedido.
+    let va = GuestVirt(DATA_RO_BASE + OFF_KE_TICK_COUNT);
+    if bus.mmu().consultar(va).is_none() {
+        return Ok(());
+    }
+    let frame = bus.traduzir(va, Acesso::Leitura)?;
+    // Truncar é o contrato: `ULONG` com volta, não saturação.
+    #[allow(clippy::cast_possible_truncation)]
+    let valor = milissegundos as u32;
+    Ok(bus.escrever_fisico(frame, &valor.to_le_bytes())?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         ANSI_STRING_SIZE, DATA_RO_BASE, DATA_RW_BASE, DATA_SIZE, OBJECT_TYPE_SIZE,
-        OFF_IMAGE_FILE_NAME, OFF_IMAGE_PATH, OFF_LAUNCH_DATA_PAGE, OFF_THREAD_OBJECT_TYPE,
-        ORDINAL_LAUNCH_DATA_PAGE, ORDINAL_PS_THREAD_OBJECT_TYPE, ORDINAL_XE_IMAGE_FILE_NAME,
-        POISON_BASE, address, poison,
+        OFF_IMAGE_FILE_NAME, OFF_IMAGE_PATH, OFF_KE_TICK_COUNT, OFF_LAUNCH_DATA_PAGE,
+        OFF_THREAD_OBJECT_TYPE, ORDINAL_LAUNCH_DATA_PAGE, ORDINAL_PS_THREAD_OBJECT_TYPE,
+        ORDINAL_XE_IMAGE_FILE_NAME, POISON_BASE, address, poison,
     };
 
     #[test]
@@ -179,6 +209,7 @@ mod tests {
         let regioes = [
             (OFF_THREAD_OBJECT_TYPE, OBJECT_TYPE_SIZE),
             (OFF_IMAGE_FILE_NAME, ANSI_STRING_SIZE),
+            (OFF_KE_TICK_COUNT, 4),
             (OFF_IMAGE_PATH, super::MAX_IMAGE_PATH as u32),
         ];
         for (i, (a_ini, a_len)) in regioes.iter().enumerate() {
@@ -201,7 +232,11 @@ mod tests {
         assert!((DATA_RW_BASE..DATA_RW_BASE + DATA_SIZE).contains(&launch));
 
         // Os outros dois são só lidos: página somente-leitura.
-        for ordinal in [ORDINAL_PS_THREAD_OBJECT_TYPE, ORDINAL_XE_IMAGE_FILE_NAME] {
+        for ordinal in [
+            ORDINAL_PS_THREAD_OBJECT_TYPE,
+            ORDINAL_XE_IMAGE_FILE_NAME,
+            super::ORDINAL_KE_TICK_COUNT,
+        ] {
             let endereco = address(ordinal).unwrap();
             assert!(
                 (DATA_RO_BASE..DATA_RO_BASE + DATA_SIZE).contains(&endereco),
@@ -241,6 +276,7 @@ mod tests {
             OFF_THREAD_OBJECT_TYPE,
             OFF_IMAGE_FILE_NAME,
             OFF_IMAGE_PATH,
+            OFF_KE_TICK_COUNT,
             OFF_LAUNCH_DATA_PAGE,
         ] {
             assert_eq!(off % 4, 0, "offset {off:#X} desalinhado");

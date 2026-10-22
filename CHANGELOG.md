@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC e WBINVD** no AOT,
+  guiados pelo `triangle` do nxdk (ADR-0053). `State` ganha XMM0..7, MXCSR e a pilha x87 de
+  80 bits exatos; o snapshot `AOTC` passa à v8 e v1–v7 migram para o estado de RESET. A
+  conversão float→inteiro devolve o "indefinido" `0x80000000` em vez de saturar. Provisórios
+  declarados no ROADMAP §16.1: P8 (MXCSR dinâmico) e P9 (aritmética x87). Com `MmAllocate-
+  ContiguousMemoryEx` aceitando alinhamento 0 e `--fatias`, o `triangle` passa pela
+  inicialização de vídeo e para em `NtCreateEvent`. 198 casos gerados (eram 181).
+- Fase 4/alpha: `KeTickCount` (ordinal 156), primeiro bloqueio do **segundo sample** (`triangle` do nxdk, compilado no WSL com o mesmo SDK fixado). Dado exportado em página somente-leitura para o guest; o kernel o escreve pelo endereço físico e o publica a cada espera atendida e a cada fim de fatia. Imagem sem dados importados não é afetada. Provisório declarado como P7 no ROADMAP §16.1. Com isso o triangle traduz com 8 raízes e executa até a primeira instrução de ponto flutuante (`cvtsi2ss`, SSE), que o AOT ainda não implementa.
 - Fase 4/alpha: o laço de execução do `main` gerado saiu do template para
   `Session::conduzir` (`xbox-recomp`), com o código nativo e a apresentação injetados como
   fechamentos. Fecha a lacuna do ADR-0052 "usuário fechando a janela durante a execução":

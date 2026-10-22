@@ -215,7 +215,7 @@ fn extensao_da_isa_nao_aceita_segmentos_address16_ou_calls16() {
         &[0x67, 0xA1, 0, 0, 0xC3][..], // mov eax,[disp16]
         &[0x66, 0xE8, 0, 0, 0xC3][..], // call rel16
         &[0x66, 0xC3][..],             // ret de 16 bits
-        &[0x0F, 0xA3, 0xC8, 0xC3][..], // bt eax,ecx
+        &[0x0F, 0xA2, 0xC3][..],       // cpuid (BT passou a ser suportado: ADR-0053)
     ] {
         assert!(matches!(
             analyze(&xbe_com_codigo(code).unwrap()),

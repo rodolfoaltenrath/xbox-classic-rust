@@ -8,8 +8,9 @@ use iced_x86::{
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
 pub use crate::ir::{
-    Binary, BitScan, CarryOp, Condition, CountBranch, DoubleShift, Operand, Operation, Repeat,
-    Rotate, Shift, StringOp, Unary, Width,
+    Binary, BitScan, BitTest, CarryOp, Condition, CountBranch, DoubleShift, Operand, Operation,
+    Repeat, Rotate, Shift, Sse, SseArith, SseLogic, StringOp, Unary, Width, X87, X87Constant,
+    XmmRm,
 };
 use crate::{Error, Result};
 
@@ -271,6 +272,9 @@ fn lower(i: &Instruction) -> Result<Operation> {
     if matches!(i.code(), Code::Nop_rm16 | Code::Nop_rm32) {
         return Ok(Operation::Nop);
     }
+    if let Some(op) = lower_float(i)? {
+        return Ok(op);
+    }
     if let Some(op) = lower_exchange(i)? {
         return Ok(op);
     }
@@ -346,6 +350,158 @@ fn lower(i: &Instruction) -> Result<Operation> {
         });
     }
     lower_stack_and_flow(i)
+}
+
+fn xmm_index(r: Register, pc: u32) -> Result<usize> {
+    if r.is_xmm() && r.number() < 8 {
+        Ok(r.number())
+    } else {
+        Err(fail(pc, format!("registrador não suportado: {r:?}")))
+    }
+}
+
+fn xmm_rm(i: &Instruction, n: u32) -> Result<XmmRm> {
+    match i.op_kind(n) {
+        OpKind::Register => Ok(XmmRm::Xmm(xmm_index(i.op_register(n), i.ip32())?)),
+        OpKind::Memory => Ok(XmmRm::Mem(memory(i, Width::Dword)?)),
+        kind => Err(fail(
+            i.ip32(),
+            format!("operando SSE não suportado: {kind:?}"),
+        )),
+    }
+}
+
+/// Destino que precisa ser registrador XMM.
+fn xmm_dst(i: &Instruction) -> Result<usize> {
+    if i.op0_kind() != OpKind::Register {
+        return Err(fail(i.ip32(), "destino SSE exige registrador XMM"));
+    }
+    xmm_index(i.op0_register(), i.ip32())
+}
+
+fn lower_sse(i: &Instruction) -> Result<Option<Operation>> {
+    let arith = match i.mnemonic() {
+        Mnemonic::Addss => Some(SseArith::Add),
+        Mnemonic::Subss => Some(SseArith::Sub),
+        Mnemonic::Mulss => Some(SseArith::Mul),
+        Mnemonic::Divss => Some(SseArith::Div),
+        Mnemonic::Sqrtss => Some(SseArith::Sqrt),
+        Mnemonic::Minss => Some(SseArith::Min),
+        Mnemonic::Maxss => Some(SseArith::Max),
+        _ => None,
+    };
+    if let Some(op) = arith {
+        return Ok(Some(Operation::Sse(Sse::Arith {
+            op,
+            dst: xmm_dst(i)?,
+            src: xmm_rm(i, 1)?,
+        })));
+    }
+    let logic = match i.mnemonic() {
+        Mnemonic::Andps => Some(SseLogic::And),
+        Mnemonic::Andnps => Some(SseLogic::AndNot),
+        Mnemonic::Orps => Some(SseLogic::Or),
+        Mnemonic::Xorps => Some(SseLogic::Xor),
+        _ => None,
+    };
+    if let Some(op) = logic {
+        return Ok(Some(Operation::Sse(Sse::Logic {
+            op,
+            dst: xmm_dst(i)?,
+            src: xmm_rm(i, 1)?,
+        })));
+    }
+    Ok(Some(Operation::Sse(match i.mnemonic() {
+        Mnemonic::Movss => Sse::MoveScalar {
+            dst: xmm_rm(i, 0)?,
+            src: xmm_rm(i, 1)?,
+        },
+        Mnemonic::Movaps | Mnemonic::Movups => Sse::MovePacked {
+            dst: xmm_rm(i, 0)?,
+            src: xmm_rm(i, 1)?,
+            aligned: i.mnemonic() == Mnemonic::Movaps,
+        },
+        Mnemonic::Cvtsi2ss => Sse::FromInt {
+            dst: xmm_dst(i)?,
+            src: operand(i, 1)?,
+        },
+        Mnemonic::Cvttss2si | Mnemonic::Cvtss2si => Sse::ToInt {
+            dst: operand(i, 0)?,
+            src: xmm_rm(i, 1)?,
+            truncate: i.mnemonic() == Mnemonic::Cvttss2si,
+        },
+        Mnemonic::Ucomiss | Mnemonic::Comiss => Sse::Compare {
+            left: xmm_dst(i)?,
+            right: xmm_rm(i, 1)?,
+        },
+        _ => return Ok(None),
+    })))
+}
+
+/// x87 e SSE: o ponto flutuante, separado do resto para a decodificação inteira não crescer.
+fn lower_float(i: &Instruction) -> Result<Option<Operation>> {
+    match lower_x87(i)? {
+        Some(op) => Ok(Some(op)),
+        None => lower_sse(i),
+    }
+}
+
+fn lower_x87(i: &Instruction) -> Result<Option<Operation>> {
+    let source = |bytes| -> Result<(Operand, u32)> { Ok((memory(i, Width::Dword)?, bytes)) };
+    Ok(Some(Operation::X87(match i.code() {
+        Code::Fild_m16int => {
+            let (source, bytes) = source(2)?;
+            X87::LoadInteger { source, bytes }
+        }
+        Code::Fild_m32int => {
+            let (source, bytes) = source(4)?;
+            X87::LoadInteger { source, bytes }
+        }
+        Code::Fild_m64int => {
+            let (source, bytes) = source(8)?;
+            X87::LoadInteger { source, bytes }
+        }
+        Code::Fld_m32fp => {
+            let (source, bytes) = source(4)?;
+            X87::LoadFloat { source, bytes }
+        }
+        Code::Fld_m64fp => {
+            let (source, bytes) = source(8)?;
+            X87::LoadFloat { source, bytes }
+        }
+        Code::Fld_m80fp => {
+            let (source, bytes) = source(10)?;
+            X87::LoadFloat { source, bytes }
+        }
+        Code::Fldz => X87::LoadConstant(X87Constant::Zero),
+        Code::Fld1 => X87::LoadConstant(X87Constant::One),
+        Code::Fst_m32fp | Code::Fstp_m32fp => {
+            let (dst, bytes) = source(4)?;
+            X87::Store {
+                dst,
+                bytes,
+                pop: i.code() == Code::Fstp_m32fp,
+            }
+        }
+        Code::Fst_m64fp | Code::Fstp_m64fp => {
+            let (dst, bytes) = source(8)?;
+            X87::Store {
+                dst,
+                bytes,
+                pop: i.code() == Code::Fstp_m64fp,
+            }
+        }
+        // `FST m80` não existe; só `FSTP`.
+        Code::Fstp_m80fp => {
+            let (dst, bytes) = source(10)?;
+            X87::Store {
+                dst,
+                bytes,
+                pop: true,
+            }
+        }
+        _ => return Ok(None),
+    })))
 }
 
 fn lower_exchange(i: &Instruction) -> Result<Option<Operation>> {
@@ -543,6 +699,33 @@ fn lower_bit_motion(i: &Instruction) -> Result<Option<Operation>> {
         }
         return Ok(Some(Operation::BitScan { kind, dst, src }));
     }
+    let bit_test = match i.mnemonic() {
+        Mnemonic::Bt => Some(BitTest::Test),
+        Mnemonic::Bts => Some(BitTest::Set),
+        Mnemonic::Btr => Some(BitTest::Reset),
+        Mnemonic::Btc => Some(BitTest::Complement),
+        _ => None,
+    };
+    if let Some(kind) = bit_test {
+        let dst = operand(i, 0)?;
+        let bit = operand(i, 1)?;
+        let dword = matches!(
+            dst,
+            Operand::Reg(_)
+                | Operand::Mem {
+                    width: Width::Dword,
+                    ..
+                }
+        );
+        let source = matches!(bit, Operand::Reg(_) | Operand::Imm(_));
+        if !dword || !source {
+            return Err(fail(
+                i.ip32(),
+                "BT/BTS/BTR/BTC exigem r/m32 e origem registrador de 32 bits ou imediato",
+            ));
+        }
+        return Ok(Some(Operation::BitTest { kind, dst, bit }));
+    }
     let shift = match i.mnemonic() {
         Mnemonic::Shl => Some(Shift::Shl),
         Mnemonic::Shr => Some(Shift::Shr),
@@ -632,6 +815,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Hlt => Operation::Halt,
         Code::Int3 => Operation::Breakpoint,
         Code::Sfence => Operation::StoreFence,
+        Code::Wbinvd => Operation::WriteBackCache,
         _ => {
             return Err(fail(
                 pc,

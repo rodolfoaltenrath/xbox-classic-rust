@@ -50,6 +50,11 @@ impl ContiguousMemory {
             *arg = call.argument(bus, i as u32)?;
         }
         let [requested, low, high, alignment, protect] = args;
+        // Alinhamento 0 é "sem exigência": o nxdk o passa (alocação de 0x20 bytes na
+        // inicialização de vídeo do `triangle`) e o piso é a página. Só o zero é
+        // promovido; 16, 0x3000 e outros valores abaixo de uma página ou que não são
+        // potência de dois seguem recusados, porque nenhum título os usou.
+        let alignment = if alignment == 0 { PAGE } else { alignment };
         if irql != Irql::Passive
             || !protection(protect)
             || alignment < PAGE

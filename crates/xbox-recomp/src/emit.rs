@@ -4,11 +4,13 @@ use std::fmt::Write;
 
 use crate::analysis::Program;
 use crate::ir::{
-    Binary, BitScan, CarryOp, CountBranch, DoubleShift, Operand, Operation, Repeat, Rotate, Shift,
-    StringOp, Unary, Width,
+    Binary, BitScan, BitTest, CarryOp, CountBranch, DoubleShift, Operand, Operation, Repeat,
+    Rotate, Shift, StringOp, Unary, Width,
 };
 
+mod sse;
 mod strings;
+mod x87;
 
 /// Gera módulo Rust com `run(state, bus, orçamento_de_blocos)`.
 /// Cada elemento REP é uma passagem limitada de seu próprio bloco.
@@ -124,6 +126,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         } => emit_conditional_move(out, *condition, dst, src),
         Operation::BitScan { kind, dst, src } => emit_bit_scan(out, *kind, dst, src),
         Operation::Unary(op, dst) => emit_unary(out, *op, dst),
+        Operation::BitTest { kind, dst, bit } => emit_bit_test(out, *kind, dst, bit),
         Operation::Shift(op, dst, count) => emit_shift(out, *op, dst, count),
         Operation::Rotate(op, dst, count) => emit_rotate(out, *op, dst, count),
         Operation::DoubleShift(op, dst, src, count) => emit_double_shift(out, *op, dst, src, count),
@@ -135,13 +138,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         Operation::Lea {
             dst,
             address: operand,
-        } => {
-            line(
-                out,
-                &format!("let value = {};", offset(operand, "s.regs[4]")),
-            );
-            write_operand(out, dst, "value");
-        }
+        } => emit_lea(out, dst, operand),
         Operation::Push(..) | Operation::Pop(..) | Operation::Leave => emit_stack(out, operation),
         Operation::Jump(target) => {
             line(out, &format!("s.eip = 0x{target:08X};"));
@@ -202,7 +199,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
             emit_return(out, *bytes);
             return;
         }
-        Operation::Nop => {}
+        Operation::Nop | Operation::WriteBackCache => {}
         Operation::ReadTimestamp => emit_timestamp(out),
         Operation::ReadMsr => emit_msr(out),
         Operation::ClearInterrupts => {
@@ -211,8 +208,18 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         Operation::Halt => line(out, "s.halted = Some(s.eip);"),
         Operation::Breakpoint => line(out, "s.breakpoint = Some(s.eip);"),
         Operation::StoreFence => line(out, "bus.ordenar_escritas();"),
+        Operation::Sse(sse) => sse::emit(out, sse),
+        Operation::X87(x87) => x87::emit(out, x87),
     }
     line(out, &format!("s.eip = 0x{next:08X};"));
+}
+
+fn emit_lea(out: &mut String, dst: &Operand, operand: &Operand) {
+    line(
+        out,
+        &format!("let value = {};", offset(operand, "s.regs[4]")),
+    );
+    write_operand(out, dst, "value");
 }
 
 fn emit_return(out: &mut String, bytes: u16) {
@@ -832,5 +839,49 @@ const fn carry_statement(op: CarryOp) -> &'static str {
         CarryOp::Clear => "s.eflags &= !1;",
         CarryOp::Set => "s.eflags |= 1;",
         CarryOp::Complement => "s.eflags ^= 1;",
+    }
+}
+
+/// BT/BTS/BTR/BTC. Só CF muda: ZF/SF/OF/AF/PF ficam como estavam (a ISA os deixa
+/// indefinidos; preservar é a escolha que não inventa um valor).
+///
+/// O deslocamento é capturado antes do endereço e do valor. Com memória e registrador,
+/// o bit vem de um deslocamento **com sinal** em bits, então o endereço anda
+/// `(deslocamento >> 5) * 4` bytes — o bit pode cair fora da palavra nomeada.
+/// Com imediato, ou com registrador de destino, só os 5 bits baixos contam.
+fn emit_bit_test(out: &mut String, kind: BitTest, dst: &Operand, bit: &Operand) {
+    line(out, &format!("let offset = {};", read(bit)));
+    line(out, "let bit_index = offset & 31;");
+    match dst {
+        Operand::Mem { .. } => {
+            let base = address(dst, "s.regs[4]");
+            if matches!(bit, Operand::Imm(_)) {
+                line(out, &format!("let address = {base};"));
+            } else {
+                line(
+                    out,
+                    &format!(
+                        "let address = ({base}).wrapping_add(((offset.cast_signed() >> 5) as u32).wrapping_mul(4));"
+                    ),
+                );
+            }
+            line(out, "let value = bus.ler_u32(GuestVirt(address))?;");
+        }
+        _ => line(out, &format!("let value = {};", read(dst))),
+    }
+    line(
+        out,
+        "s.eflags = (s.eflags & !1u32) | ((value >> bit_index) & 1);",
+    );
+    let update = match kind {
+        BitTest::Test => return,
+        BitTest::Set => "value | (1u32 << bit_index)",
+        BitTest::Reset => "value & !(1u32 << bit_index)",
+        BitTest::Complement => "value ^ (1u32 << bit_index)",
+    };
+    line(out, &format!("let result = {update};"));
+    match dst {
+        Operand::Mem { .. } => line(out, "bus.escrever_u32(GuestVirt(address), result)?;"),
+        _ => write_operand(out, dst, "result"),
     }
 }
