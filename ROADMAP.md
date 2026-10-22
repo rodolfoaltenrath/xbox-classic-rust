@@ -1105,7 +1105,7 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P9 | **x87 só carga e armazenamento**: sem aritmética, sem palavras de controle/estado nem exceções (ADR-0053) | o `triangle` usa `fild`/`fstp`/`fldz`; aritmética ainda não foi alcançada | instruções x87 além das listadas são recusadas na análise, com o nome | implementar a aritmética quando um caminho executado a alcançar, com a precisão de 80 bits já exata na pilha |
 | P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
 | P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
-| P12 | **NV2A parcial:** quatro registradores de vblank e NVPLL com perfil explícito (ADRs 0055/0057); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas | triangle passa do PLL, mas PFB_CFG0 lê zero e entra no ramo que prevê -6; a limpeza falha antes do retorno | modelo do NV2A (Fase 5), com evidência de cada valor |
+| P12 | **NV2A parcial:** vblank, NVPLL e PFB_CFG0/CFG1 com perfis explícitos (ADRs 0055/0057/0058); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam memória de instância/PRAMIN, PFIFO e PGRAPH; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
 
 Investigação de evidência e ferramentas em 2026-10-22:
 [ADR-0056](docs/adr/0056-evidencia-nv2a-e-reproducao.md). O PLL lembrado foi
@@ -1185,19 +1185,20 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 4 / alpha | Pedidos de filtros do encoder (ADR-0050) | — | Flicker 0..7/soften 0..1, estado opcional e recusa explícita; AVST v3 migra v1/v2 sem pedidos; hello passa por 5/false e para na escrita do DAC gamma em 0xFD6813C8, PC 0x12EEB, ainda sem mapeamento/modelo; 398 testes workspace/doctests e 177 nativos debug/release; mantém 27/69 serviços |
 | 2026-10-21 | 4 / alpha | **Hello executa o `main` e desenha "Hello nxdk!"** (ADR-0051) | — | Janela MMIO do NV2A como identidade (só mapeamento; telemetria vê a rampa de gamma: 1 escrita de índice + 768 de dados) e `KeDelayExecutionThread` com `Clock::hundred_ns_to_cycles` verificada; a sessão aplica o avanço antes do retorno, `TimeExhausted` deixa a CPU intacta; relógio guest 8023 ms = 4×2000 ms + custo de instruções; 1208 pixels legíveis em ASCII; 420 testes workspace/doctests e 181 nativos; **28/69 serviços**; apresentação em janela pendente |
 | 2026-10-21 | 4 / alpha | **Framebuffer apresentado em janela Win32** (ADR-0052) | — | `Apresentador` em `xbox-platform` (Win32 declarado à mão, sem dependência nova); `Quadro` possui os bytes, sem referência à RAM guest; apresenta quando o guest cede a vez (relógio avançou) — a premissa "fim de fatia" foi refutada: o modo de vídeo só existe a 98,6% da execução; **capturado de fora pelo SO: 640×480 1:1, 1208 pixels em x=26..119 y=26..88, idêntico à RAM, "Hello nxdk!" × 4**; WM_CLOSE encerra em <5 s; 437 testes estáveis em 3 rodadas; clippy limpo em Windows **e** Linux (bug de `Debug` só do Linux achado instalando o target); **seção 16.1 criada**: dívidas provisórias com condição de saída (P1–P6) |
+| 2026-10-22 | 5 / alpha | Perfil de memória PFB (ADR-0058) | — | CFG0/CFG1 com procedência Cromwell e distinção 64/128 MiB; BUS0 v4/PFBM v1 migra v1–v3 sem ativar PFB; triangle chega a MmClaimGpuInstanceMemory (168), retorno 0x182AB; 499 testes workspace/doctests e 212 casos gerados debug/release; mantém 37/69 serviços |
 
 
 ---
 
 ### Próxima ação
 
-Marco mais recente, 2026-10-22: [ADR-0057](docs/adr/0057-pramdac-perfil-clock.md),
-NVPLL programável/PublicReferenceV1, BUS0 v3/NPLL v1, migração v1/v2 preservando
-zero legado. Triangle configura parâmetros PTIMER e rejeita PFB_CFG0, ainda sem
-modelo. A cadeia guest confirmou que a falta em 0x40 ocorre em pb_start chamado
-por pb_kill, antes do retorno de pb_init. Próximo recorte: PFB com origem explícita,
-depois instância/PRAMIN e PFIFO conforme a execução exigir. 492 testes workspace/
-doctests e 209 casos gerados debug/release; serviços seguem 37/69.
+Marco mais recente, 2026-10-22: [ADR-0058](docs/adr/0058-pfb-perfil-memoria.md),
+CFG0/CFG1 com perfil Cromwell 64/128 MiB, BUS0 v4/PFBM v1, migração v1–v3
+preservando PFB sem modelo. Triangle passa do PLL/PFB e para em
+MmClaimGpuInstanceMemory (168), retorno 0x182AB, argumentos 0xFFFFFFFF/0x0005FE14.
+Snapshot v3 reproduz a rejeição anterior de PFB; sessão nova adota o perfil.
+Próximo: memória de instância/PRAMIN, depois PFIFO conforme a execução exigir.
+499 testes workspace/doctests e 212 casos gerados debug/release; serviços seguem 37/69.
 
 Em ordem:
 

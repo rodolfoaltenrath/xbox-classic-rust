@@ -1,6 +1,6 @@
 # Homebrew nxdk e fronteira do kernel
 
-## Segundo alvo e perfil NVPLL — 2026-10-22
+## Segundo alvo e perfis NVPLL/PFB — 2026-10-22
 
 O triangle/pbkit usa as dez raízes documentadas na passagem de bastão, produzindo
 17883 blocos. O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
@@ -8,17 +8,22 @@ coeficiente NVPLL programável, com perfil PublicReferenceV1 baseado em fontes
 públicas fixadas. Sessão nova lê 0x00011C01/233333324 Hz nominais; BUS0 v3/NPLL v1
 guarda perfil/coeficiente. BUS0 v1/v2 continuam sem modelo por migração explícita.
 
-O guest passa da verificação PLL e escreve os parâmetros PTIMER (ainda sem
-efeito de dispositivo), mas rejeita PFB_CFG0, que lê zero. A falta final em
-VA=0x40/PC=0x16EA2 ocorre em pb_start chamado por pb_kill, antes do retorno
-previsto de pb_init. Dois testes do alvo real confirmaram a cadeia EBP: caller
-0x18283 no perfil novo (PFB) e 0x18212 no legado (PLL). Não é evidência de que
-o sample já recebeu/ignorou o retorno -6/-5. Nenhum triângulo foi apresentado.
+O [ADR-0058](../adr/0058-pfb-perfil-memoria.md) acrescenta CFG0/CFG1 com perfil
+de firmware Cromwell: CFG0=0x03070003 para 64 MiB, 0x03070103 para 128 MiB;
+CFG1=0x11448000. Readback integral, sem geometria elétrica/tiling. BUS0 v4/PFBM
+v1 guarda a programação; snapshots v1–v3 preservam PFB sem modelo.
 
-Validação: 492 testes workspace/doctests e 209 casos gerados debug/release;
+Sessão nova passa das verificações PLL e PFB. Para em MmClaimGpuInstanceMemory
+(168), retorno 0x182AB, argumentos 0xFFFFFFFF/0x0005FE14, EIP no trampolim
+0x7FFE0540. Foram 24701909 retired/ciclos e 52 chamadas atendidas. Ainda sem
+memória de instância, PRAMIN ou triângulo. PTIMER continua somente registrando
+escritas. O replay BUS0 v3 reproduziu a rejeição anterior de PFB e a falta na
+limpeza em VA=0x40/PC=0x16EA2; pb_init ainda não retornou nesse caminho legado.
+
+Validação: 499 testes workspace/doctests e 212 casos gerados em debug/release;
 dois testes locais ignorados do triangle comparam perfis e snapshot. Evidências:
-`target/pramdac-triangle.log` e o ADR-0057. Próximo: PFB com procedência e
-consistência com memória/PRAMIN, depois seguir os bloqueios observados.
+`target/pfb-triangle.log` e o ADR-0058. Próximo: contrato de memória de instância,
+posse dos frames e janela PRAMIN, com fontes verificadas.
 
 ## Build local
 

@@ -522,6 +522,21 @@ fuga por link simbólico aberta, que era barata de fechar.
 
 ---
 
+## Configuração PFB (ADR-0058)
+
+O Bus guarda CFG0/CFG1 em Nv2aPfb, PAs 0xFD100200/0xFD100204. Perfil inicial
+FirmwareMemoryV1 deriva da RAM real da arena: Cromwell programa CFG0=0x03070003
+para 64 MiB e 0x03070103 para 128 MiB; CFG1=0x11448000. Arenas de outros tamanhos
+continuam sem esse modelo. São valores de programação de firmware público,
+não medição de reset. Readback integral de 32 bits alinhados, aliases e físico
+coerentes; larguras/sobreposições inválidas recusam com preflight antes de stores.
+
+Reprogramação não altera capacidade ou geometria da arena; CPU/kernel/DMA seguem
+na RAM única. Sem PRAMIN, tiling ou interpretação desses valores pela PGRAPH.
+BUS0 v4 acrescenta PFBM v1 (perfil/CFG0/CFG1); v1–v3 migram para zero/telemetria
+legados, sem ativar novo dispositivo durante replay. NPLL/IRQ mantêm suas regras.
+Ver [ADR-0058](../adr/0058-pfb-perfil-memoria.md).
+
 ## Recorte PRAMDAC/NVPLL (ADR-0057)
 
 O Bus possui Nv2aPramdac, separado da RAM e do recorte de interrupções. Um bus

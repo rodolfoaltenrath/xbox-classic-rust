@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-22**, com base no commit **`9ad331e`** e alterações locais
-dos ADRs **0056/0057** (ferramentas/evidência e perfil PRAMDAC).
+Atualizado em **2026-10-22**, com base no commit **`0784976`** e alterações locais
+do ADR **0058** (perfil de memória PFB).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -26,13 +26,13 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P12), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0057) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0058) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v3/`NPLL` v1, `KRNL` v12, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v4/`NPLL` v1/`PFBM` v1, `KRNL` v12, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** (pedido
@@ -40,9 +40,9 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (492 testes na revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (499 testes na revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `209 passed` em x86-64 e `193` fora dele —
+   confere o **contador de casos gerados**, hoje `212 passed` em x86-64 e `196` fora dele —
    some os testes novos ali).
 
 ### O que foi feito (resumo por etapa)
@@ -55,10 +55,10 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 | Hello executa | janela MMIO do NV2A, `KeDelayExecutionThread` avançando o relógio, `main` do hello roda | 0051 |
 | Janela | framebuffer apresentado em janela Win32 (`--janela`), só Windows | 0052 |
 | 2026-10-22 | laço de execução em `Session::conduzir` + `--fatias N`; `KeTickCount`; **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC, WBINVD**; alinhamento 0 em `MmAllocateContiguousMemoryEx`; **eventos do kernel**; **interrupções, ISR, DPC e vblank** | 0053, 0054, 0055 |
-| Fase 5 inicial | evidência pública e scripts de reprodução; NVPLL programável com perfil explícito, BUS0 v3/NPLL v1 e preservação do legado | 0056, 0057 |
+| Fase 5 inicial | evidência pública e scripts; NVPLL programável; CFG0/CFG1 com perfil Cromwell 64/128 MiB, BUS0 v4/NPLL v1/PFBM v1 e preservação do legado | 0056–0058 |
 
 Números hoje: **37 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); **209** casos no Rust gerado; **492** testes workspace/doctests
+compatibilidade); **212** casos no Rust gerado; **499** testes workspace/doctests
 no gate padrão reproduzido nesta revisão. Os sete testes Python dos scripts são separados.
 
 ### Estado do hello e do segundo sample
@@ -69,12 +69,14 @@ no gate padrão reproduzido nesta revisão. Os sete testes Python dos scripts s�
 - **`triangle` (segundo sample, pbkit)**: foi compilado com o mesmo SDK e é o guia dos
   próximos bloqueios. Estado: traduz com 10 raízes, passa pela inicialização de vídeo, cria o
   evento de vblank e **instala o ISR e o DPC**. Em sessão nova, lê NVPLL=0x00011C01
-  (perfil PublicReferenceV1), escreve parâmetros PTIMER e rejeita **PFB_CFG0**
-  (0xFD100200), que ainda lê zero. Entra em pb_kill antes do retorno previsto -6;
-  a limpeza chama pb_start e falha em `[0 + 0x40]`, EIP=0x16EA2. **pb_init ainda
-  não retornou nesse caminho.** A cadeia EBP confirmou caller 0x18283 no novo
-  perfil e 0x18212 no legado (rejeição PLL). BUS0 v1/v2 preservam o perfil sem
-  modelo; iniciar sessão nova para adotar o novo PLL. Sem triângulo desenhado.
+  (perfil PublicReferenceV1), escreve parâmetros PTIMER e passa da verificação
+  **PFB_CFG0** (FirmwareMemoryV1: 0x03070003 na arena de 64 MiB). Para no serviço
+  **MmClaimGpuInstanceMemory (168)**, retorno 0x182AB, argumentos 0xFFFFFFFF e
+  0x0005FE14; EIP no trampolim 0x7FFE0540. Foram 24701909 retired/ciclos e 52
+  chamadas atendidas. Ainda sem PRAMIN ou triângulo desenhado. BUS0 v1–v3
+  preservam PFB sem modelo: o replay v3 continua rejeitando PFB e falhando em
+  pb_start chamado por pb_kill, VA=0x40/PC=0x16EA2. v1/v2 também preservam PLL
+  sem modelo. Iniciar sessão nova para adotar ambos os perfis (ADR-0058).
 
 Reproduzir o `triangle`:
 
@@ -98,13 +100,14 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-1. **Modelar PFB_CFG0 com origem explícita e consistência de memória.** O
-   [ADR-0057](docs/adr/0057-pramdac-perfil-clock.md) já adota um perfil público do
-   NVPLL, programável, com fórmula derivada e snapshot. O próximo bloqueio é a
-   comparação `(PFB_CFG0 & 3) == 3` em 0x18271..0x1827E. Não escolher um número
-   apenas para passar o teste. `NV_PFB_CFG0=0x03070103` continua sem verificação
-   nesta investigação; é preciso conferir campos, fonte e relação com o modelo
-   de memória/PRAMIN. O PTIMER recebeu escritas mas ainda não as executa.
+1. **Memória de instância GPU/PRAMIN.** O
+   [ADR-0058](docs/adr/0058-pfb-perfil-memoria.md) fixa a procedência Cromwell de
+   CFG0/CFG1: 0x03070003 para 64 MiB, 0x03070103 para 128 MiB, CFG1=0x11448000.
+   A configuração inicial depende da arena real; reprogramar não redimensiona
+   RAM ou implementa geometria elétrica. Próximo contrato: MmClaimGpuInstanceMemory
+   e sua relação com o topo da RAM, posse dos frames e janela PRAMIN. Não retornar
+   sucesso/ponteiro fictício: conferir consumidor e fonte antes de reservar memória.
+   O PTIMER recebeu escritas mas ainda não as executa.
 2. **Modelo do NV2A (Fase 5), incremental e guiado pela telemetria.** Ordem sugerida, cada
    passo com ADR e teste: (a) registradores lidos por `pb_init` (PFB, PBUS,
    PTIMER); (b) `MmClaimGpuInstanceMemory` e a PRAMIN; (c) PFIFO/DMA do pushbuffer;
@@ -169,6 +172,7 @@ que se aplica só à execução do guest.
 | `crates/xbox-kernel/src/loader/{data,mmio,startup}.rs` | imagem, dados exportados, janela MMIO, `KeTickCount` |
 | `crates/xbox-mem/src/{bus,mmu,nv2a_irq,dispositivos}.rs` | bus, MMU, os 4 registradores de vblank, telemetria de MMIO |
 | `crates/xbox-mem/src/nv2a_pramdac.rs` | perfil NVPLL e coeficiente autoritativo, frequência derivada, NPLL v1 |
+| `crates/xbox-mem/src/nv2a_pfb.rs` | CFG0/CFG1 com perfil de firmware 64/128 MiB, readback e PFBM v1 |
 | `crates/xbox-platform/src/{display,windows}.rs` | `Apresentador` e a janela Win32 |
 | `tools/xberecomp/` | CLI `translate`; `template_main.rs.txt` é o `main` gerado; `tests/support/*.rs` + `tests/verification_*.inc` são os testes que rodam Rust gerado com x86 escrito à mão |
 | `scripts/` | `build-homebrew.sh` (hello), `build-nxdk-sample.sh`, `find-translation-roots.sh` |
@@ -1320,7 +1324,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 209 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 212 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1341,13 +1345,14 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue o Obsidian a partir da "Passagem de bastão — estado em 2026-10-22",
-> no início deste arquivo. Base de código verificada: 9ad331e; alterações locais
-> dos ADRs 0056/0057 (scripts/evidência e PRAMDAC). Confira Git antes de alterar.
-> Hello já executa main e apresenta em Win32; triangle passa do NVPLL público e
-> rejeita PFB_CFG0. Pb_kill chama pb_start e falha em VA=0x40, PC=0x16EA2, antes de
-> pb_init retornar. O ADR-0057 confere a cadeia EBP e a programação PTIMER; ainda
-> não há modelo PTIMER/PFB. BUS0 v3/NPLL v1 guarda perfil/coeficiente; v1/v2 migram
-> sem modelo. Próximo: PFB com procedência e coerência com memória/PRAMIN. Preserve
+> no início deste arquivo. Base de código verificada: 0784976; alterações locais
+> do ADR-0058 (perfil PFB). Confira Git antes de alterar.
+> Hello já executa main e apresenta em Win32; triangle passa do NVPLL e PFB_CFG0,
+> para em MmClaimGpuInstanceMemory (168), retorno 0x182AB, argumentos 0xFFFFFFFF
+> e 0x0005FE14. PFB distingue arenas 64/128 MiB conforme Cromwell público; readback
+> não implementa geometria elétrica. BUS0 v4/PFBM v1 guarda perfil/CFG0/CFG1;
+> v1–v3 migram sem modelo PFB, preservando o replay. PTIMER continua sem modelo.
+> Próximo: serviço de memória de instância e PRAMIN, com fonte e posse real de frames. Preserve
 > Clock único, posse exclusiva da arena e provisórios P1–P12. Scripts mantêm
 > tentativas/logs e exigem diretório novo. Mantenedor faz os commits.
 

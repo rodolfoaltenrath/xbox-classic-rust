@@ -24,7 +24,12 @@ A retomada de 2026-10-22 usa triangle/pbkit como segundo alvo. O recorte PRAMDAC
 do [ADR-0057](../adr/0057-pramdac-perfil-clock.md) acrescenta NVPLL programável,
 perfil público explícito e BUS0 v3/NPLL v1. Bus novo informa 0x00011C01 e
 233333324 Hz nominais. Snapshots BUS0 v1/v2 preservam o perfil antigo sem modelo;
-não passam a ter PLL válido por migração implícita. Outros registradores NV2A,
+não passam a ter PLL válido por migração implícita. O
+[ADR-0058](../adr/0058-pfb-perfil-memoria.md) acrescenta CFG0/CFG1 com perfil
+Cromwell conforme a arena de 64/128 MiB. BUS0 v4/PFBM v1 preserva os valores;
+snapshots BUS0 v1–v3 continuam sem PFB modelado. Readback não implementa geometria
+elétrica nem altera o tamanho da RAM quando o guest reprograma o registro.
+Outros registradores NV2A,
 PFIFO/pushbuffer/PGRAPH e renderização 3D continuam pendentes. Os registros por
 ADR abaixo incluem bloqueios históricos, não substituem a passagem de bastão.
 
@@ -148,9 +153,10 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **492 testes workspace/doctests** e **209 casos de
-Rust gerado em debug/release**, incluindo NVPLL, DMA e snapshots. O Rust
+A validação atual tem **499 testes workspace/doctests** e **212 casos de
+Rust gerado em debug/release**, incluindo PFB/NVPLL, DMA e snapshots. O Rust
 fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
-passa do PLL e rejeita PFB_CFG0. O aceite não cobre GPU 3D ou scheduler geral. A primeira
+passa do PLL/PFB e para em MmClaimGpuInstanceMemory (168), retorno 0x182AB.
+O aceite não cobre GPU 3D ou scheduler geral. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não
 foi usada. A EEPROM padrão continua sintética, com bytes/origem explícitos.

@@ -38,6 +38,7 @@ use crate::dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Telemetria};
 use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
 use crate::nv2a_irq::Nv2aIrq;
+use crate::nv2a_pfb::Nv2aPfb;
 use crate::nv2a_pramdac::Nv2aPramdac;
 use crate::regioes::{MapaFisico, Regiao};
 
@@ -51,6 +52,7 @@ pub struct Bus {
     telemetria: Telemetria,
     nv2a_irq: Nv2aIrq,
     nv2a_pramdac: Nv2aPramdac,
+    nv2a_pfb: Nv2aPfb,
     contexto: Cell<Contexto>,
 }
 
@@ -73,6 +75,7 @@ impl Bus {
             telemetria: Telemetria::nova(),
             nv2a_irq: Nv2aIrq::default(),
             nv2a_pramdac: Nv2aPramdac::default(),
+            nv2a_pfb: Nv2aPfb::for_ram(tamanho),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -114,6 +117,11 @@ impl Bus {
     /// Perfil e coeficiente autoritativos; programação ocorre pelos acessos MMIO.
     pub const fn nv2a_pramdac(&self) -> &Nv2aPramdac {
         &self.nv2a_pramdac
+    }
+
+    /// Perfil de memória PFB e configuração programada via MMIO (ADR-0058).
+    pub const fn nv2a_pfb(&self) -> &Nv2aPfb {
+        &self.nv2a_pfb
     }
 
     /// Idem, para o relógio de vblank travar a pendência.
@@ -250,6 +258,13 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                self.nv2a_pfb
+                    .validate_access(deslocamento, n)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
                 self.nv2a_pramdac
                     .validate_access(deslocamento, n)
                     .map_err(|o_que| Falta {
@@ -404,6 +419,21 @@ impl Bus {
             Regiao::Dispositivo { id, deslocamento } => {
                 if id == Dispositivo::Nv2a
                     && self
+                        .nv2a_pfb
+                        .validate_access(deslocamento, destino.len())
+                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
+                {
+                    destino.copy_from_slice(
+                        &self
+                            .nv2a_pfb
+                            .read(deslocamento)
+                            .expect("perfil validado")
+                            .to_le_bytes(),
+                    );
+                    return Ok(());
+                }
+                if id == Dispositivo::Nv2a
+                    && self
                         .nv2a_pramdac
                         .validate_access(deslocamento, destino.len())
                         .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
@@ -498,6 +528,18 @@ impl Bus {
                 .escrever(off, origem)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
             Regiao::Dispositivo { id, deslocamento } => {
+                if id == Dispositivo::Nv2a
+                    && self
+                        .nv2a_pfb
+                        .validate_access(deslocamento, origem.len())
+                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
+                {
+                    self.nv2a_pfb.write(
+                        deslocamento,
+                        u32::from_le_bytes(origem.try_into().expect("largura validada")),
+                    );
+                    return Ok(());
+                }
                 if id == Dispositivo::Nv2a
                     && self
                         .nv2a_pramdac
@@ -605,18 +647,19 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 3);
+        out.section("BUS0", 4);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
         self.frames.save(out);
         self.nv2a_irq.save(out);
         self.nv2a_pramdac.save(out);
+        self.nv2a_pfb.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 3)?;
-        if !matches!(versao, 1..=3) {
+        let versao = inp.section("BUS0", 4)?;
+        if !matches!(versao, 1..=4) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -642,6 +685,11 @@ impl Snapshot for Bus {
             self.nv2a_pramdac.load(inp)?;
         } else {
             self.nv2a_pramdac = Nv2aPramdac::legacy();
+        }
+        if versao >= 4 {
+            self.nv2a_pfb.load(inp)?;
+        } else {
+            self.nv2a_pfb = Nv2aPfb::legacy();
         }
         Ok(())
     }

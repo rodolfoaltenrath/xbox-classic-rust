@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5: PFB_CFG0/CFG1 com perfil de firmware público Cromwell, distinguindo
+  arenas de 64/128 MiB e mantendo readback por VA/alias/físico. BUS0 v4/PFBM v1
+  guarda configuração; snapshots v1–v3 mantêm PFB sem modelo. Acessos inválidos
+  recusam antes de stores parciais. Triangle passa do guard de PFB e chega a
+  MmClaimGpuInstanceMemory (168); migração v3 reproduz o bloqueio anterior.
+  499 testes workspace/doctests e 212 casos gerados debug/release. Não implementa
+  geometria, PRAMIN ou GPU 3D (ADR-0058); serviços do hello permanecem 37/69.
+
 - Fase 5: recorte PRAMDAC/NVPLL com perfil PublicReferenceV1, coeficiente
   programável de 32 bits e frequência nominal derivada, sem novo relógio.
   BUS0 v3/NPLL v1 preserva perfil/coeficiente; v1/v2 migram para o comportamento
