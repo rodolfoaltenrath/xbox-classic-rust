@@ -1,12 +1,27 @@
 mod generated;
 
-use xbox_recomp::runtime::Exit;
+use xbox_recomp::runtime::{Desfecho, Limites};
 
-/// Orçamento por fatia e número máximo de fatias. O orçamento total e a interrupção
-/// pelo host são trabalho da entrega 5; aqui o limite existe para que um serviço
-/// faltante não vire laço infinito.
+/// Orçamento por fatia e número padrão de fatias. O limite existe para que um serviço
+/// faltante não vire laço infinito; `--fatias N` o amplia para títulos mais longos.
 const BLOCOS_POR_FATIA: u64 = 1_000_000;
-const FATIAS: u32 = 64;
+const FATIAS_PADRAO: u32 = 64;
+
+/// Lê `--fatias N` da linha de comando. Valor ausente ou inválido é erro, não padrão
+/// silencioso: um orçamento diferente do pedido mudaria o resultado sem avisar.
+fn ler_fatias() -> Result<u32, Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--fatias" {
+            let valor = args.next().ok_or("--fatias exige um número")?;
+            return match valor.parse::<u32>() {
+                Ok(n) if n > 0 => Ok(n),
+                _ => Err(format!("--fatias inválido: {valor:?}").into()),
+            };
+        }
+    }
+    Ok(FATIAS_PADRAO)
+}
 
 /// Imprime em stderr o que o guest tocou em MMIO sem modelo, em qualquer saída.
 ///
@@ -150,7 +165,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
     let mut janela: Option<Box<dyn xbox_platform::display::Apresentador>> = None;
 
-    let resultado = executar(&mut session, &mut janela, abrir_janela);
+    let limites = Limites {
+        blocos_por_fatia: BLOCOS_POR_FATIA,
+        fatias: ler_fatias()?,
+    };
+    let resultado = executar(&mut session, &mut janela, abrir_janela, limites);
     relatar_mmio(&session);
     relatar_framebuffer(&session);
 
@@ -172,73 +191,29 @@ fn executar(
     session: &mut xbox_recomp::runtime::Session,
     janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
     abrir_janela: bool,
+    limites: Limites,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for _ in 0..FATIAS {
-        match generated::run(&mut session.state, &mut session.bus, BLOCOS_POR_FATIA)? {
-            Exit::Returned => {
-                if session.complete_thread_return()? { continue; }
-                println!(
-                    "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
-                    session.state.regs[0], session.state.retired, session.kernel.atendidas()
-                );
-                return Ok(());
-            }
-            // Fim de fatia. Neste alvo o quadro só passa a existir **depois** do último
-            // fim de fatia (o modo de vídeo é configurado a 98,6% da execução), então esta é a
-            // rede de segurança para títulos que desenham sem nunca dormir; o ponto principal
-            // de apresentação é a espera, no braço de `KernelCall` abaixo.
-            Exit::Budget => {
-                if apresentar(session, janela, abrir_janela)? {
-                    // O usuário fechou a janela: é o host interrompendo um título que não
-                    // retorna sozinho, não uma falha. Parada controlada, estado intacto.
-                    eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
-                    return Ok(());
-                }
-                continue;
-            }
-            Exit::Breakpoint { pc } => {
-                return Err(format!(
-                    "exceção guest #BP (vetor 3) por INT3 em 0x{pc:08X}; próximo EIP=0x{:08X}; entrega de exceções ainda não implementada",
-                    session.state.eip
-                ).into());
-            }
-            Exit::Halted { pc, interrupts_enabled } => {
-                return Err(format!(
-                    "CPU guest suspensa por HLT em 0x{pc:08X}; próximo EIP=0x{:08X}, IF={}; entrega de interrupções ainda não implementada",
-                    session.state.eip, u8::from(interrupts_enabled)
-                ).into());
-            }
-            // O erro do dispatcher identifica nome, ordinal, chamador e argumentos.
-            // A CPU fica intacta: o estado pendente continua retomável.
-            Exit::KernelCall { .. } => {
-                let relogio_antes = session.state.clock.cycles();
-                session.atender_kernel()?;
-                // O guest cede a vez quando o tempo dele avança (uma espera): é quando a
-                // imagem está estável e quando um console real teria mostrado o quadro.
-                // Detectar pelo Clock, e não pelo serviço, mantém a política independente
-                // de quais esperas existam. Foram 47 chamadas em toda a execução do hello,
-                // das quais só as esperas apresentam.
-                if session.state.clock.cycles() != relogio_antes
-                    && apresentar(session, janela, abrir_janela)?
-                {
-                    eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
-                    return Ok(());
-                }
-            }
+    // `main` devolve `Box<dyn Error>` e o Rust imprime esse retorno com `Debug`. Passar
+    // pelo texto mantém o diagnóstico legível, em vez do `Debug` derivado da variante.
+    let desfecho = session.conduzir(
+        limites,
+        generated::run,
+        |s| {
+            apresentar(s, janela, abrir_janela)
+                .map_err(|e| xbox_recomp::Error::Presentation(e.to_string()))
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    match desfecho {
+        Desfecho::Retornou => println!(
+            "Execução nativa concluída: EAX={}, instruções={}, chamadas atendidas={}",
+            session.state.regs[0], session.state.retired, session.kernel.atendidas()
+        ),
+        // O usuário fechou a janela: é o host interrompendo um título que não retorna
+        // sozinho, não uma falha. Parada controlada, estado intacto.
+        Desfecho::ParadoPeloHost => {
+            eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
         }
     }
-    // O Clock guest distingue "dormiu várias vezes" de "preso num laço sem espera": só
-    // esperas avançam o relógio além do custo sintético de uma instrução por passo.
-    let ciclos = session.state.clock.cycles();
-    Err(format!(
-        "execução interrompida após {} blocos; {} chamadas atendidas, {} recusadas; \
-         instruções={}, relógio guest={} ciclos ({} ms)",
-        BLOCOS_POR_FATIA * u64::from(FATIAS),
-        session.kernel.atendidas(),
-        session.kernel.recusadas(),
-        session.state.retired,
-        ciclos,
-        session.state.clock.tick_count_ms()
-    )
-    .into())
+    Ok(())
 }

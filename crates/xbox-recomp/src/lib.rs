@@ -57,6 +57,33 @@ pub enum Error {
     UndefinedDoubleShift { pc: u32, count: u32, bits: u32 },
     #[error("#DE em 0x{pc:08X}: {reason}")]
     Divide { pc: u32, reason: DivideFault },
+    #[error(
+        "exceção guest #BP (vetor 3) por INT3 em 0x{pc:08X}; próximo EIP=0x{next_eip:08X}; entrega de exceções ainda não implementada"
+    )]
+    GuestBreakpoint { pc: u32, next_eip: u32 },
+    #[error(
+        "CPU guest suspensa por HLT em 0x{pc:08X}; próximo EIP=0x{next_eip:08X}, IF={}; entrega de interrupções ainda não implementada",
+        u8::from(*interrupts_enabled)
+    )]
+    GuestHalted {
+        pc: u32,
+        next_eip: u32,
+        interrupts_enabled: bool,
+    },
+    #[error(
+        "execução interrompida após {blocks} blocos; {served} chamadas atendidas, {refused} recusadas; instruções={retired}, relógio guest={cycles} ciclos ({ms} ms)"
+    )]
+    BudgetExhausted {
+        blocks: u64,
+        served: u64,
+        refused: u64,
+        retired: u64,
+        cycles: u64,
+        ms: u64,
+    },
+    /// O apresentador do host falhou; o texto vem do erro dele, que este crate não conhece.
+    #[error("apresentação: {0}")]
+    Presentation(String),
     /// O dispatcher não conseguiu atender a chamada de kernel.
     ///
     /// Mantida como variante própria para que "serviço faltando" não se confunda com

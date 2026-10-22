@@ -92,9 +92,12 @@ apresentação.
   passa sem verificar** — uma lacuna real em CI sem display. Neste host a verificação
   executou (não houve o aviso). Os demais testes Win32 (criar/soltar, fechar, escalar)
   ainda exigem poder criar janela.
-- **Usuário fechando a janela *durante* a execução**: o caminho existe e retorna `Ok`, mas
-  o hello termina antes de haver como fechá-la, e a lógica vive no template gerado, que é
-  texto. Só foi exercitado o fechamento **depois** do fim. Registrado como lacuna.
+- **Usuário fechando a janela *durante* a execução**: a lógica agora vive em
+  `Session::conduzir` e é testada com um `Gravador`-equivalente injetado (6 testes em
+  `crates/xbox-recomp/tests/drive.rs`): a parada é `Ok`, nenhuma fatia nova roda e a
+  sessão segue retomável. **Ainda não** foi exercitado com o Win32 real no meio de uma
+  execução longa — só o fechamento depois do fim (`CloseMainWindow`) e o laço com
+  fechamentos de mentira. O `--fatias N` do `main` gerado compila (o teste nativo o inclui), mas seu parsing não tem teste de ponta a ponta.
 - **Linux**: `xbox-platform` compila e passa no `clippy -D warnings` para
   `x86_64-unknown-linux-gnu` (target instalado só para isto), mas os testes não foram
   **executados** lá. Não existe janela Linux.

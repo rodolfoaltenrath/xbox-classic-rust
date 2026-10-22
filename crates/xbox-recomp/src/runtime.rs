@@ -7,9 +7,12 @@ use xbox_formats::Xbe;
 use xbox_kernel::dispatch::{CHILD_THREAD, ThreadPhase};
 use xbox_mem::{Acesso, Bus, GuestVirt};
 
+pub use drive::{Desfecho, Limites};
+
 use crate::Result;
 use crate::ir::{Condition, DoubleShift, Rotate, Shift, Width};
 
+mod drive;
 mod msr;
 mod muldiv;
 mod threads;

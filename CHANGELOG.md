@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: o laço de execução do `main` gerado saiu do template para
+  `Session::conduzir` (`xbox-recomp`), com o código nativo e a apresentação injetados como
+  fechamentos. Fecha a lacuna do ADR-0052 "usuário fechando a janela durante a execução":
+  6 testes cobrem retorno, parada pelo host (sem novas fatias, estado retomável),
+  orçamento esgotado, #BP, HLT e propagação de erros, sem janela nem projeto gerado.
+  `#BP`, `HLT` e orçamento viraram variantes de `Error` com o mesmo texto de antes. O `main`
+  gerado aceita `--fatias N` (padrão 64) e recusa valor ausente ou inválido.
 - Fase 4/alpha: **o hello do nxdk executa o seu `main` e escreve "Hello nxdk!" no
   framebuffer**. Duas peças fecharam os dois últimos bloqueios (ADR-0051):
   - janela MMIO do NV2A (`0xFD000000..0xFE000000`) mapeada como identidade, RW e nunca
