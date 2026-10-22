@@ -12,7 +12,7 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | memória contígua, modo, filtros, janela MMIO e espera por intervalo (ADR-0050, ADR-0051); 28/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | memória contígua, modo, filtros, janela MMIO e espera por intervalo (ADR-0050, ADR-0051); 32/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | executa o `main` do hello; o host interrompe fechando a janela; orçamento fixo no template e vblank pendentes | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | apresentado em janela Win32 (ADR-0052), imagem idêntica à RAM guest; só Windows, bytes crus (sem gamma/filtros — provisório, ROADMAP §16.1) | primeira imagem apresentada; controle/áudio ficam para o próximo marco |

@@ -21,7 +21,7 @@
 //! Pedidos de filtros do encoder (ADR-0050):
 //! Janela MMIO do NV2A e espera por intervalo relativo (ADR-0051), esta última sem
 //! bloquear o host: o serviço deixa um pedido que a sessão aplica ao Clock único:
-//! **28 de 69** serviços implementados, com variantes limitadas — número que não mede
+//! **32 de 69** serviços implementados, com variantes limitadas — número que não mede
 //! compatibilidade. Escalonamento de threads e o resto dos serviços continuam pendentes.
 
 pub mod dispatch;

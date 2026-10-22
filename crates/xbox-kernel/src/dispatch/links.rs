@@ -144,6 +144,11 @@ impl super::Dispatcher {
                 "NtClose de mutant/thread ainda exige ciclo de vida próprio",
             ));
         }
+        // Evento: o handle deixa de existir; reusar o número é problema do contador,
+        // que só cresce.
+        if self.events.close(handle) {
+            return Ok(Atendimento { eax: 0 });
+        }
         Ok(self.links.close(handle))
     }
 }

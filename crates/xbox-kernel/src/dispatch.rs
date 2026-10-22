@@ -27,6 +27,7 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 mod contiguous;
 mod critical;
 mod delay;
+mod events;
 mod interlocked;
 mod irql;
 mod links;
@@ -44,6 +45,7 @@ pub use contiguous::{
 };
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use delay::PedidoDeTempo;
+use events::{EventOperation, Events};
 pub use irql::Irql;
 pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
 use mutants::Mutants;
@@ -82,6 +84,10 @@ pub const ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION: u32 = 306;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
+pub const ORDINAL_NT_CLEAR_EVENT: u32 = 186;
+pub const ORDINAL_NT_CREATE_EVENT: u32 = 189;
+pub const ORDINAL_NT_PULSE_EVENT: u32 = 205;
+pub const ORDINAL_NT_SET_EVENT: u32 = 225;
 pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
@@ -132,6 +138,10 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
+    ORDINAL_NT_CLEAR_EVENT,
+    ORDINAL_NT_CREATE_EVENT,
+    ORDINAL_NT_PULSE_EVENT,
+    ORDINAL_NT_SET_EVENT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
     ORDINAL_PS_CREATE_SYSTEM_THREAD_EX,
     ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
@@ -231,6 +241,7 @@ pub struct Dispatcher {
     atendidas: u64,
     recusadas: u64,
     mutants: Mutants,
+    events: Events,
     eeprom: EepromState,
     pci: PciConfig,
     system_time: SystemTimeReference,
@@ -489,6 +500,10 @@ impl Dispatcher {
             }
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
+            ORDINAL_NT_CREATE_EVENT => self.nt_create_event(bus, &call),
+            ORDINAL_NT_SET_EVENT => self.nt_event_operation(bus, &call, EventOperation::Set),
+            ORDINAL_NT_CLEAR_EVENT => self.nt_event_operation(bus, &call, EventOperation::Clear),
+            ORDINAL_NT_PULSE_EVENT => self.nt_event_operation(bus, &call, EventOperation::Pulse),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
             ORDINAL_KE_DELAY_EXECUTION_THREAD => self.ke_delay_execution_thread(bus, &call),
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
@@ -566,6 +581,15 @@ impl Dispatcher {
 
         if self.links.contains(handle) {
             return variante("link simbólico não é objeto aguardável");
+        }
+        if let Some(espera) = self.events.wait(handle) {
+            return match espera {
+                events::Espera::Satisfeita => Ok(Atendimento { eax: STATUS_WAIT_0 }),
+                // Só um scheduler ou uma interrupção o sinalizariam; nenhum existe.
+                events::Espera::Bloquearia => {
+                    variante("espera de evento não sinalizado exige scheduler ou interrupção")
+                }
+            };
         }
         // Handles de thread/link foram distinguidos; os demais pertencem a mutants.
         let Some(aquisicao) = self.mutants.acquire(handle, self.current_thread()) else {
@@ -684,7 +708,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 10);
+        out.section("KRNL", 11);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -697,10 +721,11 @@ impl Snapshot for Dispatcher {
         self.links.save(out);
         self.video.save(out);
         self.contiguous.save(out);
+        self.events.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 10)?;
+        let version = inp.section("KRNL", 11)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -755,6 +780,12 @@ impl Snapshot for Dispatcher {
         if version >= 10 {
             contiguous.load(inp)?;
         }
+        // v1–v10 não tinham eventos: migram para a tabela vazia.
+        let mut events = Events::default();
+        if version >= 11 {
+            events.load(inp)?;
+        }
+        events.validate(&mutants, &links, threads.child)?;
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -765,6 +796,7 @@ impl Snapshot for Dispatcher {
             atendidas,
             recusadas,
             mutants,
+            events,
             eeprom,
             pci,
             system_time,

@@ -10,6 +10,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha: **eventos do kernel** (`NtCreateEvent`, `NtSetEvent`, `NtClearEvent`,
+  `NtPulseEvent`; ADR-0054). Os handles compartilham o contador de mutants/threads/links;
+  esperar um evento sinalizado funciona (o de sincronização é limpo), esperar um não
+  sinalizado é erro identificável porque não há scheduler nem interrupção para sinalizá-lo.
+  `NtClose` passa a fechar eventos. Snapshot `KRNL` v11 (v1–v10 migram para tabela vazia).
+  32/69 serviços do hello. O `triangle` passa a programar a GPU (MMIO do NV2A) e para em
+  `HalGetInterruptVector`: o caminho da interrupção da GPU, que pede ADR próprio.
 - Fase 4/alpha: **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC e WBINVD** no AOT,
   guiados pelo `triangle` do nxdk (ADR-0053). `State` ganha XMM0..7, MXCSR e a pilha x87 de
   80 bits exatos; o snapshot `AOTC` passa à v8 e v1–v7 migram para o estado de RESET. A
