@@ -40,6 +40,7 @@ use crate::mmu::{Falta, Mmu, MotivoDeFalta};
 use crate::nv2a_irq::Nv2aIrq;
 use crate::nv2a_pfb::Nv2aPfb;
 use crate::nv2a_pramdac::Nv2aPramdac;
+use crate::nv2a_pramin::Nv2aPramin;
 use crate::regioes::{MapaFisico, Regiao};
 
 /// O barramento de memória do console.
@@ -53,6 +54,7 @@ pub struct Bus {
     nv2a_irq: Nv2aIrq,
     nv2a_pramdac: Nv2aPramdac,
     nv2a_pfb: Nv2aPfb,
+    nv2a_pramin: Nv2aPramin,
     contexto: Cell<Contexto>,
 }
 
@@ -76,6 +78,7 @@ impl Bus {
             nv2a_irq: Nv2aIrq::default(),
             nv2a_pramdac: Nv2aPramdac::default(),
             nv2a_pfb: Nv2aPfb::for_ram(tamanho),
+            nv2a_pramin: Nv2aPramin::default(),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -122,6 +125,11 @@ impl Bus {
     /// Perfil de memória PFB e configuração programada via MMIO (ADR-0058).
     pub const fn nv2a_pfb(&self) -> &Nv2aPfb {
         &self.nv2a_pfb
+    }
+
+    /// Memória de instância PRAMIN; armazenamento independente provisório (P14).
+    pub const fn nv2a_pramin(&self) -> &Nv2aPramin {
+        &self.nv2a_pramin
     }
 
     /// Idem, para o relógio de vblank travar a pendência.
@@ -179,6 +187,21 @@ impl Bus {
         let mut atual = va;
         while !restante.is_empty() {
             let pa = self.mmu.traduzir(atual, acesso)?;
+            // O fatiamento por página não transforma um acesso largo em dois
+            // words PRAMIN válidos. Valide antes de alterar o buffer de saída.
+            if let Regiao::Dispositivo {
+                id: Dispositivo::Nv2a,
+                deslocamento,
+            } = self.mapa.classificar(pa)
+            {
+                self.nv2a_pramin
+                    .validate_access(deslocamento, restante.len())
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
+            }
             let n = restante.len().min(bytes_ate_fim_da_pagina(atual));
             let (agora, depois) = restante.split_at_mut(n);
             self.ler_regiao(pa, agora, acesso).map_err(|motivo| Falta {
@@ -258,6 +281,13 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                self.nv2a_pramin
+                    .validate_access(deslocamento, restante.len())
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
                 self.nv2a_pfb
                     .validate_access(deslocamento, n)
                     .map_err(|o_que| Falta {
@@ -418,42 +448,11 @@ impl Bus {
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
             Regiao::Dispositivo { id, deslocamento } => {
                 if id == Dispositivo::Nv2a
-                    && self
-                        .nv2a_pfb
-                        .validate_access(deslocamento, destino.len())
+                    && let Some(value) = self
+                        .ler_nv2a(deslocamento, destino.len())
                         .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
                 {
-                    destino.copy_from_slice(
-                        &self
-                            .nv2a_pfb
-                            .read(deslocamento)
-                            .expect("perfil validado")
-                            .to_le_bytes(),
-                    );
-                    return Ok(());
-                }
-                if id == Dispositivo::Nv2a
-                    && self
-                        .nv2a_pramdac
-                        .validate_access(deslocamento, destino.len())
-                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
-                {
-                    destino.copy_from_slice(
-                        &self
-                            .nv2a_pramdac
-                            .coefficient()
-                            .expect("perfil validado")
-                            .to_le_bytes(),
-                    );
-                    return Ok(());
-                }
-                // Os quatro registradores de interrupção de vblank têm modelo (ADR-0055);
-                // só o acesso de 32 bits alinhado conta, o resto segue sem modelo.
-                if id == Dispositivo::Nv2a
-                    && let Ok(bytes) = <&mut [u8; 4]>::try_from(&mut *destino)
-                    && let Some(valor) = self.nv2a_irq.read(deslocamento)
-                {
-                    *bytes = valor.to_le_bytes();
+                    destino.copy_from_slice(&value.to_le_bytes());
                     return Ok(());
                 }
                 self.telemetria.registrar(
@@ -514,6 +513,20 @@ impl Bus {
         }
     }
 
+    fn ler_nv2a(&self, offset: u32, len: usize) -> std::result::Result<Option<u32>, &'static str> {
+        if self.nv2a_pramin.validate_access(offset, len)? {
+            Ok(self.nv2a_pramin.read(offset))
+        } else if self.nv2a_pfb.validate_access(offset, len)? {
+            Ok(self.nv2a_pfb.read(offset))
+        } else if self.nv2a_pramdac.validate_access(offset, len)? {
+            Ok(self.nv2a_pramdac.coefficient())
+        } else if len == 4 {
+            Ok(self.nv2a_irq.read(offset))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Escreve em uma região física. O pedaço nunca atravessa página.
     fn escrever_regiao(
         &mut self,
@@ -528,6 +541,18 @@ impl Bus {
                 .escrever(off, origem)
                 .map_err(|_| MotivoDeFalta::RegiaoInvalida(pa)),
             Regiao::Dispositivo { id, deslocamento } => {
+                if id == Dispositivo::Nv2a
+                    && self
+                        .nv2a_pramin
+                        .validate_access(deslocamento, origem.len())
+                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
+                {
+                    self.nv2a_pramin.write(
+                        deslocamento,
+                        u32::from_le_bytes(origem.try_into().expect("largura validada")),
+                    );
+                    return Ok(());
+                }
                 if id == Dispositivo::Nv2a
                     && self
                         .nv2a_pfb
@@ -647,7 +672,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 4);
+        out.section("BUS0", 5);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -655,11 +680,12 @@ impl Snapshot for Bus {
         self.nv2a_irq.save(out);
         self.nv2a_pramdac.save(out);
         self.nv2a_pfb.save(out);
+        self.nv2a_pramin.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 4)?;
-        if !matches!(versao, 1..=4) {
+        let versao = inp.section("BUS0", 5)?;
+        if !matches!(versao, 1..=5) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -690,6 +716,11 @@ impl Snapshot for Bus {
             self.nv2a_pfb.load(inp)?;
         } else {
             self.nv2a_pfb = Nv2aPfb::legacy();
+        }
+        if versao >= 5 {
+            self.nv2a_pramin.load(inp)?;
+        } else {
+            self.nv2a_pramin = Nv2aPramin::legacy();
         }
         Ok(())
     }

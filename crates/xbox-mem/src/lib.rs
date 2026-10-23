@@ -70,6 +70,7 @@ pub mod mmu;
 pub mod nv2a_irq;
 pub mod nv2a_pfb;
 pub mod nv2a_pramdac;
+pub mod nv2a_pramin;
 pub mod regioes;
 
 pub use addr::{Acesso, ArenaOff, GuestPhys, GuestVirt, Perm};
@@ -81,6 +82,7 @@ pub use mmu::{Falta, Mmu, MotivoDeFalta};
 pub use nv2a_irq::Nv2aIrq;
 pub use nv2a_pfb::{Nv2aPfb, PfbProfile};
 pub use nv2a_pramdac::{Nv2aPramdac, PramdacProfile};
+pub use nv2a_pramin::{Nv2aPramin, PraminProfile};
 pub use regioes::{MapaFisico, Regiao};
 
 /// Fase do roadmap em que este subsistema é implementado.

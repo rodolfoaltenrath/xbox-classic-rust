@@ -807,3 +807,18 @@ posse/mapeamento dessa página, PRAMIN e PFIFO. Gate Linux: 500 testes workspace
 separados; fmt/Clippy limpos. Win32 não revalidado aqui. Fontes, perfil, limites
 e evidências: [ADR-0059](../adr/0059-consulta-memoria-instancia-gpu.md) e
 [passagem de bastão](../../CONTINUIDADE_ALPHA.md).
+
+
+### Armazenamento PRAMIN (ADR-0060, estado em 2026-10-22)
+
+PRAMIN preserva os DWORDs da RAMHT/contextos no perfil independente de 1 MiB (P14),
+com acesso CPU/aliases/físico ao mesmo estado. BUS0 v5/PRAM v1 inclui bytes/perfil;
+v1–v4 migram sem modelo. Testes de Rust emitido cobrem stores/reads, flags/Clock,
+replay, migração v4 e retentativa após falta. Gate Linux: 506 testes workspace e
+218 casos gerados debug/release (contador 202 fora de x86_64); fmt/Clippy limpos.
+
+Triangle ainda falha no bootstrap DMA, VA=0x80000000/EIP=0x18F19 antes de WBINVD.
+A PA zero abriga headers XBE/RO: próximo passo exige reserva no loader antes da
+imagem e migração do layout, depois PFIFO/DMA_GET real. O vínculo PRAMIN/RAM
+continua provisório; serviço 168 permanece query-only/P13. Fontes e evidência:
+[ADR-0060](../adr/0060-pramin-armazenamento-instancia.md).

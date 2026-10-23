@@ -552,6 +552,22 @@ LegacyUnmodeled, preservando os zeros com telemetria e descartes anteriores.
 Novo snapshot preserva também esse perfil legado. Ver
 [ADR-0057](../adr/0057-pramdac-perfil-clock.md) para formato, testes e limites.
 
+## Armazenamento PRAMIN (ADR-0060)
+
+A janela física 0xFD700000..0xFD800000 preserva instâncias/tabelas em 1 MiB de
+estado local do dispositivo, com acessos alinhados de 32 bits, limite validado
+antes da escrita e backing comum para VA/aliases/físico. O perfil IndependentV1
+segue a referência pública xemu, sem presumir relação física com a RAM UMA ou
+CMEM: esse vínculo é o provisório P14. Não duplica o framebuffer da arena, mas
+ainda não representa sua relação física com a reserva de instância do kernel.
+
+BUS0 v5 acrescenta PRAM v1 (perfil/tamanho/bytes); v1–v4 migram para zero/telemetria
+sem armazenamento modelado. A leitura de descritores pelo futuro PFIFO usará a
+mesma fonte readonly. Sem execução de DMA, novo relógio, unsafe ou concorrência.
+A página física zero ainda pertence aos headers XBE; reservar uma página para o
+bootstrap DMA requer integração ao loader, sem alias RW sobre esses headers.
+Fontes, limites e testes: [ADR-0060](../adr/0060-pramin-armazenamento-instancia.md).
+
 ## 13. O que a Fase 2 entrega
 
 Checklist de aceite, substituindo o do ROADMAP:

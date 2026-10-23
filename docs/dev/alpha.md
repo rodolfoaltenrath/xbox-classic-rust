@@ -32,10 +32,14 @@ elétrica nem altera o tamanho da RAM quando o guest reprograma o registro.
 O [ADR-0059](../adr/0059-consulta-memoria-instancia-gpu.md) atende a consulta
 retail 64 MiB de MmClaimGpuInstanceMemory com reserva física real, fronteira
 0x83FF0000/padding 0x10000 e KRNL v13/GINS v1. A reserva na primeira consulta é
-provisória (P13); resize/devkit recusam. Triangle alcança PRAMIN sem modelo e
-falha depois numa escrita VA=0x80000000/EIP=0x18F19, preparando DMA antes de
-WBINVD/pb_start. Posse dessa página, PRAMIN, PFIFO/pushbuffer/PGRAPH e renderização
-3D continuam pendentes. Os registros por ADR abaixo incluem bloqueios históricos, não substituem a passagem de bastão.
+provisória (P13); resize/devkit recusam. O
+[ADR-0060](../adr/0060-pramin-armazenamento-instancia.md) acrescenta armazenamento
+PRAMIN independente de 1 MiB (P14), BUS0 v5/PRAM v1 e migração v1–v4 sem modelo.
+Triangle preserva RAMHT/contextos, mas falha escrevendo VA=0x80000000/EIP=0x18F19
+antes de WBINVD/pb_start: a PA zero pertence aos headers XBE/RO. Próximo: reserva
+no loader antes da imagem, com migração de layout; depois PFIFO/DMA_GET e PGRAPH.
+O vínculo físico PRAMIN/RAM e renderização permanecem pendentes. Os registros por
+ADR abaixo preservam bloqueios históricos; a passagem de bastão é o estado vigente.
 
 ## Alvo escolhido
 
@@ -157,11 +161,11 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual no Linux tem **500 testes workspace/doctests** e **215 casos de
-Rust gerado em debug/release**, incluindo PFB/NVPLL, DMA e snapshots. O Rust
+A validação atual no Linux tem **506 testes workspace/doctests** e **218 casos de
+Rust gerado em debug/release**, incluindo PRAMIN/PFB/NVPLL, memória e snapshots. O Rust
 fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
 passa do PLL/PFB e da consulta de instância GPU, mas ainda não renderiza.
-Sete testes Python passaram separadamente; a apresentação Win32 não foi revalidada aqui.
+Scripts não mudaram; a apresentação Win32 não foi revalidada aqui.
 O aceite não cobre GPU 3D ou scheduler geral. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não
 foi usada. A EEPROM padrão continua sintética, com bytes/origem explícitos.

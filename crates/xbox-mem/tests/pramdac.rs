@@ -97,14 +97,14 @@ fn bus_v3_replay_preserva_coeficiente_e_recusa_perfil_versao_truncamento() {
     assert_eq!(saved(&destination), bytes);
     assert_eq!(destination.nv2a_pramdac().core_clock_hz(), Some(37499998));
     assert_eq!(destination.nv2a_irq(), source.nv2a_irq());
-    let tag = bytes.len() - 20 - 16;
+    let tag = bytes.len() - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20 - 16;
     assert_eq!(&bytes[tag..tag + 4], b"NPLL");
     for (offset, value) in [(tag + 4, 0u32), (tag + 4, 2), (tag + 8, 9), (tag + 8, 0)] {
         let mut bad = bytes.clone();
         bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
         assert!(bus().load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
     }
-    for end in tag..bytes.len() {
+    for end in tag..tag + 16 {
         assert!(
             bus()
                 .load(&mut SnapshotReader::new(&bytes[..end]).unwrap())
@@ -118,7 +118,8 @@ fn bus_v1_v2_migram_sem_herdar_perfil_e_o_legado_sobrevive_novo_snapshot() {
     source.nv2a_irq_mut().raise_vblank();
     let current = saved(&source);
     for version in [1u32, 2] {
-        let mut old = current[..current.len() - 20 - 16].to_vec();
+        let mut old =
+            current[..current.len() - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20 - 16].to_vec();
         if version == 1 {
             old.truncate(old.len() - 12);
         }

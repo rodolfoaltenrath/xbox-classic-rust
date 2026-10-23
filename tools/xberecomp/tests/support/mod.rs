@@ -31,6 +31,7 @@ mod ordering;
 mod pci;
 mod pfb;
 mod pramdac;
+mod pramin;
 mod rotations;
 mod scan;
 mod sha;
@@ -91,6 +92,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&interrupt::sources(output));
     main.push_str(&pramdac::sources(output));
     main.push_str(&pfb::sources(output));
+    main.push_str(&pramin::sources(output));
     main.push_str(&sse::sources(output));
     main.push_str(&x87::sources(output));
     main.push_str(&video::sources(output));

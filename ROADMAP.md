@@ -701,6 +701,7 @@ gráfica continua pendente de integração; a prova usa somente CPU e memória.
 
 #### 5a — Infra
 - [ ] Registradores MMIO: PMC, PBUS, PFIFO, PGRAPH, PCRTC, PRAMDAC, PTIMER, PRAMIN
+- [x] *(2026-10-22)* Armazenamento PRAMIN, perfil independente provisório de 1 MiB, DWORD alinhado e snapshot BUS0 v5/PRAM v1; sem execução PFIFO/PGRAPH ou vínculo físico com RAM (ADR-0060/P14)
 - [ ] IRQs da GPU para o guest (vblank, PGRAPH)
 - [ ] DMA objects e tradução de contexto
 - [ ] Parser de pushbuffer (GET/PUT, jump, call/ret, métodos inc/non-inc)
@@ -1105,8 +1106,9 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P9 | **x87 só carga e armazenamento**: sem aritmética, sem palavras de controle/estado nem exceções (ADR-0053) | o `triangle` usa `fild`/`fstp`/`fldz`; aritmética ainda não foi alcançada | instruções x87 além das listadas são recusadas na análise, com o nome | implementar a aritmética quando um caminho executado a alcançar, com a precisão de 80 bits já exata na pilha |
 | P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
 | P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
-| P12 | **NV2A parcial:** vblank, NVPLL e PFB_CFG0/CFG1 com perfis explícitos (ADRs 0055/0057/0058); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam PRAMIN, PFIFO e PGRAPH; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
+| P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam PFIFO e PGRAPH; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
 | P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN e perfis maiores com evidência |
+| P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; ainda sem consumo PFIFO/PGRAPH | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
 
 Investigação de evidência e ferramentas em 2026-10-22:
 [ADR-0056](docs/adr/0056-evidencia-nv2a-e-reproducao.md). O PLL lembrado foi
@@ -1188,21 +1190,21 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-21 | 4 / alpha | **Framebuffer apresentado em janela Win32** (ADR-0052) | — | `Apresentador` em `xbox-platform` (Win32 declarado à mão, sem dependência nova); `Quadro` possui os bytes, sem referência à RAM guest; apresenta quando o guest cede a vez (relógio avançou) — a premissa "fim de fatia" foi refutada: o modo de vídeo só existe a 98,6% da execução; **capturado de fora pelo SO: 640×480 1:1, 1208 pixels em x=26..119 y=26..88, idêntico à RAM, "Hello nxdk!" × 4**; WM_CLOSE encerra em <5 s; 437 testes estáveis em 3 rodadas; clippy limpo em Windows **e** Linux (bug de `Debug` só do Linux achado instalando o target); **seção 16.1 criada**: dívidas provisórias com condição de saída (P1–P6) |
 | 2026-10-22 | 5 / alpha | Perfil de memória PFB (ADR-0058) | — | CFG0/CFG1 com procedência Cromwell e distinção 64/128 MiB; BUS0 v4/PFBM v1 migra v1–v3 sem ativar PFB; triangle chega a MmClaimGpuInstanceMemory (168), retorno 0x182AB; 499 testes workspace/doctests e 212 casos gerados debug/release; mantém 37/69 serviços |
 | 2026-10-22 | 5 / alpha | Consulta de instância GPU (ADR-0059/P13) | — | Ordinal 168 query-only retail 64 MiB com 32 frames reais; KRNL v13/GINS v1 e migração; triangle alcança PRAMIN e falha depois em VA=0x80000000/EIP=0x18F19; 500 testes Linux e 215 nativos debug/release; hello 37/69, triangle 41/75 |
+| 2026-10-22 | 5 / alpha | Armazenamento PRAMIN (ADR-0060/P14) | — | Tabelas/contextos persistentes, BUS0 v5/PRAM v1 e migração v1–v4 sem modelo; página zero do loader ainda bloqueia DMA; 506 testes Linux e 218 nativos debug/release |
 
 
 ---
 
 ### Próxima ação
 
-Marco mais recente, 2026-10-22: [ADR-0059](docs/adr/0059-consulta-memoria-instancia-gpu.md).
-MmClaimGpuInstanceMemory (168) atende consulta retail 64 MiB com reserva física
-CMEM, retorno 0x83FF0000/padding 0x10000 e snapshot KRNL v13/GINS v1. O bootstrap
-na primeira consulta é P13; resize/devkit recusam. Triangle passa da consulta,
-toca PRAMIN sem modelo e termina depois em VA=0x80000000/EIP=0x18F19.
-A escrita prepara DMA com pb_Head mascarado + 1 antes de WBINVD/pb_start;
-a página CPU ainda não está mapeada. Próximo: posse dessa página, PRAMIN e PFIFO,
-sem presumir alias PRAMIN/topo da RAM. Gate Linux: 500 testes workspace/doctests e 215 casos
-gerados debug/release; hello 37/69, triangle 41/75; sete testes Python separados.
+Marco mais recente, 2026-10-22: [ADR-0060](docs/adr/0060-pramin-armazenamento-instancia.md).
+PRAMIN preserva tabelas/contextos em perfil independente de 1 MiB (P14), DWORD
+alinhado, BUS0 v5/PRAM v1. V1–v4 migram sem modelo PRAMIN. A consulta retail de
+instância permanece P13/KRNL v13. Triangle ainda falha preparando DMA na escrita
+VA=0x80000000/EIP=0x18F19; a PA zero já abriga headers XBE/RO. Próximo: reserva
+no loader antes da imagem, com posse e migração; depois PFIFO/DMA_GET real.
+Não presumir alias PRAMIN/RAM. Gate Linux: 506 testes workspace/doctests e 218
+casos gerados debug/release; hello 37/69 e triangle 41/75. Win32 não revalidado.
 A lista abaixo preserva a evolução dos marcos anteriores; o estado vigente está
 na passagem de bastão do CONTINUIDADE_ALPHA.md.
 

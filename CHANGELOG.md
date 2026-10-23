@@ -10,6 +10,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5: armazenamento PRAMIN de 1 MiB com perfil independente explícito (P14),
+  preservando RAMHT/contextos por VA/aliases/físico. Acessos DWORD alinhados,
+  validação de larguras/bordas e preflight sem stores parciais. BUS0 v5/PRAM v1
+  guarda bytes/perfil; v1–v4 migram sem modelo PRAMIN. Triangle preserva tabelas,
+  mas ainda para na preparação DMA em VA=0x80000000: PA zero pertence aos headers
+  XBE, exigindo reserva prévia no loader. 506 testes Linux e 218 nativos
+  debug/release; serviços mantidos em hello 37/69 e triangle 41/75 (ADR-0060).
+
 - Fase 5/kernel: consulta MmClaimGpuInstanceMemory (168), retail 64 MiB/Passive,
   com reserva de 32 frames reais, fronteira 0x83FF0000 e padding de 64 KiB.
   Repetição preserva bytes; colisões retornam NULL; resize/devkit recusam.

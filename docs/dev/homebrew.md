@@ -1,6 +1,6 @@
 # Homebrew nxdk e fronteira do kernel
 
-## Segundo alvo, NVPLL/PFB e consulta de instância — 2026-10-22
+## Segundo alvo e memória de instância — 2026-10-22
 
 O triangle/pbkit usa as dez raízes documentadas na passagem de bastão, produzindo
 17883 blocos. O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
@@ -21,19 +21,23 @@ DMA sobre a mesma RAM. Repetição preserva os bytes. Resize/devkit recusam;
 bootstrap na primeira consulta é provisório P13. KRNL v13/GINS v1 preserva o
 estado e migra v1–v12 sem reserva de instância ativa.
 
-Sessão nova passa PLL/PFB e a consulta. Toca PRAMIN sem modelo (0xFD71386C,
-EIP=0x183AA); --fatias 4000 termina depois em escrita não mapeada
-VA=0x80000000/EIP=0x18F19, ainda sem triângulo. É a preparação DMA com pb_Head
-mascarado + 1, seguida de WBINVD/pb_start. Próximo: posse/mapeamento dessa página,
-PRAMIN e PFIFO, sem presumir alias PRAMIN/RAM. PTIMER continua somente registrando
-escritas. Snapshots BUS0 legados mantêm os bloqueios descritos no ADR-0058.
+O [ADR-0060](../adr/0060-pramin-armazenamento-instancia.md) acrescenta PRAMIN
+persistente: 1 MiB no perfil independente IndependentV1 (provisório P14), acessos
+DWORD alinhados. RAMHT e contextos deixam de ser descartados. Aliases/VA/físico
+compartilham esse estado; ainda sem vínculo físico presumido com RAM/CMEM.
+BUS0 v5/PRAM v1 preserva bytes/perfil; v1–v4 migram sem modelo PRAMIN.
 
-Validação Linux: 500 testes workspace/doctests, 215 casos gerados debug/release
-e sete testes Python separados; apresentação Windows não revalidada aqui.
-Hello permanece 37/69 serviços, triangle 41/75. Evidências locais ignoradas:
-`target/instance-triangle-after.log`, `target/instance-triangle-probe.log` e
-ADR-0059. A sonda interrompe ao observar PRAMIN, conferindo os frames e a saída;
-não representa conclusão de pb_init.
+Triangle ainda termina na escrita VA=0x80000000/EIP=0x18F19, preparação DMA com
+pb_Head mascarado + 1 antes de WBINVD/pb_start. A página física zero já abriga os
+headers XBE/RO; o próximo recorte exige reserva no loader antes da imagem e
+migração do layout antigo. Depois PFIFO/DMA_GET com efeitos reais. PTIMER e
+renderização continuam pendentes; snapshots legados preservam seus bloqueios.
+
+Validação Linux: 506 testes workspace/doctests e 218 casos gerados debug/release.
+Win32 não revalidado aqui; scripts não alterados. Hello permanece 37/69 serviços,
+triangle 41/75. Evidência local: `target/pramin-triangle-probe.log`, sonda que
+confere tabelas/contextos, a falta e replay integral. Ver ADR-0060 para os limites;
+a execução ainda não conclui pb_init nem desenha o triângulo.
 
 ## Build local
 
