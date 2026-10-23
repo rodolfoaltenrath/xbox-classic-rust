@@ -1,6 +1,6 @@
 # Homebrew nxdk e fronteira do kernel
 
-## Segundo alvo e memória de instância — 2026-10-22
+## Segundo alvo e memória de instância — 2026-10-23
 
 O triangle/pbkit usa as 12 raízes documentadas na passagem de bastão, produzindo
 17984 blocos (inclui ISR=0x1B420 e DPC=0x1B340). O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
@@ -37,16 +37,26 @@ Triangle passa a escrita/WBINVD e chega ao polling DMA_GET (0xFD800044, sem mode
 A sonda confere bootstrap=0x18C001, headers intactos e snapshot estável. A sonda v5
 reproduz a falta antiga VA=0x80000000/EIP=0x18F19. Próximo: PFIFO/contextos e DMA_GET
 com efeitos reais a partir da PRAMIN, depois PGRAPH. Com as 12 raízes, ISR/DPC
-executam, DMA_GET continua zero e pb_init/pb_kill expiram a espera. O bloqueio
-final é MmFreeContiguousMemory (171), retorno 0x17520, argumento 0x80189000,
-na limpeza. O framebuffer mostra diagnóstico (1580 pixels/29 linhas), sem
-triângulo. Falta liberar CMEM para concluir a limpeza; PTIMER segue sem modelo.
+executam, DMA_GET continua zero e pb_init/pb_kill expiram a espera.
+O [ADR-0062](../adr/0062-liberacao-memoria-contigua.md) atende MmFreeContiguousMemory:
+quatro alocações liberadas, 133 frames devolvidos; boot, framebuffer e pool GPU
+preservados. A parada controlada após a limpeza tem 87 chamadas/zero recusadas,
+174079287 retired/ciclos, EIP=0x1506B e snapshot/replay estáveis. A execução continua
+no esvaziamento PFIFO em pb_kill/pb_fifo_handler: CACHE1_STATUS (0xFD003214) lê zero,
+bit EMPTY ausente; primeira leitura em 0x14D36. PTIMER segue sem modelo.
 
-Validação Linux: 513 testes workspace/doctests e 221 casos gerados debug/release.
-Win32 não revalidado aqui; scripts não alterados. Hello permanece 37/69 serviços,
-triangle 41/75. Evidências locais: `target/boot-triangle-probe.log` e
-`target/boot-triangle-after.log`, `target/boot-triangle-irq.log` e
-`target/boot-triangle-irq-probe.log`; fontes e limites no ADR-0061.
+A sonda oficial com 320 fatias para por orçamento em 0x14D36: 93 chamadas/zero
+recusadas, 252079732 retired/ciclos e 209 endereços MMIO sem modelo; PUT/GET ainda
+estão nessa lista. Framebuffer diagnóstico: 1580 pixels/29 linhas, sem triângulo.
+Reproduzir: `bash scripts/sonda.sh triangle 320`, usando o Rust fixado 1.98.1.
+O padrão de 4000 fatias repete esse laço por mais tempo, sem evidência nova.
+
+Validação Linux: `GATE OK: 519 testes`, 224 casos gerados debug/release.
+Win32 não revalidado aqui. Hello 38/69 serviços, triangle 42/75. Evidências locais:
+`target/free-triangle-probe.log`, `target/sonda/triangle-20261023-001300.log` e
+`target/gate/20261023-001255.log`; fontes e limites nos ADRs 0061/0062.
+O plano autônomo permanece pausado; a tarefa de compatibilidade Clippy 1.99 ainda
+está aberta. O gate desta entrega usou o toolchain do rust-toolchain.toml.
 
 ## Build local
 

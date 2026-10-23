@@ -703,6 +703,7 @@ gráfica continua pendente de integração; a prova usa somente CPU e memória.
 - [ ] Registradores MMIO: PMC, PBUS, PFIFO, PGRAPH, PCRTC, PRAMDAC, PTIMER, PRAMIN
 - [x] *(2026-10-22)* Armazenamento PRAMIN, perfil independente provisório de 1 MiB, DWORD alinhado e snapshot BUS0 v5/PRAM v1; sem execução PFIFO/PGRAPH ou vínculo físico com RAM (ADR-0060/P14)
 - [x] *(2026-10-22)* Página D3D de boot reservada antes da imagem, com posse física, BUS0 v6/BTPG v1 e replay de layouts antigos sem reserva (ADR-0061)
+- [x] *(2026-10-23)* MmFreeContiguousMemory remove recursos CMEM comuns e devolve frames, preservando boot e backings referenciados (ADR-0062)
 - [ ] IRQs da GPU para o guest (vblank, PGRAPH)
 - [ ] DMA objects e tradução de contexto
 - [ ] Parser de pushbuffer (GET/PUT, jump, call/ret, métodos inc/non-inc)
@@ -1108,7 +1109,7 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
 | P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
 | P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam PFIFO e PGRAPH; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
-| P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN e perfis maiores com evidência |
+| P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN; MmFreeContiguousMemory recusa o pool provisionado (ADR-0062) | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN, teardown e perfis maiores com evidência |
 | P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; ainda sem consumo PFIFO/PGRAPH | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
 
 Investigação de evidência e ferramentas em 2026-10-22:
@@ -1193,20 +1194,33 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-22 | 5 / alpha | Consulta de instância GPU (ADR-0059/P13) | — | Ordinal 168 query-only retail 64 MiB com 32 frames reais; KRNL v13/GINS v1 e migração; triangle alcança PRAMIN e falha depois em VA=0x80000000/EIP=0x18F19; 500 testes Linux e 215 nativos debug/release; hello 37/69, triangle 41/75 |
 | 2026-10-22 | 5 / alpha | Armazenamento PRAMIN (ADR-0060/P14) | — | Tabelas/contextos persistentes, BUS0 v5/PRAM v1 e migração v1–v4 sem modelo; página zero do loader ainda bloqueia DMA; 506 testes Linux e 218 nativos debug/release |
 | 2026-10-22 | 5 / alpha | Página D3D no boot (ADR-0061) | — | PA zero reservada antes dos frames XBE, headers em PA=0x1000/RO, BUS0 v6/BTPG v1 e migração sem reserva; triangle com 12 raízes passa escrita/WBINVD e ISR/DPC; timeout DMA leva à limpeza em ordinal 171; 513 testes Linux e 221 nativos debug/release |
-
+| 2026-10-23 | 5 / alpha | Liberação contígua (ADR-0062) | — | Ordinal 171 devolve frames e remove mapas; protege backings referenciados; triangle libera 133 frames e continua no esvaziamento PFIFO; sonda 320 fatias com 93 chamadas/zero recusadas; GATE OK 519 testes e 224 nativos debug/release; hello 38/69, triangle 42/75 |
 
 ---
 
 ### Próxima ação
 
-Marco mais recente, 2026-10-22: [ADR-0061](docs/adr/0061-pagina-boot-dma.md).
+Marco mais recente, 2026-10-23: [ADR-0062](docs/adr/0062-liberacao-memoria-contigua.md).
+MmFreeContiguousMemory (171) libera quatro alocações reais do triangle, 133 frames,
+preservando boot, framebuffer e pool GPU. Snapshot/replay antes/depois da liberação
+são estáveis; formatos não mudam. Sonda de 320 fatias: 93 chamadas/zero recusadas,
+EIP=0x14D36 por orçamento; 209 endereços MMIO sem modelo e framebuffer diagnóstico
+1580 pixels/29 linhas. O próximo bloqueio é o esvaziamento PFIFO em pb_kill/
+pb_fifo_handler (CACHE1_STATUS em 0xFD003214 sem EMPTY); DMA_GET continua sem
+processamento real. Inventariar fontes/consumidores antes de modelar registradores,
+consumir o pushbuffer e então implementar PGRAPH. P13/P14 seguem abertos.
+Gate fixado Rust 1.98.1: GATE OK, 519 testes workspace e 224 casos gerados debug/
+release; hello 38/69 e triangle 42/75. Win32 não revalidado. PLANO.md permanece
+pausado; a tarefa 0.0 de compatibilidade com Clippy 1.99 não foi executada aqui.
+
+Marco anterior, 2026-10-22: [ADR-0061](docs/adr/0061-pagina-boot-dma.md).
 AOT reserva a página D3D em PA zero antes do XBE, VA=0x80000000/RW sem execução;
 headers passam a PA=0x1000/RO. BUS0 v6/BTPG v1 valida a posse; v1–v5 migram sem
 reserva e sem mover headers, preservando replay. Triangle passa escrita/WBINVD e
 chega ao polling NV_USER DMA_GET sem modelo. Com 12 raízes (17984 blocos), ISR/DPC
 executam; timeout leva à limpeza em MmFreeContiguousMemory (171), retorno 0x17520,
-argumento 0x80189000. Próximo: PFIFO/consumo real do pushbuffer e liberação de CMEM
-para a limpeza; depois PGRAPH. P13/P14 permanecem abertos.
+argumento 0x80189000. Esse bloqueio de liberação foi resolvido no ADR-0062;
+a causa DMA/PFIFO e P13/P14 permanecem abertos.
 Gate Linux: 513 testes workspace/doctests e 221 casos gerados debug/release;
 hello 37/69 e triangle 41/75. Win32 não revalidado.
 A lista abaixo preserva marcos anteriores; o estado vigente está na passagem de bastão.

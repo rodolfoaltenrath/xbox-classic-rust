@@ -10,6 +10,16 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/kernel: MmFreeContiguousMemory (171), stdcall/4, remove mapeamentos e
+  devolve os frames da alocação CMEM inteira em Passive. Valida posse/aliases,
+  recusa bases inválidas e preserva boot e backings de vídeo/instância GPU.
+  Snapshots mantêm formatos e reproduzem liberação/reuso. Triangle libera quatro
+  recursos (133 frames) após o timeout DMA e chega ao esvaziamento PFIFO; sonda
+  com 320 fatias registra 93 chamadas/zero recusadas, ainda sem triângulo.
+  GATE OK: 519 testes Linux, 224 casos gerados debug/release; hello 38/69,
+  triangle 42/75 serviços (ADR-0062). Gate com Rust fixado 1.98.1; compatibilidade
+  Clippy 1.99 permanece em tarefa própria do PLANO.md.
+
 - Fase 5/memória: reserva da página D3D no boot AOT antes dos frames XBE,
   PA zero/VA=0x80000000, RW sem execução e com posse distinta de CMEM. Headers
   ficam em PA=0x1000/RO; código continua sem alias RW. Validação exclui a região

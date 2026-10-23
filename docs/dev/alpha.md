@@ -12,7 +12,7 @@ continuam sendo testes; não substituem esse marco.
 |---|---|---|
 | 1. Memória/loader | aceite local concluído | T14 real + fixture, contrato sob Miri e benchmark seguro |
 | 2. TLS/imports | infraestrutura validada; integração com homebrew pendente | TLS nxdk, FS e ABI disponíveis; dados exportados dependem da entrega 3 |
-| 3. Kernel mínimo | memória contígua, modo, filtros, janela MMIO e espera por intervalo (ADR-0050, ADR-0051); 37/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
+| 3. Kernel mínimo | memória contígua, modo, filtros, janela MMIO e espera por intervalo (ADR-0050, ADR-0051); 38/69 serviços | funções efetivamente usadas pelo homebrew; erro claro nas demais |
 | 4. ISA necessária | nove raízes traduzem 10676 blocos; execução chega ao vídeo | traduzir o código emitido pelo compilador e validar instruções adicionais |
 | 5. Execução integrada | executa main do hello; Session::conduzir, --fatias e interrupção pelo host; IRQ/vblank testados com fixtures | carregar módulo, rodar com orçamento, logs e encerramento controlado |
 | 6. Framebuffer | apresentado em janela Win32 (ADR-0052), imagem idêntica à RAM guest; só Windows, bytes crus (sem gamma/filtros — provisório, ROADMAP §16.1) | primeira imagem apresentada; controle/áudio ficam para o próximo marco |
@@ -40,9 +40,12 @@ XBE: PA zero/VA=0x80000000, RW sem execução, headers em PA=0x1000/RO. BUS0 v6/
 v1 guarda a posse; v1–v5 migram sem reserva e preservam o layout/replay anterior.
 TLS e imagem não podem ocupar a nova VA. Triangle preserva RAMHT/contextos,
 passa a escrita/WBINVD e chega ao polling DMA_GET sem modelo. Com 12 raízes,
-ISR/DPC executam; timeout leva a pb_kill e à falta do ordinal 171 na limpeza.
-Próximo: PFIFO/processamento real do pushbuffer e liberação CMEM, depois PGRAPH. P13/P14 e renderização continuam
-pendentes. Registros por ADR abaixo são históricos; a passagem de bastão é vigente.
+ISR/DPC executam; timeout leva a pb_kill. O [ADR-0062](../adr/0062-liberacao-memoria-contigua.md)
+libera quatro recursos CMEM (133 frames), preservando os backings referenciados.
+A sonda de 320 fatias termina por orçamento em 0x14D36, 93 chamadas/zero recusadas,
+no laço PFIFO (CACHE1_STATUS sem EMPTY). Framebuffer segue diagnóstico: 1580 pixels/
+29 linhas. Próximo: PFIFO/processamento real do pushbuffer, depois PGRAPH. P13/P14 e
+renderização continuam pendentes. Registros por ADR abaixo são históricos; a passagem de bastão é vigente.
 
 ## Alvo escolhido
 
@@ -164,7 +167,7 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual no Linux tem **513 testes workspace/doctests** e **221 casos de
+A validação atual no Linux tem **519 testes workspace/doctests** e **224 casos de
 Rust gerado em debug/release**, incluindo PRAMIN/PFB/NVPLL, memória e snapshots. O Rust
 fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
 passa do PLL/PFB e da consulta de instância GPU, mas ainda não renderiza.

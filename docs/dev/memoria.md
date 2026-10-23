@@ -98,3 +98,18 @@ de 32 bits e páginas grandes fisicamente desalinhadas antes de enumerá-las.
 Nenhum unsafe ou API de arena mudou.
 A suíte inclui frames fragmentados/sujos, OOM, aliases de saída e snapshot
 inconsistente. O aceite local original da Fase 2 continua sendo o marco do ADR-0020.
+
+## Liberação contígua HLE — ADR-0062
+
+MmFreeContiguousMemory (171) remove a alocação CMEM completa, seus mapeamentos e
+frames em Passive. Exige a VA base exata e valida a posse antes de publicar MMU e
+bitmap; base interior/desconhecida, double free e estado inconsistente recusam
+sem liberar recursos. Os bytes físicos permanecem até o reuso, quando o alocador
+existente os zera. A página de boot, o pool de instância GPU e o backing do
+framebuffer ainda configurado não são liberados por esse caminho. O modo continua
+referenciando o backing em blanking; trocar de modo permite liberar o anterior.
+
+CMEM v1 e demais versões de snapshot permanecem: a ausência do recurso e o
+bitmap/MMU já expressam a liberação. Seis testes de kernel e três casos de Rust
+emitido verificam recursos, stdcall/4 e replay antes/depois da liberação. Fontes,
+limites e evidência: [ADR-0062](../adr/0062-liberacao-memoria-contigua.md).

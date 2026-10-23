@@ -34,7 +34,7 @@ inventário de dependências. TLS inicial, FS e fronteira de chamadas do kernel
 estão disponíveis, assim como os três dados exportados. O hello passa por mutexes,
 SHA-1, EEPROM, seções críticas, configuração de clock/PCI, tempo, IRQL e alocação.
 Já cria uma filha guest com pilha/TLS próprios e executa seu bootstrap, com o pai
-estacionado; há **37/69 serviços**, com variantes limitadas. Nove raízes explícitas
+estacionado; há **38/69 serviços**, com variantes limitadas. Nove raízes explícitas
 no [guia do homebrew](docs/dev/homebrew.md) traduzem 10676 blocos. O hello já monta
 o link guest `D:` para seu diretório, executa o main e apresenta "Hello nxdk!"
 em janela Win32. `Session::conduzir` controla orçamento e interrupção pelo host;

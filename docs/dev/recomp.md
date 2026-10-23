@@ -840,3 +840,19 @@ retorno 0x17520/argumento 0x80189000. Próximo: PFIFO/contextos e consumo real d
 pushbuffer, liberação CMEM para a limpeza e depois PGRAPH. P13/P14 seguem abertos. Gate Linux: 513 testes
 workspace e 221 casos gerados debug/release (contador 205 fora de x86_64),
 fmt/Clippy limpos. Fontes e reprodução: [ADR-0061](../adr/0061-pagina-boot-dma.md).
+
+### Liberação contígua (ADR-0062, estado em 2026-10-23)
+
+MmFreeContiguousMemory (171) atende stdcall/4 para a base exata de uma alocação
+CMEM comum em Passive. Remove páginas e devolve frames; os bytes da arena ficam
+até o próximo allocate, que os zera. Recusas não liberam recursos ou avançam a
+CPU pendente. A sessão captura/valida o retorno antes dos efeitos e aplica EAX=0
+pela convenção VOID do HLE, preservando flags e Clock.
+
+Boot D3D tem dono separado; backing de framebuffer configurado (mesmo em blanking)
+e pool GPU provisionado recusam teardown sem modelo. Snapshots mantêm CMEM v1,
+KRNL v13 e BUS0 v6. Três casos gerados verificam continuação/reuso, replay integral
+antes/depois de free e retorno inválido/base interior. Gate Linux: 519 testes
+workspace e 224 casos gerados debug/release, contador 208 fora de x86_64, fmt e
+Clippy all-targets limpos. Hello 38/69 e triangle 42/75 serviços; PFIFO/DMA/PGRAPH
+continuam pendentes. Fontes: [ADR-0062](../adr/0062-liberacao-memoria-contigua.md).

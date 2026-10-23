@@ -44,6 +44,64 @@ impl ContiguousMemory {
     pub fn allocations(&self) -> &[ContiguousAllocation] {
         &self.allocations
     }
+    pub(super) fn free(
+        &mut self,
+        bus: &mut Bus,
+        call: &Call,
+        irql: Irql,
+        framebuffer: Option<GuestPhys>,
+        instance: Option<GuestPhys>,
+    ) -> Resultado {
+        let address = call.argument(bus, 0)?;
+        if irql != Irql::Passive {
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "liberação contígua exige Passive neste perfil",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        }
+        self.validate_bus(bus).map_err(Erro::MemoriaContigua)?;
+        let Some(index) = self
+            .allocations
+            .iter()
+            .position(|a| a.address().0 == address)
+        else {
+            return Err(Erro::ArgumentoInvalido {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                detalhe: "BaseAddress exige a base exata de uma alocação contígua existente"
+                    .to_owned(),
+            });
+        };
+        let allocation = self.allocations[index];
+        let range = allocation.physical.0..allocation.physical.0 + allocation.size;
+        if instance == Some(allocation.physical)
+            || framebuffer.is_some_and(|pa| range.contains(&pa.0))
+        {
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "liberação de backing referenciado pelo vídeo ou pela instância GPU não modelada",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        }
+        // Validar a posse inteira antes de liberar: as primitivas de MMU/bitmap
+        // são infalíveis e não detectam por si sós recursos parciais ou aliases.
+        let pages = allocation.size / PAGE;
+        let mut mmu = bus.mmu().clone();
+        let mut frames = bus.frames().clone();
+        mmu.desmapear(allocation.address(), pages);
+        frames.liberar(allocation.physical, pages);
+        *bus.mmu_mut() = mmu;
+        *bus.frames_mut() = frames;
+        self.allocations.remove(index);
+        // VOID: EAX=0 é convenção HLE. Os bytes físicos permanecem até o reuso;
+        // o próximo allocate os zera pela política já existente do alocador.
+        Ok(Atendimento { eax: 0 })
+    }
     pub(super) fn allocate(&mut self, bus: &mut Bus, call: &Call, irql: Irql) -> Resultado {
         let mut args = [0; 5];
         for (i, arg) in args.iter_mut().enumerate() {

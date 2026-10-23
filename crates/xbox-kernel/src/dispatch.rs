@@ -79,6 +79,7 @@ pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
 pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
 pub const ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY: u32 = 168;
+pub const ORDINAL_MM_FREE_CONTIGUOUS_MEMORY: u32 = 171;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
@@ -138,6 +139,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_AV_SET_DISPLAY_MODE,
     ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
     ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY,
+    ORDINAL_MM_FREE_CONTIGUOUS_MEMORY,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
@@ -487,6 +489,13 @@ impl Dispatcher {
                 self.gpu_instance
                     .query(bus, &call, self.irql, &mut self.contiguous)
             }
+            ORDINAL_MM_FREE_CONTIGUOUS_MEMORY => self.contiguous.free(
+                bus,
+                &call,
+                self.irql,
+                self.video.mode().map(DisplayMode::framebuffer),
+                self.gpu_instance.allocation_base(),
+            ),
             ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {
                 eax: VideoState::SAVED_DATA_ADDRESS,
             }),

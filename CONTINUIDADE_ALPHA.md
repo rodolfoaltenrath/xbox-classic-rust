@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-22**, com base no commit **`b712e8d`** e alterações locais
-do ADR **0061** (página de boot D3D antes da imagem).
+Atualizado em **2026-10-23**, com base no commit **`87d2937`** e alterações locais
+do ADR **0062** (liberação de memória contígua).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -13,7 +13,7 @@ instruções locais: o código pode ter evoluído depois desta referência.
 > preservadas como histórico, não como estado vigente. Na dúvida, reproduza com o
 > comando completo da tabela de contratos antes de investigar qualquer bloqueio.
 
-## Passagem de bastão — estado em 2026-10-22
+## Passagem de bastão — estado em 2026-10-23
 
 *Escrito para uma LLM (ou pessoa) que assume o projeto sem o histórico da conversa.* Esta
 seção é o ponto de partida; o resto do arquivo são registros datados por ADR. Antes de
@@ -26,7 +26,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P14), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0061) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0062) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -35,14 +35,15 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 5. **Snapshots são versionados, com migração testada** (`BUS0` v6/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
-6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** (pedido
-   explícito do mantenedor). O mantenedor comita; sugira a mensagem.
+6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
+   outro trailer de autoria (pedido explícito do mantenedor). Desde 2026-10-23 o agente
+   comita sozinho ao concluir cada tarefa com o gate verde (ciclo em `AGENTS.md`).
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (513 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (519 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `221 passed` em x86-64 e `205` fora dele —
+   confere o **contador de casos gerados**, hoje `224 passed` em x86-64 e `208` fora dele —
    some os testes novos ali).
 
 ### O que foi feito (resumo por etapa)
@@ -56,10 +57,11 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 | Janela | framebuffer apresentado em janela Win32 (`--janela`), só Windows | 0052 |
 | 2026-10-22 | laço de execução em `Session::conduzir` + `--fatias N`; `KeTickCount`; **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC, WBINVD**; alinhamento 0 em `MmAllocateContiguousMemoryEx`; **eventos do kernel**; **interrupções, ISR, DPC e vblank** | 0053, 0054, 0055 |
 | Fase 5 inicial | evidência pública e scripts; NVPLL programável; CFG0/CFG1 com perfil Cromwell 64/128 MiB; consulta de instância GPU com reserva física retail 64 MiB (P13), KRNL v13/GINS v1; PRAMIN persistente independente (P14), BUS0 v6/BTPG v1: página D3D reservada antes dos frames XBE | 0056–0061 |
+| Limpeza pbkit | MmFreeContiguousMemory (171), remoção real de mapeamentos/frames, reuso e preservação dos backings referenciados | 0062 |
 
-Números hoje: **37 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); triangle **41/75**; **221** casos no Rust gerado em debug/release;
-**513** testes workspace/doctests no gate padrão Linux (506 no baseline + sete).
+Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
+compatibilidade); triangle **42/75**; **224** casos no Rust gerado em debug/release;
+**519** testes workspace/doctests no gate padrão Linux (513 no baseline + seis).
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
@@ -87,10 +89,18 @@ na entrega anterior; não repetidos nesta, pois scripts não mudaram.
   o ISR registrado pelo pbkit. Foram acrescentadas as raízes ISR=0x1B420 e
   DPC=0x1B340; a tradução atual usa 12 raízes/17984 blocos e executou ISR/DPC
   (12 ocorrências). DMA_GET segue zero por 12402025 leituras; pb_init/pb_kill
-  expiram as esperas. Para em MmFreeContiguousMemory (171), retorno 0x17520,
-  argumento 0x80189000, trampolim 0x7FFE0558; 173079257 retired/ciclos, 81 chamadas
-  e uma recusada. Snapshot estável também nesse ponto. O framebuffer mostra
-  diagnóstico (1580 pixels/29 linhas), sem triângulo. Logs target/boot-triangle-*.log.
+  expiram as esperas. O ADR-0062 atende MmFreeContiguousMemory (171): libera
+  PA=0x189000/0x18A000/0x18B000 (4 KiB cada) e PA=0x18C000 (0x82000 bytes),
+  total de 133 frames. Permanecem framebuffer PA=0x5D000/0x12C000 bytes,
+  pool GPU e boot. A sonda controlada para após a limpeza com 87 chamadas,
+  zero recusadas, EIP=0x1506B e 174079287 retired/ciclos; snapshot integral e
+  mais 2 M de blocos reproduzem o mesmo estado. Continua no laço de esvaziamento
+  PFIFO em pb_kill/pb_fifo_handler: CACHE1_STATUS=0 em 0xFD003214, bit EMPTY
+  ausente, primeira leitura PC=0x14D36. Não concluir artificialmente a espera.
+  Sonda padrão limitada a 320 fatias: 93 chamadas, zero recusadas, 252079732
+  retired/ciclos, EIP=0x14D36, 209 endereços MMIO sem modelo. O framebuffer
+  continua diagnóstico (1580 pixels/29 linhas), sem triângulo. Logs:
+  target/free-triangle-probe.log e target/sonda/triangle-20261023-001300.log.
   BUS0 v1–v5 migram sem reserva D3D e preservam o layout físico; a sonda v5
   reproduz a falta VA=0x80000000/EIP=0x18F19, headers em PA zero, 24826623 retired.
   BUS0 v1–v4 migram sem modelo PRAMIN; sessão nova adota o perfil. BUS0 v1–v3
@@ -127,9 +137,9 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
    Usar a PRAMIN como fonte dos descritores, implementar o canal/contexto e o
    processamento do pushbuffer com limites e snapshot. Não adiantar GET/PUT
    artificialmente para satisfazer o polling. Com 12 raízes ISR/DPC funcionam;
-   DMA não avança, o timeout leva a pb_kill e ao ordinal 171 não atendido.
-   MmFreeContiguousMemory (171) precisa liberar recursos reais para concluir a
-   limpeza; isso não resolve a causa do timeout. Preservar P13/P14 e a posse do boot.
+   DMA não avança e o timeout leva a pb_kill. O ADR-0062 libera os buffers CMEM
+   comuns, preservando boot e backings referenciados; isso não resolve a causa
+   do timeout. Preservar P13/P14 e a posse do boot.
 2. **PGRAPH, depois dos contratos PFIFO.** Métodos NV097 mínimos para limpar a
    tela e desenhar o triângulo. Cada recorte exige consumidor real, fonte, ADR e teste.
    PTIMER continua sem modelo apesar das escritas. Preservar os perfis legados:
@@ -296,9 +306,9 @@ Jogos comerciais ainda não executam.
 |---|---|---|---|
 | 1 | Memória e loader | **Concluído no aceite local** | Imagem real conferida pelo bus; contratos, permissões e segurança de memória validados |
 | 2 | TLS e importações | **Infraestrutura implementada e testada; aceite integrado aberto** | TLS correto e chamadas por ordinal funcionando com o ambiente real requerido pelo homebrew |
-| 3 | Kernel mínimo | **Memória contígua, modo, filtros, janela MMIO do NV2A e espera por intervalo; 37/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
+| 3 | Kernel mínimo | **Memória contígua, modo, filtros, janela MMIO do NV2A e espera por intervalo; 38/69 serviços com variantes limitadas** | Implementar dados e serviços necessários ao caminho executado pelo alvo, com erro explícito nos demais |
 | 4 | ISA necessária | 10676 blocos com nove raízes; execução chega ao vídeo | Traduzir os caminhos necessários do XBE real, validar semântica e descobrir seus destinos |
-| 5 | Execução integrada | **Executa o `main` do hello** (`debugPrint` + `Sleep`); `Session::conduzir`, limite `--fatias` e encerramento pela janela; ISR/DPC/vblank implementados e testados com fixtures, ainda sem ciclo completo confirmado no triangle; aceite integrado aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
+| 5 | Execução integrada | **Executa o `main` do hello** (`debugPrint` + `Sleep`); `Session::conduzir`, limite `--fatias` e encerramento pela janela; ISR/DPC/vblank executados no triangle, ainda sem processamento DMA/renderização; aceite integrado aberto | Rodar o homebrew com dispatcher, orçamento, logs e interrupção controlada |
 | 6 | Framebuffer | **Apresentado em janela Win32** (`--janela`, ADR-0052): capturado de fora pelo SO, 640×480 1:1, 1208 pixels idênticos à RAM guest, "Hello nxdk!" × 4. **Limites:** só Windows; bytes crus, sem gamma nem filtros do encoder (provisório, ROADMAP §16.1 P1/P2); caminho "usuário fecha durante a execução" não exercitado por teste | Apresentar uma imagem produzida pela execução do homebrew |
 
 Há diversas entregas de implementação registradas, mas isso não significa
@@ -1353,7 +1363,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 221 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 224 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1368,22 +1378,26 @@ O alvo inicial é o homebrew aberto; fontes públicas fixadas estão no guia nxd
 
 Preservar alterações locais do mantenedor. Os commits anteriores foram feitos
 pelo usuário após sugestões de mensagem; criar este guia não autoriza publicar,
-fazer push ou modificar o remoto. Ao avançar cada entrega, atualizar este arquivo,
+fazer push ou modificar o remoto. Commits locais seguem AGENTS.md; o modo do
+PLANO.md continua pausado nesta entrega. Ao avançar cada entrega, atualizar este arquivo,
 o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue pela "Passagem de bastão — estado em 2026-10-22". Base b712e8d +
-> alterações locais ADR-0061; confira Git. Hello já executa main/apresenta em Win32.
-> AOT novo reserva PA zero/VA=0x80000000 para D3D antes da imagem; headers em
-> PA=0x1000/RO, código sem alias RW. BUS0 v6/BTPG v1; v1–v5 preservam layout antigo
-> sem reserva, incluindo a falta DMA histórica. KRNL v13/AOTC v8/AOTS v3 iguais.
-> Triangle com 12 raízes (incluindo ISR/DPC) passa escrita/WBINVD e gira em DMA_GET
-> sem modelo; timeout leva a pb_kill e MmFreeContiguousMemory (171), retorno 0x17520,
-> argumento 0x80189000. Ainda sem triângulo. Próximo: PFIFO/DMA_GET e liberação real,
-> depois PGRAPH; não inventar conclusão do DMA. P13/P14 seguem abertos. Gate Linux
-> 513 testes/221 nativos debug e release. Win32 não revalidado. Clock/arena únicos,
-> provisórios P1–P14. Scripts preservam logs e exigem diretório novo. Mantenedor comita.
+> Continue pela "Passagem de bastão — estado em 2026-10-23". Base 87d2937 +
+> alterações do ADR-0062; confira Git e AGENTS.md/PLANO.md (modo pausado nesta entrega).
+> Hello executa main/apresenta em Win32; 38/69 serviços. Triangle 42/75, 12 raízes,
+> 17984 blocos. Boot D3D em PA zero/VA=0x80000000; headers PA=0x1000/RO.
+> BUS0 v6/BTPG v1, KRNL v13/GINS v1, AOTC v8/AOTS v3; formatos mantidos no 0062.
+> MmFreeContiguousMemory libera quatro recursos reais (133 frames) após o timeout
+> DMA; preserva boot, framebuffer e pool GPU. A sonda de 320 fatias termina por
+> orçamento em 0x14D36, 93 chamadas/zero recusadas, 209 MMIO sem modelo. Fica no
+> esvaziamento PFIFO: CACHE1_STATUS=0 (0xFD003214); DMA_GET ainda sem consumo real.
+> Snapshot/replay estáveis após free. Framebuffer diagnóstico 1580 pixels/29 linhas,
+> ainda sem triângulo. Próximo: inventário público PFIFO/DMA, consumo real do
+> pushbuffer e depois PGRAPH; nunca inventar GET/EMPTY. Gate Rust 1.98.1: GATE OK,
+> 519 testes/224 nativos debug e release. Tarefa 0.0 do plano (Clippy 1.99) permanece
+> pendente; não confundir com o gate fixado. P1–P14 e limites Win32 permanecem.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 

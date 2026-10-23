@@ -35,7 +35,7 @@ linhas), sem triângulo.
   **Aceite:** `GATE OK` com cargo 1.99; nenhum `#[allow(clippy::assert_is_empty)]`
   novo no código.
 
-- [~] 0.1 Implementar `MmFreeContiguousMemory` liberando a alocação real no
+- [x] 0.1 Implementar `MmFreeContiguousMemory` liberando a alocação real no
   `contiguous`, recusando endereço desconhecido, o framebuffer e a instância GPU
   (trabalho já em andamento na árvore: `dispatch/contiguous.rs`, `tests/free_contiguous.rs`).
   **Aceite:**
@@ -46,6 +46,15 @@ linhas), sem triângulo.
   - sonda triangle: `recusadas: 0` e `parada` deixa de citar o ordinal 171;
   - ADR novo e entrada no CHANGELOG; contagem "triangle N/75" atualizada no
     CONTINUIDADE_ALPHA.md.
+
+  Evidência: `GATE OK: 519 testes` com Rust 1.98.1 (target/gate/20261023-001255.log);
+  seis testes em free_contiguous.rs e três novos casos gerados, 224 debug/release;
+  sonda triangle 320: recusadas=0, chamadas=93, parada por orçamento em 0x14D36,
+  sem ordinal 171 (target/sonda/triangle-20261023-001300.log). Sonda de recursos:
+  quatro alocações/133 frames liberados, boot/framebuffer/pool GPU preservados,
+  snapshot/replay integral estável (target/free-triangle-probe.log). Formatos
+  mantidos; ADR-0062/CHANGELOG/CONTINUIDADE atualizados, triangle 42/75.
+  A tarefa 0.0 (Clippy 1.99) continua aberta; o modo do plano permanece pausado.
 
 ## Fase 1 — PFIFO e pushbuffer com efeito real
 

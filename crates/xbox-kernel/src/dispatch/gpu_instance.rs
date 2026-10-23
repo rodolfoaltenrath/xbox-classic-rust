@@ -5,7 +5,7 @@ use super::{
 };
 use crate::imports::Call;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter, error::SnapshotError};
-use xbox_mem::{Acesso, Bus, GuestVirt};
+use xbox_mem::{Acesso, Bus, GuestPhys, GuestVirt};
 
 const RETAIL_RAM: usize = 64 << 20;
 const POOL_BASE: u32 = 0x03FE_0000;
@@ -20,6 +20,9 @@ pub struct GpuInstanceMemory {
 impl GpuInstanceMemory {
     pub const fn provisioned(&self) -> bool {
         self.provisioned
+    }
+    pub(super) fn allocation_base(&self) -> Option<GuestPhys> {
+        self.provisioned.then_some(GuestPhys(POOL_BASE))
     }
     pub(super) fn query(
         &mut self,
