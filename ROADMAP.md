@@ -1202,6 +1202,11 @@ Uma linha por marco concluído. Append-only.
 
 ### Próxima ação
 
+Tarefa 2.1 concluída: ADR-0066 e CSV das 274 chaves NV097, fontes/valores/efeitos.
+14 raízes/19391 blocos, sonda com 226 chamadas/zero recusadas e 40 DRAW_ARRAYS de
+nove vértices; quadro preto, gate 538. Próxima 2.2: IRQ/traps para o guest atualizar
+PRAMIN, clear com descritores válidos e scanout; depois vertex program e raster.
+
 Tarefa 1.4 concluída: snapshot de pacote/parâmetros/call reproduz GET, métodos e
 bytes da execução contínua; gate 538 testes, formatos mantidos (adendo ADR-0065).
 Fases 0/1 concluídas. Próximo: inventário PGRAPH da tarefa 2.1.

@@ -1,0 +1,275 @@
+class,method,subchannel,count,first,last,name,primary_source,planned_effect
+0x0097,0x0000,0,1,0x0000000D,0x0000000D,SET_OBJECT (frontend PFIFO),nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),frontend PFIFO ja modelado
+0x0097,0x0100,0,735,0x00000BAA,0x00000B2A,NV097_NO_OPERATION,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0110,0,205,0x00000000,0x00000000,NV097_WAIT_FOR_IDLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0120,0,1,0x00000000,0x00000000,NV097_SET_FLIP_READ,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0124,0,1,0x00000001,0x00000001,NV097_SET_FLIP_WRITE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0128,0,1,0x00000003,0x00000003,NV097_SET_FLIP_MODULO,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x012C,0,40,0x00000000,0x00000000,NV097_FLIP_INCREMENT_WRITE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0180,0,1,0x00000002,0x00000002,NV097_SET_CONTEXT_DMA_NOTIFIES,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0184,0,1,0x00000003,0x00000003,NV097_SET_CONTEXT_DMA_A,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0188,0,1,0x00000003,0x00000003,NV097_SET_CONTEXT_DMA_B,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0190,0,1,0x00000004,0x00000004,NV097_SET_CONTEXT_DMA_STATE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0194,0,82,0x00000009,0x00000009,NV097_SET_CONTEXT_DMA_COLOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0198,0,2,0x0000000A,0x0000000A,NV097_SET_CONTEXT_DMA_ZETA,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x019C,0,1,0x00000003,0x00000003,NV097_SET_CONTEXT_DMA_VERTEX_A,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x01A0,0,1,0x00000003,0x00000003,NV097_SET_CONTEXT_DMA_VERTEX_B,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x01A4,0,1,0x00000008,0x00000008,NV097_SET_CONTEXT_DMA_SEMAPHORE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x01A8,0,1,0x0000000C,0x0000000C,NV097_SET_CONTEXT_DMA_REPORT,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0200,0,81,0x02800000,0x02800000,NV097_SET_SURFACE_CLIP_HORIZONTAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0204,0,81,0x01E00000,0x01E00000,NV097_SET_SURFACE_CLIP_VERTICAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0208,0,81,0x00000128,0x00000128,NV097_SET_SURFACE_FORMAT,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x020C,0,81,0x0A000A00,0x0A000A00,NV097_SET_SURFACE_PITCH,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0210,0,81,0x00000000,0x00000000,NV097_SET_SURFACE_COLOR_OFFSET,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0214,0,81,0x00000000,0x00000000,NV097_SET_SURFACE_ZETA_OFFSET,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x0260,0,1,0x10101010,0x10101010,NV097_SET_COMBINER_ALPHA_ICW,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0288,0,1,0x00000004,0x00000004,NV097_SET_COMBINER_SPECULAR_FOG_CW0,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x028C,0,1,0x00001400,0x00001400,NV097_SET_COMBINER_SPECULAR_FOG_CW1,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0290,0,81,0x00110001,0x00110001,NV097_SET_CONTROL0,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02A4,0,1,0x00000000,0x00000000,NV097_SET_FOG_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02A8,0,1,0x00000000,0x00000000,NV097_SET_FOG_COLOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02B4,0,1,0x00000000,0x00000000,NV097_SET_WINDOW_CLIP_TYPE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02C0,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02C4,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02C8,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02CC,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02D0,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[4],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02D4,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[5],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02D8,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[6],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02DC,0,1,0x027F0000,0x027F0000,NV097_SET_WINDOW_CLIP_HORIZONTAL[7],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02E0,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02E4,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02E8,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02EC,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02F0,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[4],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02F4,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[5],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02F8,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[6],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x02FC,0,1,0x01DF0000,0x01DF0000,NV097_SET_WINDOW_CLIP_VERTICAL[7],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0300,0,1,0x00000000,0x00000000,NV097_SET_ALPHA_TEST_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0304,0,1,0x00000000,0x00000000,NV097_SET_BLEND_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0308,0,1,0x00000001,0x00000001,NV097_SET_CULL_FACE_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x030C,0,1,0x00000001,0x00000001,NV097_SET_DEPTH_TEST_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0310,0,1,0x00000000,0x00000000,NV097_SET_DITHER_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0320,0,1,0x00000000,0x00000000,NV097_SET_LINE_SMOOTH_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0324,0,1,0x00000000,0x00000000,NV097_SET_POLY_SMOOTH_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0328,0,1,0x00000000,0x00000000,NV097_SET_SKIN_MODE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x032C,0,1,0x00000001,0x00000001,NV097_SET_STENCIL_TEST_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0330,0,1,0x00000000,0x00000000,NV097_SET_POLY_OFFSET_POINT_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0334,0,1,0x00000000,0x00000000,NV097_SET_POLY_OFFSET_LINE_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0338,0,1,0x00000000,0x00000000,NV097_SET_POLY_OFFSET_FILL_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x033C,0,1,0x00000207,0x00000207,NV097_SET_ALPHA_FUNC,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0340,0,1,0x00000000,0x00000000,NV097_SET_ALPHA_REF,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0344,0,1,0x00000001,0x00000001,NV097_SET_BLEND_FUNC_SFACTOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0348,0,1,0x00000000,0x00000000,NV097_SET_BLEND_FUNC_DFACTOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x034C,0,1,0x00000000,0x00000000,NV097_SET_BLEND_COLOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0350,0,1,0x00008006,0x00008006,NV097_SET_BLEND_EQUATION,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0354,0,1,0x00000203,0x00000203,NV097_SET_DEPTH_FUNC,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0358,0,1,0x01010101,0x01010101,NV097_SET_COLOR_MASK,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x035C,0,1,0x00000001,0x00000001,NV097_SET_DEPTH_MASK,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0360,0,1,0xFFFFFFFF,0xFFFFFFFF,NV097_SET_STENCIL_MASK,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0364,0,1,0x00000207,0x00000207,NV097_SET_STENCIL_FUNC,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0368,0,1,0x00000000,0x00000000,NV097_SET_STENCIL_FUNC_REF,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x036C,0,1,0xFFFFFFFF,0xFFFFFFFF,NV097_SET_STENCIL_FUNC_MASK,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0370,0,1,0x00001E00,0x00001E00,NV097_SET_STENCIL_OP_FAIL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0374,0,1,0x00001E00,0x00001E00,NV097_SET_STENCIL_OP_ZFAIL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0378,0,1,0x00001E00,0x00001E00,NV097_SET_STENCIL_OP_ZPASS,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x037C,0,1,0x00001D01,0x00001D01,NV097_SET_SHADE_MODEL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0380,0,1,0x00000008,0x00000008,NV097_SET_LINE_WIDTH,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0384,0,1,0x00000000,0x00000000,NV097_SET_POLYGON_OFFSET_SCALE_FACTOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0388,0,1,0x00000000,0x00000000,NV097_SET_POLYGON_OFFSET_BIAS,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x038C,0,1,0x00001B02,0x00001B02,NV097_SET_FRONT_POLYGON_MODE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0390,0,1,0x00001B02,0x00001B02,NV097_SET_BACK_POLYGON_MODE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0394,0,1,0x00000000,0x00000000,NV097_SET_CLIP_MIN,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0398,0,1,0x4B7FFFFF,0x4B7FFFFF,NV097_SET_CLIP_MAX,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x039C,0,1,0x00000405,0x00000405,NV097_SET_CULL_FACE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x03A0,0,1,0x00000900,0x00000900,NV097_SET_FRONT_FACE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x03A4,0,1,0x00000000,0x00000000,NV097_SET_NORMALIZATION_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03C0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_S,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03C4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_T,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03C8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_R,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03D0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_S[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03D4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_T[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03D8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_R[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03E0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_S[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03E4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_T[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03E8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_R[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03F0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_S[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03F4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_T[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x03F8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_R[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0840,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0844,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0848,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x084C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0850,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_T,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0854,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[5],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0858,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[6],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x085C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[7],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0860,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_R,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0864,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[9],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0868,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[10],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x086C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[11],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0870,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_Q,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0874,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[13],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0878,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[14],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x087C,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[15],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0880,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[16],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0884,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[17],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0888,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[18],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x088C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[19],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0890,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[20],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0894,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[21],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0898,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[22],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x089C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[23],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08A0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[24],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08A4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[25],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08A8,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[26],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08AC,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[27],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08B0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[28],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08B4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[29],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08B8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[30],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08BC,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[31],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08C0,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[32],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08C4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[33],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08C8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[34],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08CC,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[35],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08D0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[36],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08D4,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[37],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08D8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[38],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08DC,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[39],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08E0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[40],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08E4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[41],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08E8,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[42],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08EC,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[43],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08F0,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[44],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08F4,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[45],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08F8,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[46],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x08FC,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[47],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0900,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[48],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0904,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[49],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0908,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[50],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x090C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[51],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0910,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[52],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0914,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[53],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0918,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[54],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x091C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[55],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0920,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[56],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0924,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[57],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0928,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[58],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x092C,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[59],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0930,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[60],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0934,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[61],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0938,0,1,0x00000000,0x00000000,NV097_SET_TEXGEN_PLANE_S[62],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x093C,0,1,0x3F800000,0x3F800000,NV097_SET_TEXGEN_PLANE_S[63],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09D0,0,1,0x00000000,0x00000000,NV097_SET_FOG_PLANE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09D4,0,1,0x00000000,0x00000000,NV097_SET_FOG_PLANE[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09D8,0,1,0x3F800000,0x3F800000,NV097_SET_FOG_PLANE[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09DC,0,1,0x00000000,0x00000000,NV097_SET_FOG_PLANE[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09F8,0,1,0x00000004,0x00000004,NV20_TCL_PRIMITIVE_3D_SWATHWIDTH,nxdk nv_objects.h (pin ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x09FC,0,1,0x00000001,0x00000001,NV097_SET_FLAT_SHADE_OP,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A20,0,1,0x43A04400,0x43A04400,NV097_SET_VIEWPORT_OFFSET,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A24,0,1,0x43708800,0x43708800,NV097_SET_VIEWPORT_OFFSET[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A28,0,1,0x00000000,0x00000000,NV097_SET_VIEWPORT_OFFSET[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A2C,0,1,0x00000000,0x00000000,NV097_SET_VIEWPORT_OFFSET[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A50,0,1,0x00000000,0x00000000,NV097_SET_EYE_POSITION,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A54,0,1,0x00000000,0x00000000,NV097_SET_EYE_POSITION[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A58,0,1,0x00000000,0x00000000,NV097_SET_EYE_POSITION[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0A5C,0,1,0x3F800000,0x3F800000,NV097_SET_EYE_POSITION[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AA0,0,1,0x00000000,0x00000000,NV097_SET_COMBINER_ALPHA_OCW,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AC0,0,1,0x10101010,0x10101010,NV097_SET_COMBINER_COLOR_ICW,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AE0,0,1,0x00000000,0x00000000,NV097_SET_COLOR_KEY_COLOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AE4,0,1,0x00000000,0x00000000,NV097_SET_COLOR_KEY_COLOR[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AE8,0,1,0x00000000,0x00000000,NV097_SET_COLOR_KEY_COLOR[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AEC,0,1,0x00000000,0x00000000,NV097_SET_COLOR_KEY_COLOR[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AF0,0,1,0x43A00000,0x43A00000,NV097_SET_VIEWPORT_SCALE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AF4,0,1,0xC3700000,0xC3700000,NV097_SET_VIEWPORT_SCALE[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AF8,0,1,0x4B7FFFFF,0x4B7FFFFF,NV097_SET_VIEWPORT_SCALE[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0AFC,0,1,0x00000000,0x00000000,NV097_SET_VIEWPORT_SCALE[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x0B00,0,8,0x00000000,0x00000000,NV097_SET_TRANSFORM_PROGRAM,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B04,0,8,0x004C2055,0x0020001B,NV097_SET_TRANSFORM_PROGRAM[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B08,0,8,0x0836186C,0x0436106C,NV097_SET_TRANSFORM_PROGRAM[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B0C,0,8,0x2F0007F8,0x20701801,NV097_SET_TRANSFORM_PROGRAM[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B80,0,41,0x00000000,0x43A00000,NV097_SET_TRANSFORM_CONSTANT,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B84,0,41,0x3F000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B88,0,41,0x3F800000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B8C,0,41,0x40000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B90,0,41,0xBF800000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[4],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B94,0,41,0x00000000,0xC3700000,NV097_SET_TRANSFORM_CONSTANT[5],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B98,0,41,0x3F800000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[6],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0B9C,0,41,0x40000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[7],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BA0,0,41,0x00000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[8],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BA4,0,41,0x00000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[9],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BA8,0,41,0xBF800000,0x47800000,NV097_SET_TRANSFORM_CONSTANT[10],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BAC,0,41,0x00000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[11],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BB0,0,40,0x43A00000,0x43A00000,NV097_SET_TRANSFORM_CONSTANT[12],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BB4,0,40,0x43700000,0x43700000,NV097_SET_TRANSFORM_CONSTANT[13],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BB8,0,40,0x00000000,0x00000000,NV097_SET_TRANSFORM_CONSTANT[14],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x0BBC,0,40,0x3F800000,0x3F800000,NV097_SET_TRANSFORM_CONSTANT[15],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x16BC,0,1,0x00000001,0x00000001,NV097_SET_EDGE_FLAG,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1720,0,40,0x0020E000,0x0020E000,NV097_SET_VERTEX_DATA_ARRAY_OFFSET,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x172C,0,40,0x0020E00C,0x0020E00C,NV097_SET_VERTEX_DATA_ARRAY_OFFSET[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1760,0,80,0x00000002,0x00001832,NV097_SET_VERTEX_DATA_ARRAY_FORMAT,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1764,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1768,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x176C,0,80,0x00000002,0x00001832,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1770,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[4],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1774,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[5],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1778,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[6],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x177C,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[7],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1780,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[8],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1784,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[9],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1788,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[10],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x178C,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[11],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1790,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[12],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1794,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[13],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1798,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[14],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x179C,0,40,0x00000002,0x00000002,NV097_SET_VERTEX_DATA_ARRAY_FORMAT[15],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x17BC,0,1,0x00000000,0x00000000,NV097_SET_LOGIC_OP_ENABLE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x17FC,0,80,0x00000005,0x00000000,NV097_SET_BEGIN_END,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1810,0,40,0x08000000,0x08000000,NV097_DRAW_ARRAYS,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1B0C,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_CONTROL0,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B24,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_BORDER_COLOR,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B4C,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_CONTROL0[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B64,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_BORDER_COLOR[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B68,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B6C,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 1, +4]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B70,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 1, +8]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B74,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 1, +12]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B78,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B7C,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET[unit 1],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1B8C,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_CONTROL0[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BA4,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_BORDER_COLOR[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BA8,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BAC,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 2, +4]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BB0,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 2, +8]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BB4,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 2, +12]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BB8,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BBC,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET[unit 2],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BCC,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_CONTROL0[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BE4,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_BORDER_COLOR[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BE8,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BEC,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 3, +4]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BF0,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 3, +8]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BF4,0,1,0x00000000,0x00000000,"NV097_SET_TEXTURE_SET_BUMP_ENV_MAT[unit 3, +12]",nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BF8,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1BFC,0,1,0x00000000,0x00000000,NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET[unit 3],nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D6C,0,1,0x00000000,0x00000000,NV097_SET_SEMAPHORE_OFFSET,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D78,0,1,0x00000001,0x00000001,NV097_SET_ZMIN_MAX_CONTROL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D7C,0,1,0xFFFF0001,0xFFFF0001,NV097_SET_ANTI_ALIASING_CONTROL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D80,0,1,0x00000000,0x00000000,NV097_SET_COMPRESS_ZBUFFER_EN,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D84,0,1,0x00000003,0x00000003,NV20_TCL_PRIMITIVE_3D_CULL_ENABLE,nxdk nv_objects.h (pin ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1D8C,0,8255,0x00000001,0x00711174,NV097_SET_ZSTENCIL_CLEAR_VALUE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x1D90,0,8214,0x00000004,0x0012BFFF,NV097_SET_COLOR_CLEAR_VALUE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x1D94,0,7560,0x00000003,0x000000F0,NV097_CLEAR_SURFACE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x1D98,0,7560,0x027F0000,0x0073006E,NV097_SET_CLEAR_RECT_HORIZONTAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x1D9C,0,7560,0x01DF0000,0x00410040,NV097_SET_CLEAR_RECT_VERTICAL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.2: surface/clear/sincronizacao
+0x0097,0x1E40,0,1,0x00000000,0x00000000,NV097_SET_COMBINER_COLOR_OCW,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1E60,0,1,0x00000001,0x00000001,NV097_SET_COMBINER_CONTROL,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1E68,0,1,0x7F800000,0x7F800000,NV097_SET_SHADOW_ZSLOPE_THRESHOLD,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1E6C,0,1,0x00000000,0x00000000,NV097_SET_SHADOW_COMPARE_FUNC,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1E70,0,1,0x00000000,0x00000000,NV097_SET_SHADER_STAGE_PROGRAM,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1E78,0,1,0x00210000,0x00210000,NV097_SET_SHADER_OTHER_STAGE_INPUT,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),sem efeito no recorte minimo; telemetria
+0x0097,0x1E94,0,2,0x00000004,0x00000006,NV097_SET_TRANSFORM_EXECUTION_MODE,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1E98,0,1,0x00000000,0x00000000,NV097_SET_TRANSFORM_PROGRAM_CXT_WRITE_EN,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1E9C,0,1,0x00000000,0x00000000,NV097_SET_TRANSFORM_PROGRAM_LOAD,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1EA0,0,1,0x00000000,0x00000000,NV097_SET_TRANSFORM_PROGRAM_START,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster
+0x0097,0x1EA4,0,41,0x0000003C,0x00000060,NV097_SET_TRANSFORM_CONSTANT_LOAD,nxdk nv_regs.h + xemu nv2a_regs.h/methods.h.inc (pins ADR0066),2.3: vertices/transformacao/raster

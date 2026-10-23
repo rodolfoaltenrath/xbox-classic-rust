@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`24d4cb0`** e testes locais
-da tarefa **1.4** (snapshot de comandos pendentes; adendo ADR-0065).
+Atualizado em **2026-10-23**, com base no commit **`7e51aa1`** e inventário local
+do ADR **0066** (métodos NV097 e recorte gráfico).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -26,7 +26,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P16), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0065) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0066) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -68,6 +68,14 @@ A apresentação Windows não foi revalidada aqui. Os sete testes Python passara
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
 ### Estado do hello e do segundo sample
+
+**Atualização vigente ADR-0066:** a raiz decimal do formatador 0x1E9B8 foi incluída;
+são 14 raízes/19391 blocos. Sonda oficial target/sonda/triangle-20261023-012028.log:
+226 chamadas/zero recusadas, orçamento em 0x16D9B, 181280329 instruções e 752 ms;
+274 chaves/42642 parâmetros NV097 e 40 DRAW_ARRAYS de nove vértices. Framebuffer
+habilitado/preto, sem PGRAPH aplicado. O ADR-0066 e seu CSV definem o recorte:
+IRQ de NOP/descritores, surface/clear/scanout em 2.2; vertex program/arrays/raster
+em 2.3. Não escrever clears usando descritores antigos antes do handler guest.
 
 **Estado vigente ADR-0065:** o consumidor PFIFO lê PRAMIN/RAM, decodifica pacotes
 limitados por orçamento e preserva bindings/métodos pendentes. BUS0 v8/PFFO v2;
@@ -135,13 +143,13 @@ Reproduzir o `triangle`:
 ```bash
 # 1) compilar (no WSL; reaproveita o SDK que build-homebrew.sh já clonou)
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-nxdk-sample.sh triangle homebrew2
-# 2) traduzir com as 13 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
+# 2) traduzir com as 14 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
   --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
   --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
-  --entry 0x1B420 --entry 0x1B340 --entry 0x196CF \
-  --out target/homebrew2/dma-review-20261023
-cargo run --release --offline --manifest-path target/homebrew2/dma-review-20261023/Cargo.toml \
+  --entry 0x1B420 --entry 0x1B340 --entry 0x196CF --entry 0x1E9B8 \
+  --out target/homebrew2/pgraph-review-20261023
+cargo run --release --offline --manifest-path target/homebrew2/pgraph-review-20261023/Cargo.toml \
   --target-dir target/homebrew2/pramin-target -- --fatias 4000
 # Para descobrir raízes de um XBE novo, automaticamente:
 bash scripts/find-translation-roots.sh <xbe> target/<pasta-nova> [raizes...]
@@ -153,11 +161,10 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-Fases 0 e 1 concluídas. A tarefa 1.4 reproduziu snapshot no meio de pacote/call
-com GET, métodos e bytes idênticos à execução contínua (gate 538). Agora 2.1 inventaria métodos recebidos e 2.2/
-2.3 implementam efeitos gráficos. A raiz do formatador 0x1E9B8 é o próximo destino
-observado, sem alterar a análise automática P5. Não confundir preto habilitado
-com triângulo renderizado. Fontes, perfis e limites estão nos ADRs 0063–0065.
+Fases 0/1 e tarefa 2.1 concluídas. Próxima 2.2: sincronização/descritores por
+IRQ de software, surface/clear e scanout, conforme ADR-0066. Depois 2.3 executa
+o vertex program observado e rasteriza os arrays, sem reconhecer o título por
+nome/hash. O inventário completo está em docs/compat/triangle-nv097-20261023.csv.
 
 1. **PFIFO/DMA_GET com efeitos reais.** O
    [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;
@@ -1412,17 +1419,16 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue pela passagem de bastão. Base 34b9801 + ADR-0065; confira Git,
-> AGENTS.md e PLANO.md em modo autônomo. Fases 0/1 concluídas, incluindo replay
-> de comandos pendentes. Próxima tarefa 2.1: inventário PGRAPH. PFIFO consome PRAMIN/RAM, resolve RAMHT e move GET por
-> palavras reais. BUS0 v8/PFFO v2; v7 permanece RegistersV1 sem consumo, v1–v6 sem
-> PFIFO. KRNL v13/AOTC v8/AOTS v3 iguais. Triangle usa 13 raízes/17997 blocos,
-> passa o bootstrap por GET=PUT=0x18C000; sonda completa para no formatador
-> 0x1E9B6 -> 0x1E9B8, 66 chamadas/zero recusadas. Há 249 chaves NV097, sem efeito
-> gráfico; framebuffer habilitado/preto. Gate 538 testes/230 nativos debug/release.
-> P15 resolvido em sessão nova; P16 declara consumidor serial. P13/P14 continuam.
-> Mantenha os snapshots legados; não promova perfis ao carregar. Commits locais
-> conforme AGENTS.md, sem push ou trailers de autoria.
+> Continue pela passagem de bastão. Base 7e51aa1 + ADR-0066; confira Git,
+> AGENTS.md/PLANO.md em modo autônomo. Fases 0/1 e 2.1 concluídas. Próxima 2.2:
+> IRQ de software, descritores/surface/clear/scanout; depois vertex program/raster.
+> Triangle com 14 raízes/19391 blocos executa o loop: 226 chamadas/zero recusadas,
+> 40 DRAW_ARRAYS de nove vértices, 274 chaves NV097; imagem preta, sem efeitos GPU.
+> Sonda target/sonda/triangle-20261023-012028.log. Métodos/fontes no ADR-0066/CSV.
+> NOP não zero é usado pelo guest para atualizar descritores via seu handler;
+> não implementar PB_* no host ou usar os descritores antigos para clear.
+> BUS0 v8/PFFO v2, perfis antigos sem promoção. Snapshot no meio do pacote/call
+> reproduz GET/métodos/bytes. Gate 538 testes, 230 gerados. Commits conforme AGENTS.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 

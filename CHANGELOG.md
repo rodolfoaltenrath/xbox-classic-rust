@@ -17,6 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/inventário gráfico: ADR-0066 e CSV das 274 chaves NV097 recebidas pelo
+  triangle, com fontes públicas, valores e efeitos planejados. 14 raízes/19391
+  blocos permitem o loop: 226 chamadas/zero recusadas e 40 submissões de nove
+  vértices, ainda sem pixels. Recorte inclui IRQ de software para atualizar
+  descritores antes do clear, scanout e vertex program por opcodes. Gate 538
+  testes, sem emulação gráfica nova nesta tarefa 2.1.
+
 - Fase 5/snapshots: replay do PFIFO no meio de pacote/parâmetros e com call ativo,
   comparando GET final, métodos e estado integral com execução contínua. Corrupções
   PCMD/bindings/contadores recusam sem publicar PFIFO. Formatos mantidos; gate

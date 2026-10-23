@@ -131,10 +131,18 @@ linhas), sem triângulo.
 
 ## Fase 2 — PGRAPH mínimo (NV097) para o triangle
 
-- [ ] 2.1 Inventário dos métodos NV097 recebidos (saída da 1.3) e escolha do recorte
+- [x] 2.1 Inventário dos métodos NV097 recebidos (saída da 1.3) e escolha do recorte
   mínimo para limpar a tela e desenhar.
   **Aceite:** ADR novo com método → fonte → efeito, e a lista dos que ficam sem efeito
   declarado.
+
+  Evidência: ADR-0066 + docs/compat/triangle-nv097-20261023.csv, 274 chaves NV097
+  com fontes, valores e efeito planejado; sonda target/sonda/triangle-20261023-012028.log,
+  14 raízes/19391 blocos, 226 chamadas/zero recusadas, 40 DRAW_ARRAYS de nove vértices.
+  Gate 538 testes (target/gate/20261023-012445.log). Captura observacional confirma
+  oito instruções de vertex program (MOV/MUL/ADD/MAD/RCP), sem copiar bytecode.
+  IRQ de NOP/descritores e scanout fazem parte do recorte necessário para 2.2;
+  efeitos gráficos ainda não implementados, framebuffer preto.
 
 - [ ] 2.2 Configuração de surface e `CLEAR_SURFACE` escrevendo no framebuffer guest.
   **Aceite:**
