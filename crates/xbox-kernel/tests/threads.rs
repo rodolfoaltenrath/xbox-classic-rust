@@ -117,7 +117,7 @@ fn saidas_invalidas_aliases_e_tamanhos_nao_publicam_recursos_ou_handle() {
     assert_eq!(bus.frames().usados(), used);
     assert_eq!(bus.mmu().paginas_mapeadas(), pages);
     assert!(d.child_thread().is_none());
-    assert!(d.virtual_memory().allocations().is_empty());
+    assert_eq!(d.virtual_memory().allocations(), []);
     assert_eq!(bus.ler_u32(GuestVirt(0x12100)).unwrap(), 0);
     assert_eq!(bus.ler_u32(GuestVirt(0x12104)).unwrap(), 0);
 }
@@ -162,7 +162,7 @@ fn oom_preserva_saidas_bitmap_e_regioes() {
     assert_eq!(bus.frames().usados(), used);
     assert_eq!(bus.mmu().paginas_mapeadas(), pages);
     assert!(d.child_thread().is_none());
-    assert!(d.virtual_memory().allocations().is_empty());
+    assert_eq!(d.virtual_memory().allocations(), []);
     assert_eq!(bus.ler_u32(GuestVirt(0x12100)).unwrap(), 0);
 }
 

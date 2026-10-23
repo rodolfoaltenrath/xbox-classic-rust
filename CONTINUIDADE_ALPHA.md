@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`87d2937`** e alterações locais
-do ADR **0062** (liberação de memória contígua).
+Atualizado em **2026-10-23**, com base no commit **`63752f5`** e ajustes locais
+da tarefa **0.0** (Clippy 1.99; sem mudança de runtime).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -62,6 +62,8 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
 compatibilidade); triangle **42/75**; **224** casos no Rust gerado em debug/release;
 **519** testes workspace/doctests no gate padrão Linux (513 no baseline + seis).
+Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
+(target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
@@ -1379,13 +1381,13 @@ O alvo inicial é o homebrew aberto; fontes públicas fixadas estão no guia nxd
 Preservar alterações locais do mantenedor. Os commits anteriores foram feitos
 pelo usuário após sugestões de mensagem; criar este guia não autoriza publicar,
 fazer push ou modificar o remoto. Commits locais seguem AGENTS.md; o modo do
-PLANO.md continua pausado nesta entrega. Ao avançar cada entrega, atualizar este arquivo,
+PLANO.md está em modo autônomo por instrução do mantenedor em 2026-10-23. Ao avançar cada entrega, atualizar este arquivo,
 o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue pela "Passagem de bastão — estado em 2026-10-23". Base 87d2937 +
-> alterações do ADR-0062; confira Git e AGENTS.md/PLANO.md (modo pausado nesta entrega).
+> Continue pela "Passagem de bastão — estado em 2026-10-23". Base 63752f5 +
+> ajustes da tarefa 0.0; confira Git e AGENTS.md/PLANO.md (modo autônomo retomado).
 > Hello executa main/apresenta em Win32; 38/69 serviços. Triangle 42/75, 12 raízes,
 > 17984 blocos. Boot D3D em PA zero/VA=0x80000000; headers PA=0x1000/RO.
 > BUS0 v6/BTPG v1, KRNL v13/GINS v1, AOTC v8/AOTS v3; formatos mantidos no 0062.
@@ -1396,8 +1398,8 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > Snapshot/replay estáveis após free. Framebuffer diagnóstico 1580 pixels/29 linhas,
 > ainda sem triângulo. Próximo: inventário público PFIFO/DMA, consumo real do
 > pushbuffer e depois PGRAPH; nunca inventar GET/EMPTY. Gate Rust 1.98.1: GATE OK,
-> 519 testes/224 nativos debug e release. Tarefa 0.0 do plano (Clippy 1.99) permanece
-> pendente; não confundir com o gate fixado. P1–P14 e limites Win32 permanecem.
+> 519 testes/224 nativos debug e release. Tarefa 0.0 concluída: gate 1.99
+> e Clippy 1.98.1 passam, sem alteração de runtime. P1–P14 e limites Win32 permanecem.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 

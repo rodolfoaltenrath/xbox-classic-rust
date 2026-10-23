@@ -41,7 +41,7 @@ fn headers_e_codigo_ficam_fora_da_pagina_dma_e_alocador_nao_a_reutiliza() {
         d.atender(&mut b, imports::trampoline(166), &r).unwrap().eax,
         0
     );
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
     d.restore_memory_context(None, &b).unwrap();
 }
 #[test]

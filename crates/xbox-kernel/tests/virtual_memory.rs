@@ -132,7 +132,7 @@ fn ponteiros_tamanhos_e_aliases_invalidos_nao_publicam_saida_ou_alocacao() {
     }
     assert_eq!(bus.frames().usados(), used);
     assert_eq!(bus.mmu().paginas_mapeadas(), pages);
-    assert!(d.virtual_memory().allocations().is_empty());
+    assert_eq!(d.virtual_memory().allocations(), []);
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn falta_de_frames_e_variantes_recusadas_preservam_memoria_e_permissoes() {
     assert_eq!(bus.frames().usados(), used);
     assert_eq!(bus.mmu().paginas_mapeadas(), mappings);
     assert_eq!(d.virtual_memory().image(), image);
-    assert!(d.virtual_memory().allocations().is_empty());
+    assert_eq!(d.virtual_memory().allocations(), []);
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn krnl_v1_a_v5_migram_sem_alocacoes_e_recuperam_contexto_do_xbe_validado() {
         let mut input = SnapshotReader::new(&bytes).unwrap();
         restored.load(&mut input).unwrap();
         assert_eq!(input.remaining(), 0);
-        assert!(restored.virtual_memory().allocations().is_empty());
+        assert_eq!(restored.virtual_memory().allocations(), []);
         assert!(restored.virtual_memory().image().is_none());
         restored.restore_memory_context(image, &bus).unwrap();
         assert_eq!(restored.virtual_memory().image(), image);

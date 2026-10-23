@@ -94,7 +94,7 @@ fn saida_invalida_recusa_antes_da_reserva_e_colisao_nao_desloca_pool() {
     assert_eq!(call(&mut bus, &mut d, &r, u32::MAX, 0x12100).unwrap(), 0);
     assert_eq!(bus.frames().usados(), used + 1);
     assert_eq!(bus.ler_u32(GuestVirt(0x12100)).unwrap(), 0xAABBCCDD);
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
 }
 #[test]
 fn resize_e_prioridade_sem_modelo_recusam_sem_alocar() {
@@ -157,5 +157,5 @@ fn krnl_v12_migra_para_nao_provisionado_sem_herdar_destino() {
     d.load(&mut reader).unwrap();
     assert_eq!(reader.remaining(), 0);
     assert!(!d.gpu_instance_memory().provisioned());
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
 }

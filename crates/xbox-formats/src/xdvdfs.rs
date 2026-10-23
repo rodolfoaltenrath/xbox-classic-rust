@@ -513,7 +513,7 @@ mod tests {
         let img = fixtures::xiso_com_ciclo();
         let fs = Xdvdfs::open(&img).unwrap();
         let entradas = fs.root().expect("deve terminar");
-        assert!(!entradas.is_empty());
+        assert_ne!(entradas.len(), 0);
     }
 
     #[test]

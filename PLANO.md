@@ -1,6 +1,6 @@
 # Plano: do polling de DMA_GET ao triângulo na tela
 
-Modo: pausado
+Modo: autônomo
 
 <!--
 Para os agentes trabalharem sem parar, troque a linha acima por "Modo: autônomo".
@@ -26,7 +26,7 @@ linhas), sem triângulo.
 
 ## Fase 0 — Liberar memória contígua (ordinal 171)
 
-- [ ] 0.0 Gate verde no toolchain desta máquina. O `cargo` do Fedora (1.99, sem rustup)
+- [x] 0.0 Gate verde no toolchain desta máquina. O `cargo` do Fedora (1.99, sem rustup)
   ignora o `rust-toolchain.toml` (1.98.1), e o clippy 1.99 traz o lint
   `assert_is_empty`, que falha em 13 pontos (`xdvdfs.rs:516` e testes do
   xbox-kernel: boot_dma, contiguous, gpu_instance, threads, virtual_memory).
@@ -34,6 +34,10 @@ linhas), sem triângulo.
   sem `#[allow]`.
   **Aceite:** `GATE OK` com cargo 1.99; nenhum `#[allow(clippy::assert_is_empty)]`
   novo no código.
+  Evidência: Rust/Cargo 1.99.0, `GATE OK: 519 testes` em
+  target/gate/20261023-001813.log; 13 asserções ajustadas sem allow; Clippy
+  workspace/all-targets também passa com Rust 1.98.1 (target/plan-00-clippy198.log).
+  Modo autônomo retomado por instrução do mantenedor em 2026-10-23.
 
 - [x] 0.1 Implementar `MmFreeContiguousMemory` liberando a alocação real no
   `contiguous`, recusando endereço desconhecido, o framebuffer e a instância GPU

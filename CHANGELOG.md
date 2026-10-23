@@ -8,6 +8,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ## [Não publicado]
 
+### Corrigido
+
+- Build/testes: treze asserções de coleções ajustadas para o lint assert_is_empty
+  do Clippy 1.99, preservando as verificações e compatibilidade com 1.98.1.
+  Gate Fedora/Rust 1.99: 519 testes; Clippy all-targets também passa no toolchain
+  fixado. Plano retomado em modo autônomo (tarefa 0.0).
+
 ### Adicionado
 
 - Fase 5/kernel: MmFreeContiguousMemory (171), stdcall/4, remove mapeamentos e

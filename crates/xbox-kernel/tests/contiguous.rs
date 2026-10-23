@@ -113,7 +113,7 @@ fn fragmentacao_oom_e_tamanhos_invalidos_nao_publicam_frames_ou_mapa() {
         assert_eq!(saved(bus.frames()), frames);
         assert_eq!(saved(bus.mmu()), mmu);
     }
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
 }
 #[test]
 fn variantes_de_protecao_alinhamento_e_irql_recusam_sem_alocar() {
@@ -131,7 +131,7 @@ fn variantes_de_protecao_alinhamento_e_irql_recusam_sem_alocar() {
         assert!(call(&mut bus, &mut Dispatcher::with_irql(irql), &regs, args()).is_err());
     }
     assert_eq!(bus.frames().usados(), used);
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
 }
 #[test]
 fn estado_preexistente_inconsistente_nao_e_sobrescrito_pela_alocacao() {
@@ -144,7 +144,7 @@ fn estado_preexistente_inconsistente_nao_e_sobrescrito_pela_alocacao() {
         Err(Erro::MemoriaContigua(_))
     ));
     assert_eq!(bus.frames().usados(), used);
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
 }
 #[test]
 fn snapshot_confere_contiguidade_permissoes_bitmap_e_aliases_sem_marcar_ad() {
@@ -217,7 +217,7 @@ fn snapshot_rejeita_geometria_ordenacao_contagem_e_migra_v9_sem_recursos() {
     let k = old.windows(4).position(|v| v == b"KRNL").unwrap();
     old[k + 4..k + 8].copy_from_slice(&9u32.to_le_bytes());
     Snapshot::load(&mut d, &mut SnapshotReader::new(&old).unwrap()).unwrap();
-    assert!(d.contiguous_memory().allocations().is_empty());
+    assert_eq!(d.contiguous_memory().allocations(), []);
     // Payload legado não pode esconder páginas novas já presentes no Bus.
     assert!(d.restore_memory_context(None, &bus).is_err());
 }
