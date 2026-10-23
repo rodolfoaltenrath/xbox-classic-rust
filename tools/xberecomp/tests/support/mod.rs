@@ -6,6 +6,7 @@ use xbox_recomp::{analysis, emit};
 
 mod bit_test;
 mod blocks;
+mod boot_dma;
 mod breakpoint;
 mod conditional;
 mod contiguous;
@@ -93,6 +94,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&pramdac::sources(output));
     main.push_str(&pfb::sources(output));
     main.push_str(&pramin::sources(output));
+    main.push_str(&boot_dma::sources(output));
     main.push_str(&sse::sources(output));
     main.push_str(&x87::sources(output));
     main.push_str(&video::sources(output));

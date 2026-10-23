@@ -564,9 +564,24 @@ ainda não representa sua relação física com a reserva de instância do kerne
 BUS0 v5 acrescenta PRAM v1 (perfil/tamanho/bytes); v1–v4 migram para zero/telemetria
 sem armazenamento modelado. A leitura de descritores pelo futuro PFIFO usará a
 mesma fonte readonly. Sem execução de DMA, novo relógio, unsafe ou concorrência.
-A página física zero ainda pertence aos headers XBE; reservar uma página para o
-bootstrap DMA requer integração ao loader, sem alias RW sobre esses headers.
+Na entrega ADR-0060, PA zero ainda abrigava headers; a evolução de boot do
+ADR-0061 está abaixo e preserva esse layout nos snapshots legados.
 Fontes, limites e testes: [ADR-0060](../adr/0060-pramin-armazenamento-instancia.md).
+
+## Página D3D no boot AOT (ADR-0061)
+
+Image::load em Mode::Aot reserva o frame físico zero antes das páginas XBE e
+mapeia somente VA=0x80000000/PA=0, RW sem execução. Headers começam em PA=0x1000,
+com sua VA/proteção original. BootDmaPage registra a posse no Bus junto de MMU e
+bitmap; CMEM não pode reivindicar esse frame. CPU e DMA usam a RAM única, sem
+backing duplicado ou efeito MMIO nessa escrita. Repetir instalação preserva bytes;
+colisão, alias externo ou metadados inconsistentes recusam. Imagem/TLS excluem a VA.
+
+BUS0 v6 acrescenta BTPG v1 (versão e bool canônico, nove bytes). V1–v5 migram sem
+reserva, conservando headers em PA zero e o replay antigo; nenhuma realocação
+ocorre na restauração. Sessão nova adota o layout de boot. Mode::Inspect conserva
+o layout de inspeção. Não executa DMA/PFIFO; P13/P14 continuam abertos.
+Fonte, teste do alvo real e limites: [ADR-0061](../adr/0061-pagina-boot-dma.md).
 
 ## 13. O que a Fase 2 entrega
 

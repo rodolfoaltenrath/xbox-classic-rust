@@ -34,6 +34,7 @@ use xbox_core::{PAGE_SIZE, RAM_SIZE, Result};
 
 use crate::addr::{Acesso, ArenaOff, GuestPhys, GuestVirt, Perm};
 use crate::arena::Arena;
+use crate::boot_dma::BootDmaPage;
 use crate::dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Telemetria};
 use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
@@ -50,6 +51,7 @@ pub struct Bus {
     mmu: Mmu,
     mapa: MapaFisico,
     frames: AlocadorDeFrames,
+    boot_dma: BootDmaPage,
     telemetria: Telemetria,
     nv2a_irq: Nv2aIrq,
     nv2a_pramdac: Nv2aPramdac,
@@ -74,6 +76,7 @@ impl Bus {
             mmu: Mmu::nova(),
             mapa: MapaFisico::novo(tamanho),
             frames: AlocadorDeFrames::novo(tamanho),
+            boot_dma: BootDmaPage::default(),
             telemetria: Telemetria::nova(),
             nv2a_irq: Nv2aIrq::default(),
             nv2a_pramdac: Nv2aPramdac::default(),
@@ -106,6 +109,23 @@ impl Bus {
     /// O alocador de frames físicos, para alocar.
     pub const fn frames_mut(&mut self) -> &mut AlocadorDeFrames {
         &mut self.frames
+    }
+
+    /// Posse da página D3D reservada pelo loader; ausência preserva layouts legados.
+    pub const fn boot_dma_page(&self) -> BootDmaPage {
+        self.boot_dma
+    }
+
+    /// Instalar antes de carregar a imagem. Repetir preserva os bytes já escritos.
+    pub fn reserve_boot_dma_page(&mut self) -> Result<()> {
+        if self.boot_dma.reserved() {
+            self.boot_dma
+                .validate(self)
+                .map_err(xbox_core::Error::format)?;
+        } else {
+            self.boot_dma = BootDmaPage::install(self)?;
+        }
+        Ok(())
     }
 
     /// O registro de acessos a MMIO não emulado.
@@ -672,7 +692,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 5);
+        out.section("BUS0", 6);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -681,11 +701,12 @@ impl Snapshot for Bus {
         self.nv2a_pramdac.save(out);
         self.nv2a_pfb.save(out);
         self.nv2a_pramin.save(out);
+        self.boot_dma.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 5)?;
-        if !matches!(versao, 1..=5) {
+        let versao = inp.section("BUS0", 6)?;
+        if !matches!(versao, 1..=6) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -722,6 +743,17 @@ impl Snapshot for Bus {
         } else {
             self.nv2a_pramin = Nv2aPramin::legacy();
         }
+        let mut boot_dma = BootDmaPage::default();
+        if versao >= 6 {
+            boot_dma.load(inp)?;
+        }
+        boot_dma
+            .validate(self)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "BTPG",
+                what,
+            })?;
+        self.boot_dma = boot_dma;
         Ok(())
     }
 }

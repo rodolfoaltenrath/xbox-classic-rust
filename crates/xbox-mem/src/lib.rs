@@ -63,6 +63,7 @@ pub mod addr;
 #[deny(clippy::undocumented_unsafe_blocks)]
 pub mod arena;
 
+pub mod boot_dma;
 pub mod bus;
 pub mod dispositivos;
 pub mod frames;
@@ -75,6 +76,7 @@ pub mod regioes;
 
 pub use addr::{Acesso, ArenaOff, GuestPhys, GuestVirt, Perm};
 pub use arena::Arena;
+pub use boot_dma::{BOOT_DMA_ADDRESS, BootDmaPage};
 pub use bus::Bus;
 pub use dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Registro, Telemetria};
 pub use frames::AlocadorDeFrames;

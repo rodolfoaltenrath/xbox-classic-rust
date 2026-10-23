@@ -146,7 +146,7 @@ fn snapshot_preserva_instancias_altas_e_replay_sem_interferir_ram_pll_irq() {
 #[test]
 fn snapshot_recusa_versao_perfil_tamanho_e_payload_truncado() {
     let bytes = saved(&bus());
-    let at = bytes.len() - PRAMIN_SIZE - 20;
+    let at = bytes.len() - 9 - PRAMIN_SIZE - 20;
     assert_eq!(&bytes[at..at + 4], b"PRAM");
     let mut dest = bus();
     for (offset, value) in [(4, 0u32), (4, 2), (8, 2), (8, 0)] {
@@ -188,7 +188,8 @@ fn bus_v1_a_v4_migram_sem_pramin_e_sem_herdar_conteudo_do_destino() {
     source.escrever_u32(START, 0xCAFEBABE).unwrap();
     let current = saved(&source);
     for version in 1u32..=4 {
-        let remove = PRAMIN_SIZE
+        let remove = 9
+            + PRAMIN_SIZE
             + 20
             + if version < 4 { 20 } else { 0 }
             + if version < 3 { 16 } else { 0 }
@@ -213,7 +214,7 @@ fn bus_v1_a_v4_migram_sem_pramin_e_sem_herdar_conteudo_do_destino() {
         );
         let checkpoint = saved(&dest);
         assert_eq!(
-            &checkpoint[checkpoint.len() - 20..checkpoint.len() - 16],
+            &checkpoint[checkpoint.len() - 29..checkpoint.len() - 25],
             b"PRAM"
         );
         let mut replay = bus();

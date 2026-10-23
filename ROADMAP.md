@@ -702,6 +702,7 @@ gráfica continua pendente de integração; a prova usa somente CPU e memória.
 #### 5a — Infra
 - [ ] Registradores MMIO: PMC, PBUS, PFIFO, PGRAPH, PCRTC, PRAMDAC, PTIMER, PRAMIN
 - [x] *(2026-10-22)* Armazenamento PRAMIN, perfil independente provisório de 1 MiB, DWORD alinhado e snapshot BUS0 v5/PRAM v1; sem execução PFIFO/PGRAPH ou vínculo físico com RAM (ADR-0060/P14)
+- [x] *(2026-10-22)* Página D3D de boot reservada antes da imagem, com posse física, BUS0 v6/BTPG v1 e replay de layouts antigos sem reserva (ADR-0061)
 - [ ] IRQs da GPU para o guest (vblank, PGRAPH)
 - [ ] DMA objects e tradução de contexto
 - [ ] Parser de pushbuffer (GET/PUT, jump, call/ret, métodos inc/non-inc)
@@ -1191,22 +1192,24 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-22 | 5 / alpha | Perfil de memória PFB (ADR-0058) | — | CFG0/CFG1 com procedência Cromwell e distinção 64/128 MiB; BUS0 v4/PFBM v1 migra v1–v3 sem ativar PFB; triangle chega a MmClaimGpuInstanceMemory (168), retorno 0x182AB; 499 testes workspace/doctests e 212 casos gerados debug/release; mantém 37/69 serviços |
 | 2026-10-22 | 5 / alpha | Consulta de instância GPU (ADR-0059/P13) | — | Ordinal 168 query-only retail 64 MiB com 32 frames reais; KRNL v13/GINS v1 e migração; triangle alcança PRAMIN e falha depois em VA=0x80000000/EIP=0x18F19; 500 testes Linux e 215 nativos debug/release; hello 37/69, triangle 41/75 |
 | 2026-10-22 | 5 / alpha | Armazenamento PRAMIN (ADR-0060/P14) | — | Tabelas/contextos persistentes, BUS0 v5/PRAM v1 e migração v1–v4 sem modelo; página zero do loader ainda bloqueia DMA; 506 testes Linux e 218 nativos debug/release |
+| 2026-10-22 | 5 / alpha | Página D3D no boot (ADR-0061) | — | PA zero reservada antes dos frames XBE, headers em PA=0x1000/RO, BUS0 v6/BTPG v1 e migração sem reserva; triangle com 12 raízes passa escrita/WBINVD e ISR/DPC; timeout DMA leva à limpeza em ordinal 171; 513 testes Linux e 221 nativos debug/release |
 
 
 ---
 
 ### Próxima ação
 
-Marco mais recente, 2026-10-22: [ADR-0060](docs/adr/0060-pramin-armazenamento-instancia.md).
-PRAMIN preserva tabelas/contextos em perfil independente de 1 MiB (P14), DWORD
-alinhado, BUS0 v5/PRAM v1. V1–v4 migram sem modelo PRAMIN. A consulta retail de
-instância permanece P13/KRNL v13. Triangle ainda falha preparando DMA na escrita
-VA=0x80000000/EIP=0x18F19; a PA zero já abriga headers XBE/RO. Próximo: reserva
-no loader antes da imagem, com posse e migração; depois PFIFO/DMA_GET real.
-Não presumir alias PRAMIN/RAM. Gate Linux: 506 testes workspace/doctests e 218
-casos gerados debug/release; hello 37/69 e triangle 41/75. Win32 não revalidado.
-A lista abaixo preserva a evolução dos marcos anteriores; o estado vigente está
-na passagem de bastão do CONTINUIDADE_ALPHA.md.
+Marco mais recente, 2026-10-22: [ADR-0061](docs/adr/0061-pagina-boot-dma.md).
+AOT reserva a página D3D em PA zero antes do XBE, VA=0x80000000/RW sem execução;
+headers passam a PA=0x1000/RO. BUS0 v6/BTPG v1 valida a posse; v1–v5 migram sem
+reserva e sem mover headers, preservando replay. Triangle passa escrita/WBINVD e
+chega ao polling NV_USER DMA_GET sem modelo. Com 12 raízes (17984 blocos), ISR/DPC
+executam; timeout leva à limpeza em MmFreeContiguousMemory (171), retorno 0x17520,
+argumento 0x80189000. Próximo: PFIFO/consumo real do pushbuffer e liberação de CMEM
+para a limpeza; depois PGRAPH. P13/P14 permanecem abertos.
+Gate Linux: 513 testes workspace/doctests e 221 casos gerados debug/release;
+hello 37/69 e triangle 41/75. Win32 não revalidado.
+A lista abaixo preserva marcos anteriores; o estado vigente está na passagem de bastão.
 
 Em ordem:
 

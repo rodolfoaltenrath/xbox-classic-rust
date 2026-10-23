@@ -822,3 +822,21 @@ A PA zero abriga headers XBE/RO: próximo passo exige reserva no loader antes da
 imagem e migração do layout, depois PFIFO/DMA_GET real. O vínculo PRAMIN/RAM
 continua provisório; serviço 168 permanece query-only/P13. Fontes e evidência:
 [ADR-0060](../adr/0060-pramin-armazenamento-instancia.md).
+
+
+### Página D3D no boot (ADR-0061, estado em 2026-10-22)
+
+AOT reserva PA zero/VA=0x80000000 antes da imagem, RW sem execução, sem alias RW
+dos headers/código. Headers ficam em PA=0x1000/RO. O Bus registra a posse separada
+de CMEM e os alocadores não reutilizam o frame. TLS não pode usar essa região como
+origem ou índice. BUS0 v6/BTPG v1 guarda a reserva; v1–v5 migram sem reserva,
+preservando bytes/layout antigo e a falta histórica. Fixture de migração inclui
+a realocação inversa dos frames; remover só BTPG não constrói um layout antigo.
+
+Triangle passa escrita/WBINVD e chega ao polling NV_USER DMA_GET sem modelo.
+Snapshot moderno e replay legado conferidos. Com 12 raízes/17984 blocos,
+ISR/DPC executam; DMA_GET não avança e o timeout leva à limpeza em ordinal 171,
+retorno 0x17520/argumento 0x80189000. Próximo: PFIFO/contextos e consumo real do
+pushbuffer, liberação CMEM para a limpeza e depois PGRAPH. P13/P14 seguem abertos. Gate Linux: 513 testes
+workspace e 221 casos gerados debug/release (contador 205 fora de x86_64),
+fmt/Clippy limpos. Fontes e reprodução: [ADR-0061](../adr/0061-pagina-boot-dma.md).

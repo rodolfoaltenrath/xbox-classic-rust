@@ -153,7 +153,12 @@ fn catalogo_tem_371_ordinais_e_abi_independente_para_assinaturas_representativas
 
 #[test]
 fn imagem_nao_pode_ocupar_regioes_reservadas_e_indice_ro_recupera_protecao() {
-    for base in [STACK_BASE, TIB_BASE, imports::TRAMPOLINE_BASE] {
+    for base in [
+        STACK_BASE,
+        TIB_BASE,
+        imports::TRAMPOLINE_BASE,
+        xbox_mem::BOOT_DMA_ADDRESS.0,
+    ] {
         let mut bytes = xbe_com_codigo(&[0xC3]).unwrap();
         put(&mut bytes, 0x10C, base + 4096 - 0x10000);
         put(&mut bytes, 0x33C, base);
@@ -176,4 +181,20 @@ fn imagem_nao_pode_ocupar_regioes_reservadas_e_indice_ro_recupera_protecao() {
             .is_err()
     );
     assert_ne!(startup.image.bus.ler_u32(GuestVirt(0x12010)).unwrap(), 0);
+}
+
+#[test]
+fn tls_nao_pode_usar_pagina_de_boot_como_origem_ou_indice_da_imagem() {
+    for source in [true, false] {
+        let mut bytes = tls_image();
+        if source {
+            put(&mut bytes, 0x3C0, xbox_mem::BOOT_DMA_ADDRESS.0);
+            put(&mut bytes, 0x3C4, xbox_mem::BOOT_DMA_ADDRESS.0 + 4);
+        } else {
+            put(&mut bytes, 0x3C8, xbox_mem::BOOT_DMA_ADDRESS.0);
+        }
+        let xbe = xbox_formats::Xbe::parse(&bytes).unwrap();
+        assert!(xbox_kernel::loader::validate_startup_layout(&xbe).is_err());
+        assert!(Image::prepare_aot(&bytes).is_err());
+    }
 }

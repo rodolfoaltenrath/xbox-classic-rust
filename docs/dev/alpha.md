@@ -35,11 +35,14 @@ retail 64 MiB de MmClaimGpuInstanceMemory com reserva física real, fronteira
 provisória (P13); resize/devkit recusam. O
 [ADR-0060](../adr/0060-pramin-armazenamento-instancia.md) acrescenta armazenamento
 PRAMIN independente de 1 MiB (P14), BUS0 v5/PRAM v1 e migração v1–v4 sem modelo.
-Triangle preserva RAMHT/contextos, mas falha escrevendo VA=0x80000000/EIP=0x18F19
-antes de WBINVD/pb_start: a PA zero pertence aos headers XBE/RO. Próximo: reserva
-no loader antes da imagem, com migração de layout; depois PFIFO/DMA_GET e PGRAPH.
-O vínculo físico PRAMIN/RAM e renderização permanecem pendentes. Os registros por
-ADR abaixo preservam bloqueios históricos; a passagem de bastão é o estado vigente.
+O [ADR-0061](../adr/0061-pagina-boot-dma.md) reserva a página D3D antes dos frames
+XBE: PA zero/VA=0x80000000, RW sem execução, headers em PA=0x1000/RO. BUS0 v6/BTPG
+v1 guarda a posse; v1–v5 migram sem reserva e preservam o layout/replay anterior.
+TLS e imagem não podem ocupar a nova VA. Triangle preserva RAMHT/contextos,
+passa a escrita/WBINVD e chega ao polling DMA_GET sem modelo. Com 12 raízes,
+ISR/DPC executam; timeout leva a pb_kill e à falta do ordinal 171 na limpeza.
+Próximo: PFIFO/processamento real do pushbuffer e liberação CMEM, depois PGRAPH. P13/P14 e renderização continuam
+pendentes. Registros por ADR abaixo são históricos; a passagem de bastão é vigente.
 
 ## Alvo escolhido
 
@@ -161,7 +164,7 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual no Linux tem **506 testes workspace/doctests** e **218 casos de
+A validação atual no Linux tem **513 testes workspace/doctests** e **221 casos de
 Rust gerado em debug/release**, incluindo PRAMIN/PFB/NVPLL, memória e snapshots. O Rust
 fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
 passa do PLL/PFB e da consulta de instância GPU, mas ainda não renderiza.

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-22**, com base no commit **`7dda13b`** e alterações locais
-do ADR **0060** (armazenamento de instância PRAMIN).
+Atualizado em **2026-10-22**, com base no commit **`b712e8d`** e alterações locais
+do ADR **0061** (página de boot D3D antes da imagem).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -26,13 +26,13 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P14), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0060) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0061) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v5/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v6/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** (pedido
@@ -40,9 +40,9 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (506 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (513 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `218 passed` em x86-64 e `202` fora dele —
+   confere o **contador de casos gerados**, hoje `221 passed` em x86-64 e `205` fora dele —
    some os testes novos ali).
 
 ### O que foi feito (resumo por etapa)
@@ -55,11 +55,11 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 | Hello executa | janela MMIO do NV2A, `KeDelayExecutionThread` avançando o relógio, `main` do hello roda | 0051 |
 | Janela | framebuffer apresentado em janela Win32 (`--janela`), só Windows | 0052 |
 | 2026-10-22 | laço de execução em `Session::conduzir` + `--fatias N`; `KeTickCount`; **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC, WBINVD**; alinhamento 0 em `MmAllocateContiguousMemoryEx`; **eventos do kernel**; **interrupções, ISR, DPC e vblank** | 0053, 0054, 0055 |
-| Fase 5 inicial | evidência pública e scripts; NVPLL programável; CFG0/CFG1 com perfil Cromwell 64/128 MiB; consulta de instância GPU com reserva física retail 64 MiB (P13), KRNL v13/GINS v1; PRAMIN persistente independente (P14), BUS0 v5/PRAM v1 | 0056–0060 |
+| Fase 5 inicial | evidência pública e scripts; NVPLL programável; CFG0/CFG1 com perfil Cromwell 64/128 MiB; consulta de instância GPU com reserva física retail 64 MiB (P13), KRNL v13/GINS v1; PRAMIN persistente independente (P14), BUS0 v6/BTPG v1: página D3D reservada antes dos frames XBE | 0056–0061 |
 
 Números hoje: **37 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); triangle **41/75**; **218** casos no Rust gerado em debug/release;
-**506** testes workspace/doctests no gate padrão Linux (500 no baseline + seis).
+compatibilidade); triangle **41/75**; **221** casos no Rust gerado em debug/release;
+**513** testes workspace/doctests no gate padrão Linux (506 no baseline + sete).
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
@@ -67,9 +67,11 @@ na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
 - **Hello (`target/homebrew/hello.xbe`)**: executa o `main`, desenha "Hello nxdk!" e mostra
   numa janela (1208 pixels idênticos à RAM). Comando completo e nove raízes na tabela de
-  contratos mais abaixo. Em release a primeira compilação leva 3–4 min (LTO fat).
+  contratos mais abaixo. Revalidado em release/headless no Linux após a reserva:
+  1208 pixels/48 linhas, 47 chamadas e orçamento de main esgotado normalmente
+  (target/boot-hello.log). Win32 não foi revalidado aqui. A primeira compilação leva minutos.
 - **`triangle` (segundo sample, pbkit)**: foi compilado com o mesmo SDK e é o guia dos
-  próximos bloqueios. Estado: traduz com 10 raízes, passa pela inicialização de vídeo, cria o
+  próximos bloqueios. Estado: traduz com 12 raízes (17984 blocos, incluindo ISR/DPC), passa pela inicialização de vídeo, cria o
   evento de vblank e **instala o ISR e o DPC**. Em sessão nova, lê NVPLL=0x00011C01
   (perfil PublicReferenceV1), escreve parâmetros PTIMER e passa da verificação
   **PFB_CFG0** (FirmwareMemoryV1: 0x03070003 na arena de 64 MiB). A consulta
@@ -77,12 +79,20 @@ na entrega anterior; não repetidos nesta, pois scripts não mudaram.
   retorna 0x83FF0000 e escreve padding=0x10000 (ADR-0059/P13). Passa a tocar
   PRAMIN em 0xFD71386C (EIP=0x183AA); agora preserva tabelas/contextos no perfil
   IndependentV1, 1 MiB, ainda sem vínculo físico com RAM (ADR-0060/P14).
-  A sonda passou: RAMHT com 30 DWORDs não zero, contextos com 323, ausência de
-  telemetria PRAMIN e snapshot integral estável; 24826623 retired/ciclos, 54 chamadas.
-  Ainda termina na escrita não mapeada VA=0x80000000/EIP=0x18F19,
-  preparação DMA antes de WBINVD/pb_start. A PA zero já contém headers XBE, RO;
-  preparar essa página requer reserva no loader antes das alocações da imagem.
-  Log target/pramin-triangle-probe.log; sem aceite de pb_init ou triângulo.
+  O ADR-0061 reserva PA zero antes da imagem, VA=0x80000000/RW sem execução;
+  headers ficam em PA=0x1000/RO. A sonda moderna passou da escrita e WBINVD,
+  chegou ao polling de DMA_GET (0xFD800044, sem modelo) e conferiu snapshot integral.
+  Valor bootstrap=0x18C001, pb_Head=0x8018C000; EIP=0x18F9D, retired/ciclos=24827445,
+  54 chamadas. A execução com as dez raízes antigas passa a parar em 0x1B420,
+  o ISR registrado pelo pbkit. Foram acrescentadas as raízes ISR=0x1B420 e
+  DPC=0x1B340; a tradução atual usa 12 raízes/17984 blocos e executou ISR/DPC
+  (12 ocorrências). DMA_GET segue zero por 12402025 leituras; pb_init/pb_kill
+  expiram as esperas. Para em MmFreeContiguousMemory (171), retorno 0x17520,
+  argumento 0x80189000, trampolim 0x7FFE0558; 173079257 retired/ciclos, 81 chamadas
+  e uma recusada. Snapshot estável também nesse ponto. O framebuffer mostra
+  diagnóstico (1580 pixels/29 linhas), sem triângulo. Logs target/boot-triangle-*.log.
+  BUS0 v1–v5 migram sem reserva D3D e preservam o layout físico; a sonda v5
+  reproduz a falta VA=0x80000000/EIP=0x18F19, headers em PA zero, 24826623 retired.
   BUS0 v1–v4 migram sem modelo PRAMIN; sessão nova adota o perfil. BUS0 v1–v3
   preservam PFB sem modelo: o replay v3 continua rejeitando PFB e falhando em
   pb_start chamado por pb_kill, VA=0x40/PC=0x16EA2. v1/v2 também preservam PLL
@@ -93,10 +103,11 @@ Reproduzir o `triangle`:
 ```bash
 # 1) compilar (no WSL; reaproveita o SDK que build-homebrew.sh já clonou)
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-nxdk-sample.sh triangle homebrew2
-# 2) traduzir com as 10 raízes conhecidas, compilar e rodar (Git Bash, raiz do repo)
+# 2) traduzir com as 12 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
   --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
   --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
+  --entry 0x1B420 --entry 0x1B340 \
   --out target/homebrew2/proj
 cargo run --release --offline --manifest-path target/homebrew2/proj/Cargo.toml \
   --target-dir target/homebrew2/tgt -- --fatias 4000
@@ -110,20 +121,19 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-1. **Reserva da página de bootstrap DMA no loader.** O
-   [ADR-0060](docs/adr/0060-pramin-armazenamento-instancia.md) preserva PRAMIN
-   no perfil independente P14. Triangle ainda falha em EIP=0x18F19 ao escrever
-   (pb_Head & 0x0FFFFFFF)+1 em VA=0x80000000, antes de WBINVD/pb_start.
-   A PA zero já abriga headers XBE/RO. Definir posse/reserva antes das alocações
-   da imagem, sem criar alias RW dos headers; testar migração/replay do layout
-   antigo. O ADR-0060 aponta a reserva D3D_PHYSICAL_PAGE=0 no boot do Cxbx público
-   fixado, como referência para o próximo contrato. Preservar P13/P14; resize/devkit
-   e vínculo PRAMIN/RAM faltam.
-2. **PFIFO/DMA do pushbuffer, depois PGRAPH.** PRAMIN agora é a fonte readonly
-   dos descritores, mas não os executa. Modelar o canal/contexto e DMA_GET com
-   efeitos reais; então métodos NV097 para limpar a tela e desenhar o triângulo.
-   Cada recorte exige fonte, ADR e teste. PTIMER continua sem modelo apesar das
-   escritas. Preservar o comportamento dos perfis legados dos snapshots.
+1. **PFIFO/DMA_GET com efeitos reais.** O
+   [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;
+   o triangle já passa a escrita/WBINVD e chega ao polling NV_USER DMA_GET.
+   Usar a PRAMIN como fonte dos descritores, implementar o canal/contexto e o
+   processamento do pushbuffer com limites e snapshot. Não adiantar GET/PUT
+   artificialmente para satisfazer o polling. Com 12 raízes ISR/DPC funcionam;
+   DMA não avança, o timeout leva a pb_kill e ao ordinal 171 não atendido.
+   MmFreeContiguousMemory (171) precisa liberar recursos reais para concluir a
+   limpeza; isso não resolve a causa do timeout. Preservar P13/P14 e a posse do boot.
+2. **PGRAPH, depois dos contratos PFIFO.** Métodos NV097 mínimos para limpar a
+   tela e desenhar o triângulo. Cada recorte exige consumidor real, fonte, ADR e teste.
+   PTIMER continua sem modelo apesar das escritas. Preservar os perfis legados:
+   BUS0 v1–v5 não recebem a reserva de boot por migração; sessão nova usa o layout novo.
 3. **Itens menores já mapeados** (cada um com condição de saída no ROADMAP §16.1):
    escalonador de threads (P3); análise automática de jump tables (P5); apresentação em
    Linux (P6, Fases 8/10); `KeTickCount` em tempo real (P7); MXCSR dinâmico e aritmética
@@ -190,6 +200,7 @@ que se aplica só à execução do guest.
 | `crates/xbox-mem/src/{bus,mmu,nv2a_irq,dispositivos}.rs` | bus, MMU, os 4 registradores de vblank, telemetria de MMIO |
 | `crates/xbox-mem/src/nv2a_pramdac.rs` | perfil NVPLL e coeficiente autoritativo, frequência derivada, NPLL v1 |
 | `crates/xbox-mem/src/nv2a_pfb.rs` | CFG0/CFG1 com perfil de firmware 64/128 MiB, readback e PFBM v1 |
+| `crates/xbox-mem/src/boot_dma.rs` | reserva física da página D3D, único alias RW, BTPG v1 e validação de posse |
 | `crates/xbox-mem/src/nv2a_pramin.rs` | PRAMIN de 1 MiB, perfil independente P14, acesso DWORD e PRAM v1 |
 | `crates/xbox-platform/src/{display,windows}.rs` | `Apresentador` e a janela Win32 |
 | `tools/xberecomp/` | CLI `translate`; `template_main.rs.txt` é o `main` gerado; `tests/support/*.rs` + `tests/verification_*.inc` são os testes que rodam Rust gerado com x86 escrito à mão |
@@ -1342,7 +1353,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 218 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 221 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1362,16 +1373,16 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue o Obsidian a partir da "Passagem de bastão — estado em 2026-10-22".
-> Base verificada: 7dda13b + alterações locais ADR-0060; confira Git antes de alterar.
-> Hello executa main/apresenta em Win32. Triangle passa PLL/PFB e a consulta de
-> instância (P13), e preserva RAMHT/contextos em PRAMIN independente (1 MiB/P14).
-> BUS0 v5/PRAM v1, v1–v4 migram sem PRAMIN modelada; KRNL v13/AOTC v8/AOTS v3 iguais.
-> Ainda falha na preparação DMA VA=0x80000000/EIP=0x18F19 antes de WBINVD/pb_start.
-> A PA zero abriga headers XBE/RO: próximo passo é reservar a página de bootstrap
-> no loader antes da imagem, com posse/snapshot/migração. Depois PFIFO/DMA_GET real;
-> não simular sucesso nem presumir alias PRAMIN/RAM. Gate Linux 506 testes/218
-> nativos debug e release. Win32 não revalidado. Clock único, arena exclusiva,
+> Continue pela "Passagem de bastão — estado em 2026-10-22". Base b712e8d +
+> alterações locais ADR-0061; confira Git. Hello já executa main/apresenta em Win32.
+> AOT novo reserva PA zero/VA=0x80000000 para D3D antes da imagem; headers em
+> PA=0x1000/RO, código sem alias RW. BUS0 v6/BTPG v1; v1–v5 preservam layout antigo
+> sem reserva, incluindo a falta DMA histórica. KRNL v13/AOTC v8/AOTS v3 iguais.
+> Triangle com 12 raízes (incluindo ISR/DPC) passa escrita/WBINVD e gira em DMA_GET
+> sem modelo; timeout leva a pb_kill e MmFreeContiguousMemory (171), retorno 0x17520,
+> argumento 0x80189000. Ainda sem triângulo. Próximo: PFIFO/DMA_GET e liberação real,
+> depois PGRAPH; não inventar conclusão do DMA. P13/P14 seguem abertos. Gate Linux
+> 513 testes/221 nativos debug e release. Win32 não revalidado. Clock/arena únicos,
 > provisórios P1–P14. Scripts preservam logs e exigem diretório novo. Mantenedor comita.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente

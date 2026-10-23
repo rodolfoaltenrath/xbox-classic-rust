@@ -1,7 +1,7 @@
 # Recompilação estática em Rust
 
 Estado: subconjunto inteiro ampliado da Fase 3-AOT e kernel HLE parcial, conforme
-ADRs 0013–0060. O hello nxdk inicia nativamente com TLS/imports, 37 serviços
+ADRs 0013–0061. O hello nxdk inicia nativamente com TLS/imports, 37 serviços
 e perfil de CPU/PCI guest; executa o bootstrap de uma filha e configura o modo
 de vídeo sobre memória física contígua. Main e apresentação Win32 funcionam com
 bytes crus, sem gamma/filtros. Há infraestrutura de eventos/vblank/ISR/DPC;
@@ -9,8 +9,9 @@ o segundo alvo triangle passa do NVPLL/PFB e da consulta de instância GPU
 (ordinal 168, retail 64 MiB, reserva física P13). KRNL v13/GINS v1 guarda o
 bootstrap e migra v1–v12 sem estado ativo. PRAMIN preserva tabelas/contextos
 no perfil independente P14, BUS0 v5/PRAM v1 e migração v1–v4 sem modelo PRAMIN.
-Triangle ainda falha escrevendo VA=0x80000000/EIP=0x18F19: a PA zero do loader
-abriga headers XBE/RO, exigindo reserva antes da imagem para o bootstrap DMA.
+AOT novo reserva PA zero para D3D antes da imagem, mantendo headers em PA=0x1000/RO.
+BUS0 v6/BTPG v1 persiste a posse; v1–v5 preservam o layout anterior sem reserva.
+Triangle passa escrita/WBINVD e chega ao polling DMA_GET sem modelo.
 GPU 3D, scheduler geral e áudio permanecem pendentes.
 
 ## Pipeline implementado

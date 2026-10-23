@@ -134,11 +134,31 @@ pub fn validate_startup_layout(xbe: &Xbe<'_>) -> xbox_core::Result<()> {
             (data::DATA_RO_BASE, data::DATA_SIZE),
             (data::DATA_RW_BASE, data::DATA_SIZE),
             (mmio::NV2A_BASE, mmio::NV2A_SIZE),
+            (xbox_mem::BOOT_DMA_ADDRESS.0, 4096),
         ] {
             if base < reserved + length && base + size > reserved {
                 return Err(CoreError::format(format!(
                     "imagem ocupa região reservada: 0x{reserved:08X}"
                 )));
+            }
+        }
+    }
+    // A página de boot já existe antes de ler TLS. Ela não pode fazer uma
+    // origem/índice externos à imagem parecerem válidos nesta fase.
+    if let Some(tls) = xbe.tls {
+        let raw = tls
+            .data_end_address
+            .checked_sub(tls.data_start_address)
+            .ok_or_else(|| CoreError::format("faixa TLS invertida"))?;
+        for (base, size) in [(tls.data_start_address, raw), (tls.index_address, 4)] {
+            let boot = u64::from(xbox_mem::BOOT_DMA_ADDRESS.0);
+            if size != 0
+                && u64::from(base) < boot + 4096
+                && u64::from(base) + u64::from(size) > boot
+            {
+                return Err(CoreError::format(
+                    "TLS não pode usar a página de boot DMA como imagem",
+                ));
             }
         }
     }

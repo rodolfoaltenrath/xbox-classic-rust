@@ -22,7 +22,7 @@ mod pramin_verification {
         let mut s=loaded();pending(&mut s);let checkpoint=saved(&s);finish(&mut s);let complete=saved(&s);
         let mut restored=loaded();Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();
         assert!(saved(&restored)==checkpoint);finish(&mut restored);assert!(saved(&restored)==complete);
-        let mut old=checkpoint;let at=old.windows(4).position(|v|v==b"BUS0").unwrap();old[at+4..at+8].copy_from_slice(&4u32.to_le_bytes());
+        let mut old=super::boot_dma_verification::legacy_snapshot(&checkpoint,include_bytes!("pramin_guest.xbe"));let at=old.windows(4).position(|v|v==b"BUS0").unwrap();old[at+4..at+8].copy_from_slice(&4u32.to_le_bytes());
         let at=old.windows(4).position(|v|v==b"PRAM").unwrap();old.drain(at..at+20+xbox_mem::nv2a_pramin::PRAMIN_SIZE);
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();
         assert_eq!(restored.bus.nv2a_pramin().profile(),PraminProfile::LegacyUnmodeled);finish(&mut restored);

@@ -2,8 +2,8 @@
 
 ## Segundo alvo e memória de instância — 2026-10-22
 
-O triangle/pbkit usa as dez raízes documentadas na passagem de bastão, produzindo
-17883 blocos. O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
+O triangle/pbkit usa as 12 raízes documentadas na passagem de bastão, produzindo
+17984 blocos (inclui ISR=0x1B420 e DPC=0x1B340). O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
 coeficiente NVPLL programável, com perfil PublicReferenceV1 baseado em fontes
 públicas fixadas. Sessão nova lê 0x00011C01/233333324 Hz nominais; BUS0 v3/NPLL v1
 guarda perfil/coeficiente. BUS0 v1/v2 continuam sem modelo por migração explícita.
@@ -27,17 +27,26 @@ DWORD alinhados. RAMHT e contextos deixam de ser descartados. Aliases/VA/físico
 compartilham esse estado; ainda sem vínculo físico presumido com RAM/CMEM.
 BUS0 v5/PRAM v1 preserva bytes/perfil; v1–v4 migram sem modelo PRAMIN.
 
-Triangle ainda termina na escrita VA=0x80000000/EIP=0x18F19, preparação DMA com
-pb_Head mascarado + 1 antes de WBINVD/pb_start. A página física zero já abriga os
-headers XBE/RO; o próximo recorte exige reserva no loader antes da imagem e
-migração do layout antigo. Depois PFIFO/DMA_GET com efeitos reais. PTIMER e
-renderização continuam pendentes; snapshots legados preservam seus bloqueios.
+O [ADR-0061](../adr/0061-pagina-boot-dma.md) reserva a página D3D antes da imagem
+AOT: PA zero/VA=0x80000000, RW sem execução, com headers em PA=0x1000/RO.
+A reserva tem dono no Bus e não é uma alocação CMEM do título. Imagem e TLS não
+podem usar a VA de boot. BUS0 v6/BTPG v1 persiste a posse; v1–v5 preservam o layout
+físico antigo sem reserva, sem mover headers ou mudar o replay silenciosamente.
 
-Validação Linux: 506 testes workspace/doctests e 218 casos gerados debug/release.
+Triangle passa a escrita/WBINVD e chega ao polling DMA_GET (0xFD800044, sem modelo).
+A sonda confere bootstrap=0x18C001, headers intactos e snapshot estável. A sonda v5
+reproduz a falta antiga VA=0x80000000/EIP=0x18F19. Próximo: PFIFO/contextos e DMA_GET
+com efeitos reais a partir da PRAMIN, depois PGRAPH. Com as 12 raízes, ISR/DPC
+executam, DMA_GET continua zero e pb_init/pb_kill expiram a espera. O bloqueio
+final é MmFreeContiguousMemory (171), retorno 0x17520, argumento 0x80189000,
+na limpeza. O framebuffer mostra diagnóstico (1580 pixels/29 linhas), sem
+triângulo. Falta liberar CMEM para concluir a limpeza; PTIMER segue sem modelo.
+
+Validação Linux: 513 testes workspace/doctests e 221 casos gerados debug/release.
 Win32 não revalidado aqui; scripts não alterados. Hello permanece 37/69 serviços,
-triangle 41/75. Evidência local: `target/pramin-triangle-probe.log`, sonda que
-confere tabelas/contextos, a falta e replay integral. Ver ADR-0060 para os limites;
-a execução ainda não conclui pb_init nem desenha o triângulo.
+triangle 41/75. Evidências locais: `target/boot-triangle-probe.log` e
+`target/boot-triangle-after.log`, `target/boot-triangle-irq.log` e
+`target/boot-triangle-irq-probe.log`; fontes e limites no ADR-0061.
 
 ## Build local
 

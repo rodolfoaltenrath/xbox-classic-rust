@@ -54,7 +54,12 @@ fn inspecao_aceita_rwx_mas_aot_recusa_inclusive_pagina_compartilhada() {
     assert!(Image::load(&bytes, Mode::Aot).is_err());
     let bytes = xbe_com_codigo(&[0x90, 0xC3]).unwrap();
     let image = Image::load(&bytes, Mode::Aot).unwrap();
-    assert!(image.bus.ler_u8(GuestVirt(0x80000000)).is_err());
+    assert_eq!(image.bus.ler_u8(xbox_mem::BOOT_DMA_ADDRESS).unwrap(), 0);
+    let code = image
+        .bus
+        .traduzir(GuestVirt(0x11000), Acesso::Leitura)
+        .unwrap();
+    assert!(image.bus.ler_u8(GuestVirt(0x80000000 + code.0)).is_err());
 }
 
 #[test]

@@ -145,9 +145,12 @@ impl ContiguousMemory {
     }
     /// Consulta sem A/D: posse física, tradução linear e ausência de aliases externos.
     pub(super) fn validate_bus(&self, bus: &Bus) -> Result<(), &'static str> {
+        bus.boot_dma_page().validate(bus)?;
+        let boot_reserved = bus.boot_dma_page().reserved();
         let mut owned = BTreeSet::new();
         for allocation in &self.allocations {
             if !allocation.valid()
+                || (boot_reserved && allocation.physical.0 == 0)
                 || u64::from(allocation.physical.0) + u64::from(allocation.size) > bus.ram() as u64
             {
                 return Err("geometria de alocação contígua fora da RAM");
@@ -172,6 +175,7 @@ impl ContiguousMemory {
             }
             if (pa.0 as usize) < bus.ram()
                 && (CONTIGUOUS_WINDOW..CONTIGUOUS_WINDOW + MAX_RAM).contains(&va.0)
+                && !(boot_reserved && pa.0 == 0 && va == xbox_mem::BOOT_DMA_ADDRESS)
                 && (!owned.contains(&pa.frame()) || va.0 != CONTIGUOUS_WINDOW + pa.0)
             {
                 return Err("janela de RAM contígua sem recurso registrado");

@@ -46,6 +46,9 @@ impl Image {
         validate_layout(&xbe)?;
         let mut bus = Bus::novo()?;
         let pages = page_plan(&xbe, mode, bus.ram())?;
+        if mode == Mode::Aot {
+            bus.reserve_boot_dma_page()?;
+        }
         for &va in pages.keys() {
             let frame = bus
                 .frames_mut()
@@ -143,6 +146,11 @@ fn page_plan(xbe: &Xbe<'_>, mode: Mode, ram: usize) -> xbox_core::Result<BTreeMa
             perm,
             ram,
         )?;
+    }
+    if mode == Mode::Aot && pages.contains_key(&xbox_mem::BOOT_DMA_ADDRESS.0) {
+        return Err(CoreError::format(
+            "imagem ocupa a página reservada de boot DMA",
+        ));
     }
     if mode == Mode::Aot && pages.values().any(|p| p.0 & 6 == 6) {
         return Err(CoreError::format(

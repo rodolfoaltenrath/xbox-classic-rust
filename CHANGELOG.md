@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/memória: reserva da página D3D no boot AOT antes dos frames XBE,
+  PA zero/VA=0x80000000, RW sem execução e com posse distinta de CMEM. Headers
+  ficam em PA=0x1000/RO; código continua sem alias RW. Validação exclui a região
+  de TLS e recusa colisões/aliases. BUS0 v6/BTPG v1 preserva a reserva; v1–v5
+  mantêm layout antigo sem movê-lo. Triangle passa a escrita/WBINVD e chega ao
+  polling DMA_GET. Com 12 raízes ISR/DPC executam; timeout leva a pb_kill e à falta
+  do ordinal 171 na limpeza; ainda sem PFIFO/renderização. 513 testes Linux e 221 nativos
+  debug/release; serviços mantidos em hello 37/69 e triangle 41/75 (ADR-0061).
+
 - Fase 5: armazenamento PRAMIN de 1 MiB com perfil independente explícito (P14),
   preservando RAMHT/contextos por VA/aliases/físico. Acessos DWORD alinhados,
   validação de larguras/bordas e preflight sem stores parciais. BUS0 v5/PRAM v1
