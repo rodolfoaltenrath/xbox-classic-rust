@@ -116,11 +116,18 @@ linhas), sem triângulo.
   Métodos sem efeito gráfico são relatados. ADR-0065/BUS0 v8/PFFO v2; 13 raízes/
   17997 blocos, acrescida 0x196CF para o switch de cor de 32 bits. P16 declara limites.
 
-- [ ] 1.4 Estado do PFIFO no snapshot no meio do pushbuffer.
+- [x] 1.4 Estado do PFIFO no snapshot no meio do pushbuffer.
   **Aceite:**
   - `GATE OK`;
   - teste que salva o snapshot com comandos pendentes, restaura e obtém o mesmo
     DMA_GET final e a mesma lista de métodos de uma execução sem interrupção.
+
+  Evidência: GATE OK: 538 testes (target/gate/20261023-011523.log). Testes
+  snapshot_no_meio_do_pacote_e_dos_parametros_reproduz_get_e_lista_de_metodos e
+  snapshot_com_call_ativo_e_objeto_ligado_reproduz_return_e_parametros comparam
+  GET, registros de métodos e snapshot integral com execução contínua; terceiro
+  teste recusa PCMD/bindings/metadados corrompidos antes de publicar PFIFO.
+  Adendo ADR-0065; formatos mantidos, 230 casos gerados permanecem passando.
 
 ## Fase 2 — PGRAPH mínimo (NV097) para o triangle
 

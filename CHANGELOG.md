@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/snapshots: replay do PFIFO no meio de pacote/parâmetros e com call ativo,
+  comparando GET final, métodos e estado integral com execução contínua. Corrupções
+  PCMD/bindings/contadores recusam sem publicar PFIFO. Formatos mantidos; gate
+  538 testes Linux/230 casos gerados. Tarefa 1.4, adendo ADR-0065.
+
 - Fase 5/PFIFO: consumidor limitado de pushbuffer pela PRAMIN/RAM reais, jump
   antigo/novo, call/return e pacotes inc/non-inc, RAMHT e bindings, contagem de
   métodos sem efeito gráfico. Conduzir serve até 4096 palavras por fronteira;

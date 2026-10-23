@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`34b9801`** e alterações locais
-do ADR **0065** (consumo real do pushbuffer).
+Atualizado em **2026-10-23**, com base no commit **`24d4cb0`** e testes locais
+da tarefa **1.4** (snapshot de comandos pendentes; adendo ADR-0065).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -41,7 +41,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (535 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (538 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
    confere o **contador de casos gerados**, hoje `230 passed` em x86-64 e `214` fora dele —
    some os testes novos ali).
@@ -61,7 +61,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 
 Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
 compatibilidade); triangle **42/75**; **230** casos no Rust gerado em debug/release;
-**535** testes workspace/doctests no gate padrão Linux (526 no baseline + nove).
+**538** testes workspace/doctests no gate padrão Linux (535 no baseline + três).
 Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
 (target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
@@ -153,8 +153,8 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-Tarefas 0.0/1.1/1.2/1.3 concluídas. Próxima 1.4: comparar snapshot no meio de
-pacote/call com execução contínua. Depois 2.1 inventaria métodos recebidos e 2.2/
+Fases 0 e 1 concluídas. A tarefa 1.4 reproduziu snapshot no meio de pacote/call
+com GET, métodos e bytes idênticos à execução contínua (gate 538). Agora 2.1 inventaria métodos recebidos e 2.2/
 2.3 implementam efeitos gráficos. A raiz do formatador 0x1E9B8 é o próximo destino
 observado, sem alterar a análise automática P5. Não confundir preto habilitado
 com triângulo renderizado. Fontes, perfis e limites estão nos ADRs 0063–0065.
@@ -1413,13 +1413,13 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 ## Texto pronto para iniciar com outra LLM
 
 > Continue pela passagem de bastão. Base 34b9801 + ADR-0065; confira Git,
-> AGENTS.md e PLANO.md em modo autônomo. Próxima tarefa 1.4: snapshot de comandos
-> pendentes; depois PGRAPH. PFIFO consome PRAMIN/RAM, resolve RAMHT e move GET por
+> AGENTS.md e PLANO.md em modo autônomo. Fases 0/1 concluídas, incluindo replay
+> de comandos pendentes. Próxima tarefa 2.1: inventário PGRAPH. PFIFO consome PRAMIN/RAM, resolve RAMHT e move GET por
 > palavras reais. BUS0 v8/PFFO v2; v7 permanece RegistersV1 sem consumo, v1–v6 sem
 > PFIFO. KRNL v13/AOTC v8/AOTS v3 iguais. Triangle usa 13 raízes/17997 blocos,
 > passa o bootstrap por GET=PUT=0x18C000; sonda completa para no formatador
 > 0x1E9B6 -> 0x1E9B8, 66 chamadas/zero recusadas. Há 249 chaves NV097, sem efeito
-> gráfico; framebuffer habilitado/preto. Gate 535 testes/230 nativos debug/release.
+> gráfico; framebuffer habilitado/preto. Gate 538 testes/230 nativos debug/release.
 > P15 resolvido em sessão nova; P16 declara consumidor serial. P13/P14 continuam.
 > Mantenha os snapshots legados; não promova perfis ao carregar. Commits locais
 > conforme AGENTS.md, sem push ou trailers de autoria.

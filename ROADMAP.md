@@ -1202,6 +1202,10 @@ Uma linha por marco concluído. Append-only.
 
 ### Próxima ação
 
+Tarefa 1.4 concluída: snapshot de pacote/parâmetros/call reproduz GET, métodos e
+bytes da execução contínua; gate 538 testes, formatos mantidos (adendo ADR-0065).
+Fases 0/1 concluídas. Próximo: inventário PGRAPH da tarefa 2.1.
+
 Entrega vigente: [ADR-0065](docs/adr/0065-consumidor-pushbuffer.md), consumidor
 PFIFO com GET avançado pela leitura/decodificação, BUS0 v8/PFFO v2. Triangle
 passa o bootstrap (GET=PUT=0x18C000), recebe 257 chaves/376 parâmetros, incluindo

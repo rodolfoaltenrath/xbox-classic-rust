@@ -153,3 +153,17 @@ GET=PUT pelo jump real antes do timeout, snapshot integral estável e métodos
 NV097 ao continuar. Gate final: `GATE OK: 535 testes`,
 `target/gate/20261023-010738.log`; 230 casos gerados debug/release. O limite atual
 é a tradução do formatador e a ausência de efeitos PGRAPH, não a espera inicial.
+
+### Aceite da tarefa 1.4 — estado no meio do pushbuffer
+
+Três testes adicionais em crates/xbox-mem/tests/pushbuffer.rs verificam:
+
+- Snapshot após header e após dois parâmetros, com o restante ainda pendente;
+  restauração produz o mesmo GET, registros e snapshot integral da execução contínua.
+- Snapshot com call ativo e objeto ligado; return, jump e parâmetros posteriores
+  reproduzem endereço final/retorno vazio e os mesmos métodos/bytes.
+- PCMD corrompido: versão, marcador, instância, classe, limite de registros e
+  contador zero recusam antes de publicar PFIFO.
+
+Gate Rust 1.99: `GATE OK: 538 testes`, log target/gate/20261023-011523.log.
+Os 230 casos gerados continuam passando; não houve mudança de formato ou runtime.

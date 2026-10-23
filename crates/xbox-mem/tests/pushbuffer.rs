@@ -203,3 +203,109 @@ fn bus_v7_pffo_v1_migra_para_controles_sem_consumidor_novo() {
         .unwrap();
     assert_eq!(saved(&b), checkpoint);
 }
+
+#[test]
+fn snapshot_no_meio_do_pacote_e_dos_parametros_reproduz_get_e_lista_de_metodos() {
+    let mut b = setup();
+    program(
+        &mut b,
+        &[
+            1 << 18,
+            13,
+            (3 << 18) | 0x100,
+            10,
+            11,
+            12,
+            (1 << 30) | (2 << 18) | 0x1818,
+            3,
+            4,
+        ],
+    );
+    assert_eq!(b.service_gpu(3).unwrap().words, 3);
+    let pending_header = saved(&b);
+    b.service_gpu(2).unwrap();
+    let pending_data = saved(&b);
+    assert!(b.service_gpu(100).unwrap().drained);
+    let expected_get = read(&b, 0x3244);
+    assert_eq!(expected_get, read(&b, 0x3240));
+    let expected_methods = b.nv2a_pfifo().methods().to_vec();
+    let complete = saved(&b);
+    assert_eq!(expected_methods.iter().map(|r| r.count).sum::<u64>(), 6);
+    for checkpoint in [pending_header, pending_data] {
+        let mut restored = setup();
+        restored
+            .load(&mut SnapshotReader::new(&checkpoint).unwrap())
+            .unwrap();
+        assert_eq!(saved(&restored), checkpoint);
+        assert!(restored.service_gpu(100).unwrap().drained);
+        assert_eq!(read(&restored, 0x3244), expected_get);
+        assert_eq!(restored.nv2a_pfifo().methods(), expected_methods);
+        assert_eq!(saved(&restored), complete);
+    }
+}
+#[test]
+fn snapshot_com_call_ativo_e_objeto_ligado_reproduz_return_e_parametros() {
+    let mut b = setup();
+    let mut words = [0; 14];
+    words[0] = 0x1022;
+    words[1] = 0x1031;
+    words[8] = 1 << 18;
+    words[9] = 13;
+    words[10] = 0x20000;
+    words[12] = (1 << 18) | 0x100;
+    words[13] = 7;
+    program(&mut b, &words);
+    b.service_gpu(3).unwrap();
+    assert_eq!(read(&b, 0x324C), 0x1005);
+    let checkpoint = saved(&b);
+    assert!(b.service_gpu(100).unwrap().drained);
+    let complete = saved(&b);
+    let mut restored = setup();
+    restored
+        .load(&mut SnapshotReader::new(&checkpoint).unwrap())
+        .unwrap();
+    assert_eq!(read(&restored, 0x324C), 0x1005);
+    assert!(restored.service_gpu(100).unwrap().drained);
+    assert_eq!(read(&restored, 0x3244), 0x1038);
+    assert_eq!(read(&restored, 0x324C), 0);
+    assert_eq!(restored.nv2a_pfifo().methods(), b.nv2a_pfifo().methods());
+    assert_eq!(saved(&restored), complete);
+}
+#[test]
+fn snapshot_recusa_binding_registro_e_versao_de_comandos_sem_publicar_pfifo() {
+    let mut b = setup();
+    program(&mut b, &[1 << 18, 13, (1 << 18) | 0x100, 7]);
+    b.service_gpu(3).unwrap();
+    let checkpoint = saved(&b);
+    let at = checkpoint.windows(4).rposition(|v| v == b"PCMD").unwrap();
+    // PCMD v1: binding 0 presente (13 bytes), sete ausentes; contagem em +28.
+    for (off, value) in [
+        (4, 0u32),
+        (4, 2),
+        (13, 0x100000),
+        (17, 0x1000),
+        (28, 4097),
+        (32, 0x1000),
+    ] {
+        let mut bad = checkpoint.clone();
+        bad[at + off..at + off + 4].copy_from_slice(&value.to_le_bytes());
+        let mut dest = setup();
+        let before = dest.nv2a_pfifo().clone();
+        assert!(dest.load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
+        assert_eq!(dest.nv2a_pfifo(), &before);
+    }
+    let mut bad = checkpoint.clone();
+    bad[at + 8] = 2;
+    assert!(
+        setup()
+            .load(&mut SnapshotReader::new(&bad).unwrap())
+            .is_err()
+    );
+    let mut bad = checkpoint;
+    bad[at + 39..at + 47].copy_from_slice(&0u64.to_le_bytes());
+    assert!(
+        setup()
+            .load(&mut SnapshotReader::new(&bad).unwrap())
+            .is_err()
+    );
+}
