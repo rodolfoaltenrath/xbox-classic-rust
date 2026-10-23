@@ -1,3 +1,5 @@
+mod support;
+use support::without_pfifo;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Arena, Bus, GuestPhys, GuestVirt, MotivoDeFalta, Perm, PramdacProfile};
 const PLL: GuestVirt = GuestVirt(0x50000500);
@@ -97,7 +99,7 @@ fn bus_v3_replay_preserva_coeficiente_e_recusa_perfil_versao_truncamento() {
     assert_eq!(saved(&destination), bytes);
     assert_eq!(destination.nv2a_pramdac().core_clock_hz(), Some(37499998));
     assert_eq!(destination.nv2a_irq(), source.nv2a_irq());
-    let tag = bytes.len() - 9 - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20 - 16;
+    let tag = without_pfifo(&bytes).len() - 9 - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20 - 16;
     assert_eq!(&bytes[tag..tag + 4], b"NPLL");
     for (offset, value) in [(tag + 4, 0u32), (tag + 4, 2), (tag + 8, 9), (tag + 8, 0)] {
         let mut bad = bytes.clone();
@@ -116,7 +118,8 @@ fn bus_v3_replay_preserva_coeficiente_e_recusa_perfil_versao_truncamento() {
 fn bus_v1_v2_migram_sem_herdar_perfil_e_o_legado_sobrevive_novo_snapshot() {
     let mut source = bus();
     source.nv2a_irq_mut().raise_vblank();
-    let current = saved(&source);
+    let current_full = saved(&source);
+    let current = without_pfifo(&current_full);
     for version in [1u32, 2] {
         let mut old = current
             [..current.len() - 9 - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20 - 16]

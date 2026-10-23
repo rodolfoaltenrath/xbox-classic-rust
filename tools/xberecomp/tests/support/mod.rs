@@ -32,6 +32,7 @@ mod nvram;
 mod ordering;
 mod pci;
 mod pfb;
+mod pfifo;
 mod pramdac;
 mod pramin;
 mod rotations;
@@ -95,6 +96,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&interrupt::sources(output));
     main.push_str(&pramdac::sources(output));
     main.push_str(&pfb::sources(output));
+    main.push_str(&pfifo::sources(output));
     main.push_str(&pramin::sources(output));
     main.push_str(&boot_dma::sources(output));
     main.push_str(&sse::sources(output));

@@ -17,6 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/PFIFO: 37 controles persistentes e aliases NV_USER PUT/GET do canal DMA
+  zero, com W1C de INTR_0, validação de largura/canal e preflight. BUS0 v7/PFFO v1
+  preserva o estado; v1–v6 migram sem PFIFO. Não avança GET nem produz EMPTY.
+  Sonda triangle: MMIO sem modelo 209 -> 170, PUT/GET saem da lista; 93 chamadas/
+  zero recusadas, framebuffer diagnóstico preservado. Gate: 526 testes Linux e
+  227 nativos debug/release. Perfil provisório P15 (ADR-0064, tarefa 1.2).
+
 - Fase 5/investigação: inventário PFIFO/NV_USER/PRAMIN até o primeiro polling do
   triangle, com valores de todas as escritas escalares e fontes públicas fixadas.
   ADR-0063 delimita 37 controles persistentes e aliases USER para a tarefa 1.2;

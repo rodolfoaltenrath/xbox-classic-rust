@@ -1,3 +1,5 @@
+mod support;
+use support::without_pfifo;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Acesso, Arena, BOOT_DMA_ADDRESS, Bus, GuestPhys, GuestVirt, Perm};
 fn bus() -> Bus {
@@ -70,7 +72,7 @@ fn snapshot_preserva_reserva_e_recusa_marcador_sem_posse_versao_e_aliases() {
     assert_eq!(dest.ler_u32(BOOT_DMA_ADDRESS).unwrap(), 42);
     for (offset, value) in [(4, 0u32), (4, 2), (8, 2)] {
         let mut bad = bytes.clone();
-        let at = bad.len() - 9;
+        let at = without_pfifo(&bad).len() - 9;
         if offset == 8 {
             bad[at + 8] = value as u8;
         } else {
@@ -78,7 +80,7 @@ fn snapshot_preserva_reserva_e_recusa_marcador_sem_posse_versao_e_aliases() {
         }
         assert!(bus().load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
     }
-    for end in bytes.len() - 9..bytes.len() {
+    for end in without_pfifo(&bytes).len() - 9..without_pfifo(&bytes).len() {
         assert!(
             bus()
                 .load(&mut SnapshotReader::new(&bytes[..end]).unwrap())
@@ -114,7 +116,8 @@ fn legado_bus_v1_a_v5_preserva_headers_no_frame_zero_e_nao_herda_reserva() {
         .mapear(GuestVirt(0x10000), GuestPhys(0), 1, Perm::RO)
         .unwrap();
     legacy.carregar_em_fisico(GuestPhys(0), b"XBEH").unwrap();
-    let current = saved(&legacy);
+    let current_full = saved(&legacy);
+    let current = without_pfifo(&current_full);
     for version in 1u32..=5 {
         let remove =
             9 + if version < 5 {

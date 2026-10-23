@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`44d582b`** e inventário local
-do ADR **0063** (PFIFO/NV_USER/PRAMIN; sem mudança de runtime).
+Atualizado em **2026-10-23**, com base no commit **`3e4b36c`** e alterações locais
+do ADR **0064** (controles PFIFO persistentes e aliases USER).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -24,15 +24,15 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P14), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P15), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0063) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0064) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v6/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v7/`PFFO` v1/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -41,9 +41,9 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (519 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (526 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `224 passed` em x86-64 e `208` fora dele —
+   confere o **contador de casos gerados**, hoje `227 passed` em x86-64 e `211` fora dele —
    some os testes novos ali).
 
 ### O que foi feito (resumo por etapa)
@@ -60,14 +60,22 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 | Limpeza pbkit | MmFreeContiguousMemory (171), remoção real de mapeamentos/frames, reuso e preservação dos backings referenciados | 0062 |
 
 Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); triangle **42/75**; **224** casos no Rust gerado em debug/release;
-**519** testes workspace/doctests no gate padrão Linux (513 no baseline + seis).
+compatibilidade); triangle **42/75**; **227** casos no Rust gerado em debug/release;
+**526** testes workspace/doctests no gate padrão Linux (519 no baseline + sete).
 Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
 (target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
 ### Estado do hello e do segundo sample
+
+**Atualização ADR-0064:** PFIFO RegistersV1 guarda os 37 controles inventariados;
+USER PUT/GET são aliases do canal DMA zero. BUS0 v7/PFFO v1; v1–v6 preservam PFIFO
+sem modelo por migração. Não há consumo DMA nem EMPTY inferido. A sonda nova
+(target/sonda/triangle-20261023-003811.log) mantém 93 chamadas/zero recusadas e a
+tela diagnóstica, mas reduz MMIO sem modelo de 209 a 170; PUT/GET saem da lista.
+Gate: 526 testes, 227 nativos debug/release. P15 declara o perfil temporário.
+O relato dos ADRs 0061/0062 abaixo preserva números das sondas anteriores.
 
 - **Hello (`target/homebrew/hello.xbe`)**: executa o `main`, desenha "Hello nxdk!" e mostra
   numa janela (1208 pixels idênticos à RAM). Comando completo e nove raízes na tabela de
@@ -133,12 +141,11 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-A tarefa 1.1 do PLANO foi concluída pelo ADR-0063: captura até a primeira leitura
-GET, 37 controles PFIFO + dois endereços USER e 5120 DWORDs PRAMIN. Fontes e valores
-estão nas tabelas do ADR. Próxima tarefa 1.2: readback persistente dos controles
-selecionados e aliases USER, com snapshot/migração. Não atribuir EMPTY nem mover
-GET sem execução de comandos. Baseline da sonda: 209 MMIO sem modelo,
-93 chamadas/zero recusadas, 1580 pixels/29 linhas (target/sonda/triangle-20261023-002421.log).
+As tarefas 0.0, 1.1 e 1.2 foram concluídas. ADR-0063 contém o inventário;
+ADR-0064 modela os controles e aliases com snapshot. Próxima tarefa 1.3: consumir
+os comandos pela PRAMIN/RAM e avançar GET somente após decodificação real.
+Baseline atual: 170 MMIO sem modelo, 93 chamadas/zero recusadas, 1580 pixels/
+29 linhas. Fonte, limites P15 e migrações estão no ADR-0064.
 
 1. **PFIFO/DMA_GET com efeitos reais.** O
    [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;
@@ -1372,7 +1379,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 224 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 227 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1393,20 +1400,17 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue pela "Passagem de bastão — estado em 2026-10-23". Base 63752f5 +
-> ajustes da tarefa 0.0; confira Git e AGENTS.md/PLANO.md (modo autônomo retomado).
-> Hello executa main/apresenta em Win32; 38/69 serviços. Triangle 42/75, 12 raízes,
-> 17984 blocos. Boot D3D em PA zero/VA=0x80000000; headers PA=0x1000/RO.
-> BUS0 v6/BTPG v1, KRNL v13/GINS v1, AOTC v8/AOTS v3; formatos mantidos no 0062.
-> MmFreeContiguousMemory libera quatro recursos reais (133 frames) após o timeout
-> DMA; preserva boot, framebuffer e pool GPU. A sonda de 320 fatias termina por
-> orçamento em 0x14D36, 93 chamadas/zero recusadas, 209 MMIO sem modelo. Fica no
-> esvaziamento PFIFO: CACHE1_STATUS=0 (0xFD003214); DMA_GET ainda sem consumo real.
-> Snapshot/replay estáveis após free. Framebuffer diagnóstico 1580 pixels/29 linhas,
-> ainda sem triângulo. Próximo: inventário público PFIFO/DMA, consumo real do
-> pushbuffer e depois PGRAPH; nunca inventar GET/EMPTY. Gate Rust 1.98.1: GATE OK,
-> 519 testes/224 nativos debug e release. Tarefa 0.0 concluída: gate 1.99
-> e Clippy 1.98.1 passam, sem alteração de runtime. P1–P14 e limites Win32 permanecem.
+> Continue pela passagem de bastão. Base 3e4b36c + ADR-0064; confira Git,
+> AGENTS.md e PLANO.md, em modo autônomo. Tarefas 0.0/1.1/1.2 concluídas;
+> próxima 1.3: consumidor de pushbuffer real. PFIFO guarda 37 controles e aliases
+> USER canal DMA zero; GET não avança sozinho, EMPTY ainda sem modelo.
+> BUS0 v7/PFFO v1; v1–v6 preservam PFIFO sem modelo. PRAMIN/P14 continua
+> independente e boot D3D tem posse própria. KRNL v13/AOTC v8/AOTS v3 iguais.
+> Triangle: 12 raízes/17984 blocos, framebuffer diagnóstico 1580 pixels/29 linhas,
+> sonda 320 fatias em EIP=0x14D36, 93 chamadas/zero recusadas, MMIO 209 -> 170.
+> PUT/GET saíram da lista sem modelo. Gate 1.99: 526 testes/227 nativos debug e
+> release; Clippy 1.98.1 foi validado na 0.0. Hello 38/69, triangle 42/75 serviços.
+> Não inventar GET/EMPTY; provisórios P1–P15. Commits locais conforme AGENTS.md.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 

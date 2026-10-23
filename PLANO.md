@@ -77,7 +77,7 @@ linhas), sem triângulo.
   93 chamadas/zero recusadas, 209 MMIO sem modelo, 1580 pixels/29 linhas.
   GATE OK: 519 testes (target/gate/20261023-002549.log). Sem emulação nova.
 
-- [ ] 1.2 Modelar os registradores escolhidos em 1.1 (DMA_PUT, DMA_GET, estado do
+- [x] 1.2 Modelar os registradores escolhidos em 1.1 (DMA_PUT, DMA_GET, estado do
   canal e o que mais o ADR listar) com leitura/escrita persistente no `Bus`.
   **Aceite:**
   - `GATE OK`;
@@ -87,6 +87,13 @@ linhas), sem triângulo.
     dois números na Evidência);
   - snapshot BUS0 com versão nova e teste de migração da versão anterior;
   - provisórios novos declarados no ROADMAP §16.1 com condição de saída.
+
+  Evidência: GATE OK: 526 testes (target/gate/20261023-003811.log); 227 casos
+  gerados debug/release. Sonda target/sonda/triangle-20261023-003811.log, 320 fatias:
+  MMIO sem modelo 209 -> 170, sem as linhas toca PUT/GET; 93 chamadas/zero recusadas,
+  EIP=0x14D36, framebuffer 1580 pixels/29 linhas. BUS0 v7/PFFO v1; sete testes de
+  memória e três nativos cobrem aliases, preflight, replay e migração v6.
+  ADR-0064/P15: controles persistem, GET não avança sem consumo; EMPTY sem modelo.
 
 - [ ] 1.3 Consumir o pushbuffer: ler comandos entre GET e PUT pelos descritores de
   DMA na PRAMIN, decodificar cabeçalhos (incremento, não incremento, jump, call/return

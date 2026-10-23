@@ -1,3 +1,5 @@
+mod support;
+use support::without_pfifo;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::nv2a_pramin::PRAMIN_SIZE;
 use xbox_mem::{Arena, Bus, GuestPhys, GuestVirt, Perm, PraminProfile};
@@ -146,7 +148,7 @@ fn snapshot_preserva_instancias_altas_e_replay_sem_interferir_ram_pll_irq() {
 #[test]
 fn snapshot_recusa_versao_perfil_tamanho_e_payload_truncado() {
     let bytes = saved(&bus());
-    let at = bytes.len() - 9 - PRAMIN_SIZE - 20;
+    let at = without_pfifo(&bytes).len() - 9 - PRAMIN_SIZE - 20;
     assert_eq!(&bytes[at..at + 4], b"PRAM");
     let mut dest = bus();
     for (offset, value) in [(4, 0u32), (4, 2), (8, 2), (8, 0)] {
@@ -186,7 +188,8 @@ fn bus_v1_a_v4_migram_sem_pramin_e_sem_herdar_conteudo_do_destino() {
     let mut source = bus();
     source.nv2a_irq_mut().raise_vblank();
     source.escrever_u32(START, 0xCAFEBABE).unwrap();
-    let current = saved(&source);
+    let current_full = saved(&source);
+    let current = without_pfifo(&current_full);
     for version in 1u32..=4 {
         let remove = 9
             + PRAMIN_SIZE
@@ -214,7 +217,8 @@ fn bus_v1_a_v4_migram_sem_pramin_e_sem_herdar_conteudo_do_destino() {
         );
         let checkpoint = saved(&dest);
         assert_eq!(
-            &checkpoint[checkpoint.len() - 29..checkpoint.len() - 25],
+            &without_pfifo(&checkpoint)
+                [without_pfifo(&checkpoint).len() - 29..without_pfifo(&checkpoint).len() - 25],
             b"PRAM"
         );
         let mut replay = bus();

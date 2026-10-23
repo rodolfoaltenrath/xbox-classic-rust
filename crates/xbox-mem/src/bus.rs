@@ -40,6 +40,7 @@ use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
 use crate::nv2a_irq::Nv2aIrq;
 use crate::nv2a_pfb::Nv2aPfb;
+use crate::nv2a_pfifo::Nv2aPfifo;
 use crate::nv2a_pramdac::Nv2aPramdac;
 use crate::nv2a_pramin::Nv2aPramin;
 use crate::regioes::{MapaFisico, Regiao};
@@ -57,6 +58,7 @@ pub struct Bus {
     nv2a_pramdac: Nv2aPramdac,
     nv2a_pfb: Nv2aPfb,
     nv2a_pramin: Nv2aPramin,
+    nv2a_pfifo: Nv2aPfifo,
     contexto: Cell<Contexto>,
 }
 
@@ -82,6 +84,7 @@ impl Bus {
             nv2a_pramdac: Nv2aPramdac::default(),
             nv2a_pfb: Nv2aPfb::for_ram(tamanho),
             nv2a_pramin: Nv2aPramin::default(),
+            nv2a_pfifo: Nv2aPfifo::default(),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -152,6 +155,11 @@ impl Bus {
         &self.nv2a_pramin
     }
 
+    /// Controles PFIFO programados; não executa DMA neste perfil.
+    pub const fn nv2a_pfifo(&self) -> &Nv2aPfifo {
+        &self.nv2a_pfifo
+    }
+
     /// Idem, para o relógio de vblank travar a pendência.
     pub const fn nv2a_irq_mut(&mut self) -> &mut Nv2aIrq {
         &mut self.nv2a_irq
@@ -214,6 +222,13 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                self.nv2a_pfifo
+                    .validate_access(deslocamento, restante.len(), false)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
                 self.nv2a_pramin
                     .validate_access(deslocamento, restante.len())
                     .map_err(|o_que| Falta {
@@ -301,6 +316,13 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                self.nv2a_pfifo
+                    .validate_access(deslocamento, restante.len(), true)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
                 self.nv2a_pramin
                     .validate_access(deslocamento, restante.len())
                     .map_err(|o_que| Falta {
@@ -472,7 +494,7 @@ impl Bus {
                         .ler_nv2a(deslocamento, destino.len())
                         .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
                 {
-                    destino.copy_from_slice(&value.to_le_bytes());
+                    destino.copy_from_slice(&value.to_le_bytes()[..destino.len()]);
                     return Ok(());
                 }
                 self.telemetria.registrar(
@@ -534,7 +556,9 @@ impl Bus {
     }
 
     fn ler_nv2a(&self, offset: u32, len: usize) -> std::result::Result<Option<u32>, &'static str> {
-        if self.nv2a_pramin.validate_access(offset, len)? {
+        if let Some(value) = self.nv2a_pfifo.read(offset, len)? {
+            Ok(Some(value))
+        } else if self.nv2a_pramin.validate_access(offset, len)? {
             Ok(self.nv2a_pramin.read(offset))
         } else if self.nv2a_pfb.validate_access(offset, len)? {
             Ok(self.nv2a_pfb.read(offset))
@@ -545,6 +569,34 @@ impl Bus {
         } else {
             Ok(None)
         }
+    }
+
+    fn escrever_nv2a(&mut self, offset: u32, bytes: &[u8]) -> Result<bool, &'static str> {
+        if self.nv2a_pfifo.validate_access(offset, bytes.len(), true)? {
+            self.nv2a_pfifo.write(
+                offset,
+                u32::from_le_bytes(bytes.try_into().expect("largura validada")),
+            );
+        } else if self.nv2a_pramin.validate_access(offset, bytes.len())? {
+            self.nv2a_pramin.write(
+                offset,
+                u32::from_le_bytes(bytes.try_into().expect("largura validada")),
+            );
+        } else if self.nv2a_pfb.validate_access(offset, bytes.len())? {
+            self.nv2a_pfb.write(
+                offset,
+                u32::from_le_bytes(bytes.try_into().expect("largura validada")),
+            );
+        } else if self.nv2a_pramdac.validate_access(offset, bytes.len())? {
+            self.nv2a_pramdac.write(u32::from_le_bytes(
+                bytes.try_into().expect("largura validada"),
+            ));
+        } else if let Ok(word) = <[u8; 4]>::try_from(bytes) {
+            return Ok(self.nv2a_irq.write(offset, u32::from_le_bytes(word)));
+        } else {
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     /// Escreve em uma região física. O pedaço nunca atravessa página.
@@ -563,42 +615,8 @@ impl Bus {
             Regiao::Dispositivo { id, deslocamento } => {
                 if id == Dispositivo::Nv2a
                     && self
-                        .nv2a_pramin
-                        .validate_access(deslocamento, origem.len())
+                        .escrever_nv2a(deslocamento, origem)
                         .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
-                {
-                    self.nv2a_pramin.write(
-                        deslocamento,
-                        u32::from_le_bytes(origem.try_into().expect("largura validada")),
-                    );
-                    return Ok(());
-                }
-                if id == Dispositivo::Nv2a
-                    && self
-                        .nv2a_pfb
-                        .validate_access(deslocamento, origem.len())
-                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
-                {
-                    self.nv2a_pfb.write(
-                        deslocamento,
-                        u32::from_le_bytes(origem.try_into().expect("largura validada")),
-                    );
-                    return Ok(());
-                }
-                if id == Dispositivo::Nv2a
-                    && self
-                        .nv2a_pramdac
-                        .validate_access(deslocamento, origem.len())
-                        .map_err(|o_que| MotivoDeFalta::NaoImplementado { fisico: pa, o_que })?
-                {
-                    self.nv2a_pramdac.write(u32::from_le_bytes(
-                        origem.try_into().expect("largura validada"),
-                    ));
-                    return Ok(());
-                }
-                if id == Dispositivo::Nv2a
-                    && let Ok(bytes) = <[u8; 4]>::try_from(origem)
-                    && self.nv2a_irq.write(deslocamento, u32::from_le_bytes(bytes))
                 {
                     return Ok(());
                 }
@@ -692,7 +710,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 6);
+        out.section("BUS0", 7);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -702,11 +720,12 @@ impl Snapshot for Bus {
         self.nv2a_pfb.save(out);
         self.nv2a_pramin.save(out);
         self.boot_dma.save(out);
+        self.nv2a_pfifo.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 6)?;
-        if !matches!(versao, 1..=6) {
+        let versao = inp.section("BUS0", 7)?;
+        if !matches!(versao, 1..=7) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -754,6 +773,11 @@ impl Snapshot for Bus {
                 what,
             })?;
         self.boot_dma = boot_dma;
+        if versao >= 7 {
+            self.nv2a_pfifo.load(inp)?;
+        } else {
+            self.nv2a_pfifo = Nv2aPfifo::legacy();
+        }
         Ok(())
     }
 }

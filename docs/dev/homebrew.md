@@ -1,5 +1,13 @@
 # Homebrew nxdk e fronteira do kernel
 
+Estado vigente após o [ADR-0064](../adr/0064-controles-pfifo-persistentes.md):
+37 controles PFIFO persistentes e aliases USER, BUS0 v7/PFFO v1. Snapshots v1–v6
+conservam ausência de PFIFO. Sonda triangle: MMIO sem modelo 209 -> 170, PUT/GET
+modelados; ainda sem avanço DMA ou imagem 3D. Gate Rust 1.99: 526 testes e 227
+casos gerados debug/release. Próxima tarefa do PLANO: consumo real do pushbuffer.
+Os relatos anteriores abaixo são registros das entregas indicadas.
+
+
 ## Segundo alvo e memória de instância — 2026-10-23
 
 O triangle/pbkit usa as 12 raízes documentadas na passagem de bastão, produzindo

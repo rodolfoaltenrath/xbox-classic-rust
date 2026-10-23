@@ -1111,6 +1111,7 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam PFIFO e PGRAPH; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
 | P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN; MmFreeContiguousMemory recusa o pool provisionado (ADR-0062) | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN, teardown e perfis maiores com evidência |
 | P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; ainda sem consumo PFIFO/PGRAPH | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
+| P15 | **Controles PFIFO persistentes sem consumidor DMA** (ADR-0064): 37 controles e aliases USER do canal DMA zero | programação observada no ADR-0063, readback e snapshot coerentes | não executa pushbuffer nem produz EMPTY/IRQ/PGRAPH; PIO/outros canais USER recusam; bits dos controles guardados sem normalização especulativa | consumo real de descritores/comandos, estados de fila e migração explícita do perfil, validados no triangle |
 
 Investigação de evidência e ferramentas em 2026-10-22:
 [ADR-0056](docs/adr/0056-evidencia-nv2a-e-reproducao.md). O PLL lembrado foi
@@ -1199,6 +1200,13 @@ Uma linha por marco concluído. Append-only.
 ---
 
 ### Próxima ação
+
+Entrega mais recente, 2026-10-23: [ADR-0064](docs/adr/0064-controles-pfifo-persistentes.md),
+37 controles PFIFO e aliases USER com BUS0 v7/PFFO v1. Sonda: MMIO sem modelo
+209 -> 170; 93 chamadas/zero recusadas, diagnóstico 1580 pixels/29 linhas.
+Gate 526 testes e 227 nativos debug/release. P15 explicita ausência de consumo DMA.
+Próxima tarefa 1.3: ler descritores/comandos e atualizar GET pelo processamento;
+só depois modelar estados de fila e PGRAPH. Modo autônomo retomado; 0.0 está concluída.
 
 Inventário concluído em 2026-10-23: [ADR-0063](docs/adr/0063-inventario-pfifo-triangle.md),
 37 controles PFIFO + USER PUT/GET e toda PRAMIN tocada até o primeiro polling.

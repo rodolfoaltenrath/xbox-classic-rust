@@ -856,3 +856,12 @@ antes/depois de free e retorno inválido/base interior. Gate Linux: 519 testes
 workspace e 224 casos gerados debug/release, contador 208 fora de x86_64, fmt e
 Clippy all-targets limpos. Hello 38/69 e triangle 42/75 serviços; PFIFO/DMA/PGRAPH
 continuam pendentes. Fontes: [ADR-0062](../adr/0062-liberacao-memoria-contigua.md).
+
+### Controles PFIFO e aliases (ADR-0064, 2026-10-23)
+
+O Bus preserva os controles inventariados e os aliases USER PUT/GET do canal DMA
+zero. Stores DWORD e leituras de subpalavras validam a largura; PIO/outros canais
+USER recusam. Sem consumo de comandos, GET não avança nem há EMPTY inferido.
+BUS0 v7/PFFO v1 salva perfil/controles; v1–v6 mantêm PFIFO sem modelo. Sete testes
+de memória e três casos gerados cobrem aliases, preflight, replay e migração v6.
+Gate 526 testes/227 gerados debug e release; sonda reduz MMIO sem modelo 209 -> 170.

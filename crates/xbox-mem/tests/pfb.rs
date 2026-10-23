@@ -1,3 +1,5 @@
+mod support;
+use support::without_pfifo;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter};
 use xbox_mem::{Arena, Bus, GuestPhys, GuestVirt, MotivoDeFalta, Perm, PfbProfile};
 const CFG0: GuestVirt = GuestVirt(0x50000200);
@@ -100,7 +102,7 @@ fn snapshot_preserva_configuracao_programada_e_demais_dispositivos() {
 #[test]
 fn snapshot_recusa_metadados_invalidos_e_truncamentos() {
     let bytes = saved(&bus());
-    let tag = bytes.len() - 9 - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20;
+    let tag = without_pfifo(&bytes).len() - 9 - xbox_mem::nv2a_pramin::PRAMIN_SIZE - 20 - 20;
     assert_eq!(&bytes[tag..tag + 4], b"PFBM");
     let mut dest = bus();
     for (offset, value) in [(tag + 4, 0u32), (tag + 4, 2), (tag + 8, 9), (tag + 8, 0)] {
@@ -119,7 +121,8 @@ fn snapshot_recusa_metadados_invalidos_e_truncamentos() {
 fn migracao_bus_v1_a_v3_preserva_ausencia_de_pfb_e_replay_legado() {
     let mut source = bus();
     source.nv2a_irq_mut().raise_vblank();
-    let current = saved(&source);
+    let current_full = saved(&source);
+    let current = without_pfifo(&current_full);
     for version in 1u32..=3 {
         let remove = 9
             + xbox_mem::nv2a_pramin::PRAMIN_SIZE
