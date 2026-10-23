@@ -76,6 +76,6 @@ mod virtual_memory_verification {
         assert_eq!(inp.remaining(),0);assert!(restored.kernel.virtual_memory().image().is_some());
         first(&mut s);boundary(&mut s);finish(&mut s);
         first(&mut restored);boundary(&mut restored);finish(&mut restored);
-        assert!(saved(&restored)==saved(&s));
+        assert_eq!(restored.scheduling_profile(),xbox_recomp::runtime::SchedulingProfile::LegacyBootstrap);assert!(saved(&restored)==super::legacy_scheduler_snapshot(&saved(&s)));
     }
 }

@@ -9,7 +9,8 @@ use xbox_kernel::loader::{Image, RETURN_SENTINEL, STACK_BASE, STACK_SIZE};
 use xbox_mem::{Acesso, Bus, GuestVirt, Perm};
 
 fn setup() -> (Bus, Dispatcher, [u32; 8]) {
-    let bytes = xbe_com_imports(&[0xC3], &[255, 104, 258, 192, 233, 221, 291, 306, 294]).unwrap();
+    let bytes =
+        xbe_com_imports(&[0xC3], &[255, 104, 258, 192, 233, 221, 291, 306, 294, 187]).unwrap();
     let xbe = Xbe::parse(&bytes).unwrap();
     let d = Dispatcher::for_image(xbe.header.base_address, xbe.header.size_of_image).unwrap();
     let bus = Image::prepare_aot(&bytes).unwrap().image.bus;
@@ -251,4 +252,79 @@ fn segunda_criacao_e_espera_de_thread_viva_sao_erros_explicitos() {
     assert!(call(&mut bus, &mut d, &regs, 255, &args()).is_err());
     assert_eq!(bus.frames().usados(), used);
     assert!(call(&mut bus, &mut d, &regs, 233, &[child.handle, 0, 0]).is_err());
+}
+
+#[test]
+fn fechar_handle_nao_termina_thread_ou_libera_pilha_e_persiste_invalidez() {
+    for phase in 0..3 {
+        let (mut bus, mut d, regs) = setup();
+        call(&mut bus, &mut d, &regs, 255, &args()).unwrap();
+        if phase >= 1 {
+            d.start_ready_thread().unwrap();
+        }
+        if phase == 2 {
+            d.terminate_running_thread(42).unwrap();
+        }
+        let child = d.child_thread().unwrap();
+        let used = bus.frames().usados();
+        bus.escrever_u32(GuestVirt(regs[4] + 4), child.handle)
+            .unwrap();
+        // A entrada legada conserva a recusa antiga.
+        assert!(
+            d.atender(&mut bus, imports::trampoline(187), &regs)
+                .is_err()
+        );
+        let close = |d: &mut Dispatcher, bus: &mut Bus| {
+            d.atender_escalonado(
+                bus,
+                imports::trampoline(187),
+                &regs,
+                &xbox_core::Clock::new(),
+            )
+            .unwrap()
+            .eax
+        };
+        assert_eq!(close(&mut d, &mut bus), 0);
+        assert_eq!(d.child_thread(), Some(child));
+        assert_eq!(bus.frames().usados(), used);
+        assert_eq!(
+            bus.ler_u32(GuestVirt(child.esp())).unwrap(),
+            RETURN_SENTINEL
+        );
+        let bytes = saved(&d);
+        let mut r = Dispatcher::new();
+        r.load(&mut SnapshotReader::new(&bytes).unwrap()).unwrap();
+        r.restore_memory_context(d.virtual_memory().image(), &bus)
+            .unwrap();
+        assert_eq!(saved(&r), bytes);
+        assert_eq!(
+            close(&mut r, &mut bus),
+            xbox_kernel::dispatch::STATUS_INVALID_HANDLE
+        );
+        assert_eq!(
+            call(&mut bus, &mut r, &regs, 233, &[child.handle, 0, 0]).unwrap(),
+            xbox_kernel::dispatch::STATUS_INVALID_HANDLE
+        );
+    }
+}
+#[test]
+fn thrd_v1_migra_handle_aberto_e_v2_recusa_flag_invalida() {
+    let (mut bus, mut d, regs) = setup();
+    call(&mut bus, &mut d, &regs, 255, &args()).unwrap();
+    let bytes = saved(&d);
+    let at = bytes.windows(4).rposition(|v| v == b"THRD").unwrap();
+    let flag = at + 46;
+    assert_eq!(bytes[flag], 0);
+    let mut old = bytes.clone();
+    old.remove(flag);
+    old[at + 4..at + 8].copy_from_slice(&1u32.to_le_bytes());
+    let mut r = Dispatcher::new();
+    r.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();
+    assert_eq!(saved(&r), bytes);
+    for value in [2, 255] {
+        let mut bad = bytes.clone();
+        bad[flag] = value;
+        assert!(r.load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
+        assert_eq!(saved(&r), bytes);
+    }
 }

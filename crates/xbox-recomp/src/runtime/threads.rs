@@ -31,6 +31,40 @@ impl ThreadContext {
         }
         Ok(())
     }
+    /// Contextos do scheduler podem estar em REP ou chamada de kernel pendente.
+    pub(super) fn validate_task(
+        &self,
+        bus: &xbox_mem::Bus,
+        id: u8,
+        child: Option<xbox_kernel::dispatch::GuestThread>,
+    ) -> Result<(), SnapshotError> {
+        use xbox_kernel::loader::{STACK_BASE, STACK_SIZE, TIB_BASE};
+        let (low, high, tib) = if id == 0 {
+            (STACK_BASE, STACK_BASE + STACK_SIZE, TIB_BASE)
+        } else {
+            let child = child.ok_or(SnapshotError::BadValue {
+                section: "SCHED",
+                what: "contexto sem filha",
+            })?;
+            (child.region.base, child.stack_top(), child.tib())
+        };
+        let exec = bus
+            .mmu()
+            .consultar(xbox_mem::GuestVirt(self.eip))
+            .is_some_and(|(_, p)| p.permite(xbox_mem::Acesso::Execucao));
+        if self.fs_base != tib
+            || !(low..=high).contains(&self.regs[super::ESP])
+            || self.returned != (self.eip == super::RETURN_SENTINEL)
+            || (!self.returned && !exec)
+            || self.repeat.is_some_and(|r| r.pc != self.eip)
+        {
+            return Err(SnapshotError::BadValue {
+                section: "SCHED",
+                what: "contexto diverge de thread, pilha, TLS ou continuação",
+            });
+        }
+        Ok(())
+    }
     pub(super) fn capture(state: &State) -> Self {
         Self {
             regs: state.regs,

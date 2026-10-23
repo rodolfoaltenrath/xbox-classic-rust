@@ -46,7 +46,7 @@ mod links_verification {
         let at=old.windows(4).position(|tag|tag==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&7u32.to_le_bytes());let aots=old.windows(4).position(|v|v==b"AOTS").unwrap();old[aots+4..aots+8].copy_from_slice(&2u32.to_le_bytes());
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.kernel.drive_d_target().is_none());
         mount(&mut restored);boundary(&mut restored,203);handle(&mut restored);boundary(&mut restored,187);finish(&mut restored);
-        assert!(saved(&restored)==complete);
+        assert_eq!(restored.scheduling_profile(),xbox_recomp::runtime::SchedulingProfile::LegacyBootstrap);assert!(saved(&restored)==super::legacy_scheduler_snapshot(&complete));
     }
     #[test]
     fn recusa_e_retorno_invalido_preservam_cpu_saida_e_handle_sobre_retorno_e_capturado() {

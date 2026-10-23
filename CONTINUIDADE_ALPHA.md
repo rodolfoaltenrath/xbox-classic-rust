@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`aa079c5`** e implementação local
-do ADR **0069** (descoberta de tabelas e callbacks sem raízes manuais).
+Atualizado em **2026-10-23**, com base no commit **`3ff0a63`** e implementação local
+do ADR **0070** (scheduler e ciclo de vida de handle de thread).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,16 +29,16 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P18), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P19), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0069) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0070) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
 5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
-   `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
+   `KINT` v2, `AOTC` v8, `AOTS` v4/`SCHD` v1/`TCTX` v1/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
    outro trailer de autoria (pedido explícito do mantenedor). Desde 2026-10-23 o agente
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (566 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (570 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `233 passed` em x86-64 e `217` fora dele —
+   confere o **contador de casos gerados**, hoje `238 passed` em x86-64 e `222` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -59,25 +59,25 @@ MOV/MUL/ADD/MAD/RCP e rasteriza as listas submetidas; não reconhece título ou
 shader por nome/hash. O ISR guest trata os traps de NOP e atualiza PRAMIN antes
 de clear/draw. PCRTC_START escolhe o buffer capturado. O host lê os bytes reais.
 
-Sonda oficial de referência `target/sonda/triangle-20261023-023144.log`, 320 fatias:
+Sonda oficial de referência `target/sonda/triangle-20261023-073247.log`, 320 fatias:
 
 | Medida | Resultado |
 |---|---|
-| Parada | orçamento em EIP=0x16C96, sem serviço faltante |
-| Kernel | 282 atendidas, zero recusadas; cobertura triangle 42/75 |
-| CPU/tempo sintético | 241241306 instruções, 305861656 ciclos, 417 ms guest |
-| Clear | primeira cor 0x00000000; 1830 chamadas/6159326 pixels-alvo |
-| Draw | 10 pacotes, 30 triângulos submetidos, 4608000 fragmentos aprovados |
+| Parada | orçamento em EIP=0x1648F, sem serviço faltante |
+| Kernel | 279 atendidas, zero recusadas; cobertura triangle 42/75 |
+| CPU/tempo sintético | 240238761 instruções, 298395953 ciclos, 406 ms guest |
+| Clear | primeira cor 0x00000000; 1649 chamadas/6157786 pixels-alvo |
+| Draw | 9 pacotes, 27 triângulos submetidos, 4147200 fragmentos aprovados |
 | Framebuffer | habilitado, **305922 pixels coloridos/479 linhas** (clear+texto era 1542/32) |
 | Regiões de cor | R=4977, G=4998, B=4977; canal >=192 e outros <=32 |
 | MMIO sem modelo | 165 endereços distintos |
 | Tradução | sem --entry manual, 19707 blocos; contém os 14 endereços anteriores |
 
-Gate `target/gate/20261023-023145.log`: **566 testes** Linux/workspace/doctests,
-233 casos gerados debug/release. Golden RGB analítica 4×4 em
+Gate `target/gate/20261023-073340.log`: **570 testes** Linux/workspace/doctests,
+238 casos gerados debug/release. Golden RGB analítica 4×4 em
 `crates/xbox-gpu/tests/reference/triangle-4x4.ppm`; testes de limites, máscaras,
 clip, culling/depth, uploads incompletos, overflow, corrupção e replay.
-Probe `target/plan-31-real-probe.log`: scanout 0x210000, captura em
+Probe `target/plan-32-real-probe.log`: scanout 0x210000, captura em
 `target/pfifo-evidence/triangle-auto-software.ppm`/`.png`, snapshot integral e mais
 20 fatias byte a byte idênticos após restauração. Imagem inspecionada: triângulo
 RGB, fundo interpolado e texto Triangle Demo/Frames.
@@ -110,8 +110,15 @@ Não existe evidência para prometer jogos comerciais por estes números.
   Não liberar recursos referenciados nem silenciar inconsistência de posse.
 - Vblank e PGRAPH compartilham PMC/INTA. Entrega ainda sofre P10/P11: DIRQL e
   IF/STI/preempção são próximos itens do plano, sem afirmar máscara CPU completa.
-- CPU com SSE/x87 tem recortes P8/P9; há uma filha cooperativa e continuação do
-  pai, ainda sem escalonador geral (P3). KeTickCount só publica nas fronteiras (P7).
+- **AOTS v4/SCHD v1/TCTX v1**: TwoThreadV1 seleciona inicial/filha, bloqueia Delay,
+  executa outra Ready e só salta Clock quando ocioso. Contextos completos SSE/x87,
+  quantum sintético 4096/Passive, deadlines e espera por objeto/filha com replay.
+  AOTS v1–v3 conserva LegacyBootstrap ao migrar/regravar. P3 encerrado para novas
+  sessões; P19 declara duas threads, filas/prioridades/waits limitados.
+- **THRD v2**: NtClose escalonado invalida o handle sem terminar a filha ou liberar
+  stack/TLS ativos. THRD v1 migra aberto. CRT real cria/detach/retorna no pai;
+  a filha continua. Duas provas de ciclo de vida/migração, cinco casos nativos.
+- CPU com SSE/x87 tem recortes P8/P9. KeTickCount só publica nas fronteiras (P7).
 
 ### Reprodução e artefatos
 
@@ -147,8 +154,7 @@ na tarefa 0.0).
 ### Próximo trabalho e cuidados
 
 Fases 0, 1 e 2 do PLANO entregam consumo real, clear e triângulos. Seguir Fase 3
-na ordem: **P3 escalonador**, P7 tick ligado
-ao Clock, P10/P11 DIRQL/IF/STI. Cada tarefa exige ADR, gate, evidência e commit.
+na ordem: **P7 tick ligado ao Clock**, P10/P11 DIRQL/IF/STI. Cada tarefa exige ADR, gate, evidência e commit.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
 callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda
 podem exigir --entry. Não adicionar listas de endereços de títulos ao analisador.

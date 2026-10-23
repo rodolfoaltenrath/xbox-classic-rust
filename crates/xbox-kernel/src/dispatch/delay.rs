@@ -57,7 +57,12 @@ impl Dispatcher {
         self.pending_time.take()
     }
 
-    pub(super) fn ke_delay_execution_thread(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+    pub(super) fn ke_delay_execution_thread(
+        &mut self,
+        bus: &mut Bus,
+        call: &Call,
+        scheduled: bool,
+    ) -> Resultado {
         let wait_mode = call.argument(bus, 0)?;
         // BOOLEAN ocupa uma palavra na ABI, mas só o byte baixo importa.
         let alertable = call.argument(bus, 1)? as u8 != 0;
@@ -80,6 +85,9 @@ impl Dispatcher {
             })
         };
 
+        if scheduled && self.irql != super::Irql::Passive {
+            return variante("espera escalonada exige Passive neste perfil");
+        }
         if !matches!(wait_mode, KERNEL_MODE | USER_MODE) {
             return invalido("WaitMode deve ser KernelMode (0) ou UserMode (1)");
         }

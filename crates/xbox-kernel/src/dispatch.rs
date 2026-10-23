@@ -458,7 +458,7 @@ impl Dispatcher {
         pc: u32,
         regs: &[u32; 8],
     ) -> Result<Atendimento, Erro> {
-        self.dispatch(bus, pc, regs, None)
+        self.dispatch(bus, pc, regs, None, false)
     }
 
     /// Usa o Clock autoritativo da sessão; não cria outro contador de tempo.
@@ -469,9 +469,45 @@ impl Dispatcher {
         regs: &[u32; 8],
         clock: &xbox_core::time::Clock,
     ) -> Result<Atendimento, Erro> {
-        self.dispatch(bus, pc, regs, Some(clock))
+        self.dispatch(bus, pc, regs, Some(clock), false)
     }
 
+    /// Entrada da sessão com escalonador explícito; pedidos de bloqueio nunca
+    /// são tratados como retornos concluídos pelo chamador.
+    pub fn atender_escalonado(
+        &mut self,
+        bus: &mut Bus,
+        pc: u32,
+        regs: &[u32; 8],
+        clock: &xbox_core::time::Clock,
+    ) -> Result<Atendimento, Erro> {
+        self.dispatch(bus, pc, regs, Some(clock), true)
+    }
+    /// Troca lógica da thread selecionada na única CPU, coordenada pela sessão.
+    pub fn select_thread(&mut self, id: u32) -> Result<(), Erro> {
+        if !matches!(id, 1 | CHILD_THREAD) {
+            return Err(Erro::ThreadState(
+                "identidade fora do perfil de duas threads",
+            ));
+        }
+        if id == CHILD_THREAD && self.threads.child.is_none() {
+            return Err(Erro::ThreadState("filha inexistente"));
+        }
+        if let Some(child) = &mut self.threads.child {
+            if matches!(child.phase, ThreadPhase::Terminated(_)) {
+                if id == CHILD_THREAD {
+                    return Err(Erro::ThreadState("filha terminada"));
+                }
+            } else {
+                child.phase = if id == CHILD_THREAD {
+                    ThreadPhase::Running
+                } else {
+                    ThreadPhase::Ready
+                };
+            }
+        }
+        Ok(())
+    }
     #[allow(clippy::too_many_lines)] // Tabela plana ordinal → serviço, uma linha por ordinal.
     fn dispatch(
         &mut self,
@@ -479,6 +515,7 @@ impl Dispatcher {
         pc: u32,
         regs: &[u32; 8],
         clock: Option<&xbox_core::time::Clock>,
+        scheduled: bool,
     ) -> Result<Atendimento, Erro> {
         let call = Call::read(bus, pc, regs)?;
         let export = call.export;
@@ -513,7 +550,7 @@ impl Dispatcher {
             ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT => {
                 self.links.open(bus, &call, self.irql, &mut self.mutants)
             }
-            ORDINAL_NT_CLOSE => self.nt_close(bus, &call),
+            ORDINAL_NT_CLOSE => self.nt_close(bus, &call, scheduled),
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(
                 bus,
                 &call,
@@ -567,8 +604,12 @@ impl Dispatcher {
             | ORDINAL_KE_INITIALIZE_DPC
             | ORDINAL_KE_INSERT_QUEUE_DPC
             | ORDINAL_KE_REMOVE_QUEUE_DPC => self.dispatch_signals(bus, &call),
-            ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => self.nt_wait_for_single_object(bus, &call),
-            ORDINAL_KE_DELAY_EXECUTION_THREAD => self.ke_delay_execution_thread(bus, &call),
+            ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => {
+                self.nt_wait_for_single_object(bus, &call, scheduled)
+            }
+            ORDINAL_KE_DELAY_EXECUTION_THREAD => {
+                self.ke_delay_execution_thread(bus, &call, scheduled)
+            }
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
             ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION => critical::initialize(bus, &call),
             ORDINAL_RTL_ENTER_CRITICAL_SECTION => {
@@ -609,7 +650,12 @@ impl Dispatcher {
     /// imediata, ou o estado é um que este perfil não representa e vira erro
     /// identificável. É assim que o `mtx_lock` do nxdk chega aqui — handle, `FALSE`,
     /// timeout nulo — esperando `STATUS_WAIT_0`.
-    fn nt_wait_for_single_object(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+    fn nt_wait_for_single_object(
+        &mut self,
+        bus: &mut Bus,
+        call: &Call,
+        scheduled: bool,
+    ) -> Resultado {
         let handle = call.argument(bus, 0)?;
         // BOOLEAN ocupa uma palavra na ABI, mas só o byte baixo importa.
         let alertable = call.argument(bus, 1)? as u8 != 0;
@@ -634,8 +680,17 @@ impl Dispatcher {
             return variante("espera com timeout ainda não modelada");
         }
 
-        if let Some(child) = self.child_thread().filter(|child| child.handle == handle) {
+        if scheduled && self.irql != Irql::Passive {
+            return variante("bloqueio escalonado exige Passive neste perfil");
+        }
+        if let Some(child) = self
+            .child_thread()
+            .filter(|child| child.handle == handle && !self.threads.handle_closed)
+        {
             return if matches!(child.phase, ThreadPhase::Terminated(_)) {
+                Ok(Atendimento { eax: STATUS_WAIT_0 })
+            } else if scheduled {
+                self.pending_block = true;
                 Ok(Atendimento { eax: STATUS_WAIT_0 })
             } else {
                 variante("espera de thread viva exige yield/escalonamento ainda não modelado")
@@ -650,7 +705,7 @@ impl Dispatcher {
                 events::Espera::Satisfeita => Ok(Atendimento { eax: STATUS_WAIT_0 }),
                 // Só um scheduler ou uma interrupção o sinalizariam; nenhum existe.
                 events::Espera::Bloquearia => {
-                    if self.interrupt_can_signal(bus) {
+                    if scheduled || self.interrupt_can_signal(bus) {
                         // Há uma interrupção que pode sinalizar o evento: a sessão deixa o
                         // tempo correr até o vblank, entrega ISR e DPC e repete esta
                         // chamada. O retorno não é aplicado enquanto o bloqueio durar.
@@ -676,6 +731,10 @@ impl Dispatcher {
                 eax: STATUS_MUTANT_LIMIT_EXCEEDED,
             }),
             // Outro proprietário exige yield ainda ausente neste perfil de bootstrap.
+            Aquisicao::OutroProprietario(_) if scheduled => {
+                self.pending_block = true;
+                Ok(Atendimento { eax: STATUS_WAIT_0 })
+            }
             Aquisicao::OutroProprietario(_) => {
                 variante("espera bloqueante exige scheduler de threads guest")
             }

@@ -16,8 +16,10 @@ mod drive;
 mod interrupts;
 mod msr;
 mod muldiv;
+mod scheduler;
 pub mod sse;
 mod threads;
+pub use scheduler::SchedulingProfile;
 pub mod x87;
 pub use msr::CpuProfile;
 pub use muldiv::{divide_values, multiply_values};
@@ -295,6 +297,8 @@ pub struct Session {
     parent: Option<threads::ThreadContext>,
     /// Vblanks já gerados pelo relógio guest (ADR-0055).
     vblanks: u64,
+    scheduler: Option<scheduler::Scheduler>,
+    in_interrupt: bool,
 }
 
 impl Session {
@@ -311,6 +315,8 @@ impl Session {
             bus,
             parent: None,
             vblanks: 0,
+            scheduler: Some(scheduler::Scheduler::default()),
+            in_interrupt: false,
             kernel: xbox_kernel::dispatch::Dispatcher::for_image(
                 xbe.header.base_address,
                 xbe.header.size_of_image,
@@ -358,6 +364,9 @@ impl Session {
     /// na chamada pendente e o mesmo atendimento pode ser repetido depois.
     pub fn atender_kernel_ou_bloquear(&mut self) -> Result<Servico> {
         use xbox_kernel::dispatch::ORDINAL_PS_TERMINATE_SYSTEM_THREAD;
+        if self.scheduler.is_some() {
+            return self.scheduled_kernel();
+        }
         if self.state.stopped_exit().is_some() {
             return Err(
                 xbox_core::Error::format("CPU parada não pode atender novo serviço").into(),
@@ -422,11 +431,18 @@ impl Session {
 
     pub fn has_parked_parent(&self) -> bool {
         self.parent.is_some()
+            || self
+                .scheduler
+                .as_ref()
+                .is_some_and(scheduler::Scheduler::parked_parent)
     }
 
     /// RET do `SystemRoutine` é término local da filha; o main deve consultar esta
     /// fronteira antes de anunciar que o processo inteiro retornou.
     pub fn complete_thread_return(&mut self) -> Result<bool> {
+        if self.scheduler.is_some() {
+            return self.scheduled_return();
+        }
         if !self.state.returned || self.parent.is_none() {
             return Ok(false);
         }
@@ -467,7 +483,7 @@ impl Session {
 
 impl Snapshot for Session {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTS", 3);
+        out.section("AOTS", 4);
         self.state.save(out);
         self.bus.save(out);
         self.kernel.save(out);
@@ -476,11 +492,12 @@ impl Snapshot for Session {
             parent.save(out);
         }
         out.u64(self.vblanks);
+        scheduler::Scheduler::save_profile(self.scheduler.as_ref(), out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTS", 3)?;
-        if !matches!(version, 1..=3) {
+        let version = inp.section("AOTS", 4)?;
+        if !matches!(version, 1..=4) {
             return Err(SnapshotError::BadValue {
                 section: "AOTS",
                 what: "versão de sessão desconhecida",
@@ -500,32 +517,48 @@ impl Snapshot for Session {
         } else {
             None
         };
-        if (self.kernel.current_thread() == CHILD_THREAD) != self.parent.is_some()
-            || self
-                .kernel
-                .child_thread()
-                .is_some_and(|child| child.phase == ThreadPhase::Ready)
-        {
-            return Err(SnapshotError::BadValue {
-                section: "AOTS",
-                what: "CPU, thread ativa e pai suspenso incoerentes",
-            });
-        }
-        if let Some(child) = self.kernel.child_thread().filter(|_| self.parent.is_some())
-            && (self.state.fs_base != child.tib()
-                || !(child.region.base..=child.stack_top()).contains(&self.state.regs[ESP]))
-        {
-            return Err(SnapshotError::BadValue {
-                section: "AOTS",
-                what: "CPU ativa diverge do TLS/pilha da filha",
-            });
-        }
         // v1–v2 não guardavam vblanks: parte do relógio, sem inventar atraso acumulado.
         self.vblanks = if version >= 3 {
             inp.u64()?
         } else {
             self.state.clock.cycles() / Self::vblank_period()
         };
+        self.scheduler = if version >= 4 {
+            scheduler::Scheduler::load_profile(inp)?
+        } else {
+            None
+        };
+        self.in_interrupt = false;
+        if let Some(scheduler) = &self.scheduler {
+            if self.parent.is_some() {
+                return Err(SnapshotError::BadValue {
+                    section: "AOTS",
+                    what: "pai legado em sessão escalonada",
+                });
+            }
+            scheduler.validate(&self.bus, &self.kernel, &self.state)?;
+        } else {
+            if (self.kernel.current_thread() == CHILD_THREAD) != self.parent.is_some()
+                || self
+                    .kernel
+                    .child_thread()
+                    .is_some_and(|child| child.phase == ThreadPhase::Ready)
+            {
+                return Err(SnapshotError::BadValue {
+                    section: "AOTS",
+                    what: "CPU, thread ativa e pai suspenso incoerentes",
+                });
+            }
+            if let Some(child) = self.kernel.child_thread().filter(|_| self.parent.is_some())
+                && (self.state.fs_base != child.tib()
+                    || !(child.region.base..=child.stack_top()).contains(&self.state.regs[ESP]))
+            {
+                return Err(SnapshotError::BadValue {
+                    section: "AOTS",
+                    what: "CPU ativa diverge do TLS/pilha da filha",
+                });
+            }
+        }
         Ok(())
     }
 }

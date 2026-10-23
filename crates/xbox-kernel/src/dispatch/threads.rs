@@ -96,6 +96,7 @@ impl GuestThread {
 #[derive(Debug, Default)]
 pub(super) struct Threads {
     pub child: Option<GuestThread>,
+    pub handle_closed: bool,
 }
 
 impl Threads {
@@ -219,7 +220,7 @@ impl Threads {
         bus: Option<&Bus>,
     ) -> Result<(), SnapshotError> {
         let Some(child) = self.child else {
-            return if mutants.owners_valid(false) {
+            return if !self.handle_closed && mutants.owners_valid(false) {
                 Ok(())
             } else {
                 Err(bad("mutex pertence a thread inexistente"))
@@ -270,7 +271,7 @@ impl Threads {
 
 impl Snapshot for Threads {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("THRD", 1);
+        out.section("THRD", 2);
         out.bool(self.child.is_some());
         if let Some(child) = self.child {
             for value in [
@@ -293,9 +294,11 @@ impl Snapshot for Threads {
             out.u8(phase);
             out.u32(status);
         }
+        out.bool(self.handle_closed);
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        if inp.section("THRD", 1)? != 1 {
+        let version = inp.section("THRD", 2)?;
+        if version == 0 {
             return Err(bad("versão de threads desconhecida"));
         }
         let child = match inp.u8()? {
@@ -340,7 +343,17 @@ impl Snapshot for Threads {
             }
             _ => return Err(bad("presença de thread inválida")),
         };
+        let handle_closed = if version >= 2 {
+            match inp.u8()? {
+                0 => false,
+                1 if child.is_some() => true,
+                _ => return Err(bad("handle fechado não canônico")),
+            }
+        } else {
+            false
+        };
         self.child = child;
+        self.handle_closed = handle_closed;
         Ok(())
     }
 }

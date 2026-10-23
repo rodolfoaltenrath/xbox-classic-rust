@@ -39,6 +39,7 @@ mod pramdac;
 mod pramin;
 mod rotations;
 mod scan;
+mod scheduler;
 mod sha;
 mod shifts;
 mod sse;
@@ -116,6 +117,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
     main.push_str(&threads::sources(output));
+    main.push_str(&scheduler::sources(output));
     main.push_str(&msr::sources(output));
     main.push_str(&control::sources(output));
     main.push_str(&nop::sources(output));

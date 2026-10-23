@@ -51,8 +51,10 @@ impl Session {
         A: FnMut(&Session) -> Result<bool>,
     {
         for _ in 0..limites.fatias {
+            self.prepare_schedule()?;
             self.deliver_interrupts(&mut run, limites.blocos_por_fatia)?;
-            let saida = self.run_slice(&mut run, limites.blocos_por_fatia)?;
+            let saida =
+                self.run_slice(&mut run, self.scheduled_budget(limites.blocos_por_fatia))?;
             if matches!(
                 saida,
                 Exit::Budget | Exit::KernelCall { .. } | Exit::Returned
@@ -96,7 +98,7 @@ impl Session {
                     // correr até o próximo vblank; o ISR e o DPC rodam no topo da próxima
                     // volta, e a mesma chamada é repetida.
                     if self.atender_kernel_ou_bloquear()? == Servico::Bloqueado {
-                        self.advance_to_next_vblank()?;
+                        self.schedule_idle()?;
                     }
                     if self.state.clock.cycles() != antes && apresentar(self)? {
                         return Ok(Desfecho::ParadoPeloHost);

@@ -111,6 +111,22 @@ impl Session {
     where
         R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
     {
+        let previous = self.in_interrupt;
+        self.in_interrupt = true;
+        let result = self.invoke_guest_inner(call, run, blocks, interrupts_enabled);
+        self.in_interrupt = previous;
+        result
+    }
+    fn invoke_guest_inner<R>(
+        &mut self,
+        call: GuestCall,
+        run: &mut R,
+        blocks: u64,
+        interrupts_enabled: bool,
+    ) -> Result<()>
+    where
+        R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
+    {
         let saved = ThreadContext::capture(&self.state);
         let mut esp = self.state.regs[ESP];
         for argument in call.arguments[..call.count].iter().rev() {

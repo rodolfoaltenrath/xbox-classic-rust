@@ -197,6 +197,14 @@ atendida, com `GATE OK`, ADR e CHANGELOG.
   tradução manual; probe target/plan-31-real-probe.log confirma quadro idêntico
   e snapshot/replay integral. ADR-0069, P5 encerrado para o alvo.
 
-- [ ] 3.2 P3: escalonador de threads.
+- [x] 3.2 P3: escalonador de threads.
+  Evidência: GATE OK 570 testes (target/gate/20261023-073340.log), 238 casos
+  nativos debug/release. Delay bloqueia com outra Ready, dois deadlines, quantum,
+  GPR/SSE/x87 e snapshot/replay; NtClose/detach mantém a filha viva e invalida
+  somente o handle, THRD v1/v2 e AOTS v3/v4 migrados sem promoção de política.
+  Sonda target/sonda/triangle-20261023-073247.log: 279 chamadas/zero recusadas,
+  305922 pixels/479 linhas, 9 draws/27 triângulos. Probe
+  target/plan-32-real-probe.log confirma snapshot/replay integral. ADR-0070,
+  P3 encerrado para novas sessões; recorte de duas threads declarado em P19.
 - [ ] 3.3 P7: `KeTickCount` em tempo real.
 - [ ] 3.4 P10/P11: DIRQL/IF/`STI` como máscara real.

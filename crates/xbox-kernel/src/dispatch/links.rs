@@ -130,9 +130,27 @@ fn passive(bus: &Bus, call: &Call, irql: Irql) -> Result<(), Erro> {
     Ok(())
 }
 impl super::Dispatcher {
-    pub(super) fn nt_close(&mut self, bus: &Bus, call: &Call) -> Resultado {
+    pub(super) fn nt_close(&mut self, bus: &Bus, call: &Call, scheduled: bool) -> Resultado {
         passive(bus, call, self.irql)?;
         let handle = call.argument(bus, 0)?;
+        if scheduled
+            && self
+                .threads
+                .child
+                .is_some_and(|child| child.handle == handle)
+        {
+            if self.threads.handle_closed {
+                return Ok(Atendimento {
+                    eax: super::STATUS_INVALID_HANDLE,
+                });
+            }
+            // Fechar o handle não termina a thread nem libera sua pilha ativa.
+            self.threads.handle_closed = true;
+            return Ok(Atendimento {
+                eax: super::STATUS_SUCCESS,
+            });
+        }
+
         if self.mutants.get(handle).is_some()
             || self
                 .child_thread()

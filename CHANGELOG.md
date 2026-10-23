@@ -17,6 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3/P3: scheduler TwoThreadV1 com Delay bloqueante, pai runnable, espera
+  por filha/evento/mutant e escolha do menor deadline quando ocioso. Quantum
+  sintético em Passive e contexto GPR/FS/REP/SSE/x87 por thread, Clock global.
+  AOTS v4/SCHD v1 preserva LegacyBootstrap ao migrar snapshots antigos.
+  NtClose da filha remove o handle sem destruir a thread/pilha ativa (THRD v2).
+  Quatro testes de persistência/ciclo de vida e cinco casos nativos; limites P19 (ADR-0070).
+
 - Fase 3-AOT/P5: descoberta de tabelas readonly com limites CMP/SUB/JA, índices
   preservados por aliases de pilha, loops de inicializadores com guarda e passo
   explícitos e candidatos de callbacks escapados. Runtime mantém cargas reais

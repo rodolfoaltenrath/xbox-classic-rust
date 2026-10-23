@@ -88,6 +88,12 @@ mod interrupt_verification {
     #[test]
     fn sem_vblank_habilitado_a_espera_continua_sendo_erro_identificavel() {
         let mut s = Session::load(include_bytes!("interrupt_sem_fonte.xbe")).unwrap();
+        // O scheduler novo relata ausência de progresso sem pular Clock; o
+        // perfil migrado conserva a recusa anterior do dispatcher.
+        let mut w=SnapshotWriter::new();s.save(&mut w);let initial=w.finish();
+        let error=s.conduzir(LIMITES,sem_fonte::run,|_|Ok(false)).unwrap_err();assert!(matches!(error,Error::WouldBlock{..}));assert_eq!(s.state.clock.cycles(),s.state.retired);
+        s.load(&mut SnapshotReader::new(&super::legacy_scheduler_snapshot(&initial)).unwrap()).unwrap();
+
         let erro = s.conduzir(LIMITES, sem_fonte::run, |_| Ok(false)).unwrap_err();
         let texto = erro.to_string();
         assert!(

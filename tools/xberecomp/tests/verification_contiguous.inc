@@ -36,7 +36,7 @@ mod contiguous_verification {
         let at=initial.windows(4).rposition(|v|v==b"CMEM").unwrap();let mut old=initial[..at].to_vec();old.push(0);
         let k=old.windows(4).position(|v|v==b"KRNL").unwrap();old[k+4..k+8].copy_from_slice(&9u32.to_le_bytes());let aots=old.windows(4).position(|v|v==b"AOTS").unwrap();old[aots+4..aots+8].copy_from_slice(&2u32.to_le_bytes());
         Snapshot::load(&mut restored,&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.kernel.contiguous_memory().allocations().is_empty());
-        boundary(&mut restored);handle(&mut restored,0x80020000);boundary(&mut restored);finish(&mut restored);assert!(saved(&restored)==complete);
+        boundary(&mut restored);handle(&mut restored,0x80020000);boundary(&mut restored);finish(&mut restored);assert_eq!(restored.scheduling_profile(),xbox_recomp::runtime::SchedulingProfile::LegacyBootstrap);assert!(saved(&restored)==super::legacy_scheduler_snapshot(&complete));
         // Remover só os registros mantendo o Bus não pode esconder a janela possuída.
         let mut orphan=checkpoint;let at=orphan.windows(4).rposition(|v|v==b"CMEM").unwrap();
         orphan.drain(at+12..at+28);orphan[at+8..at+12].copy_from_slice(&0u32.to_le_bytes());
