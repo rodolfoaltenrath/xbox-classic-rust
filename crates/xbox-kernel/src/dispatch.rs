@@ -28,6 +28,7 @@ mod contiguous;
 mod critical;
 mod delay;
 mod events;
+mod gpu_instance;
 mod interlocked;
 mod interrupts;
 mod irql;
@@ -47,6 +48,7 @@ pub use contiguous::{
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use delay::PedidoDeTempo;
 use events::{EventOperation, Events};
+pub use gpu_instance::GpuInstanceMemory;
 pub use interrupts::{GPU_IRQ, GuestCall};
 pub use irql::Irql;
 pub use links::{MAX_LINK_HANDLES, STATUS_OBJECT_NAME_COLLISION, STATUS_OBJECT_NAME_NOT_FOUND};
@@ -76,6 +78,7 @@ pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
 pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
+pub const ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY: u32 = 168;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
@@ -134,6 +137,7 @@ pub const STATUS_WAIT_0: u32 = 0;
 pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_AV_SET_DISPLAY_MODE,
     ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
+    ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
@@ -271,6 +275,7 @@ pub struct Dispatcher {
     links: links::Links,
     video: VideoState,
     contiguous: ContiguousMemory,
+    gpu_instance: GpuInstanceMemory,
     // Pedido de avanço de tempo deixado pelo último serviço; só a sessão consome.
     // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
     // ponto de salvamento (ver `Session::atender_kernel`).
@@ -306,6 +311,9 @@ impl Dispatcher {
         self.links.target()
     }
 
+    pub const fn gpu_instance_memory(&self) -> &GpuInstanceMemory {
+        &self.gpu_instance
+    }
     pub const fn video(&self) -> &VideoState {
         &self.video
     }
@@ -329,6 +337,7 @@ impl Dispatcher {
                 section: "CMEM",
                 what,
             })?;
+        self.gpu_instance.validate(&self.contiguous, Some(bus))?;
         self.interrupts.validate(bus)?;
         self.video
             .validate_memory(&self.contiguous, &self.eeprom)
@@ -473,6 +482,10 @@ impl Dispatcher {
             }
             ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX => {
                 self.contiguous.allocate(bus, &call, self.irql)
+            }
+            ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY => {
+                self.gpu_instance
+                    .query(bus, &call, self.irql, &mut self.contiguous)
             }
             ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {
                 eax: VideoState::SAVED_DATA_ADDRESS,
@@ -749,7 +762,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 12);
+        out.section("KRNL", 13);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -764,10 +777,11 @@ impl Snapshot for Dispatcher {
         self.contiguous.save(out);
         self.events.save(out);
         self.interrupts.save(out);
+        self.gpu_instance.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 12)?;
+        let version = inp.section("KRNL", 13)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -835,6 +849,11 @@ impl Snapshot for Dispatcher {
         if version >= 12 {
             interrupts.load(inp)?;
         }
+        let mut gpu_instance = GpuInstanceMemory::default();
+        if version >= 13 {
+            gpu_instance.load(inp)?;
+        }
+        gpu_instance.validate(&contiguous, None)?;
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -856,6 +875,7 @@ impl Snapshot for Dispatcher {
             links,
             video,
             contiguous,
+            gpu_instance,
             // Deliberadamente `None`: o pedido de tempo vive só entre o atendimento e a
             // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço

@@ -790,3 +790,20 @@ chamadas atendidas; snapshot e repetição da falta foram conferidos. Validaçã
 398 testes workspace/doctests e 177 nativos debug/release (161 fora de x86_64).
 Perfil, fontes e reprodução:
 [ADR-0050](../adr/0050-pedidos-filtros-encoder.md).
+
+### Consulta de instância GPU (ADR-0059, estado em 2026-10-22)
+
+Os bloqueios acima são históricos. Hello já executa main e apresenta em Win32.
+Triangle passa do NVPLL/PFB e de MmClaimGpuInstanceMemory (168), stdcall/8,
+consulta 0xFFFFFFFF em Passive/retail 64 MiB. Reserva CMEM dos 128 KiB finais,
+retorna a fronteira 0x83FF0000 e escreve padding=0x10000; consultas repetidas
+preservam bytes, frames e Clock. Bootstrap na primeira consulta é P13; resize,
+devkit e outras prioridades recusam. KRNL v13/GINS v1, legado sem estado ativo.
+
+A execução real agora toca PRAMIN sem modelo e depois falha em escrita
+VA=0x80000000/EIP=0x18F19, preparando DMA antes de WBINVD/pb_start. Próximo:
+posse/mapeamento dessa página, PRAMIN e PFIFO. Gate Linux: 500 testes workspace/doctests,
+215 casos gerados debug/release (contador 199 fora de x86_64), sete Python
+separados; fmt/Clippy limpos. Win32 não revalidado aqui. Fontes, perfil, limites
+e evidências: [ADR-0059](../adr/0059-consulta-memoria-instancia-gpu.md) e
+[passagem de bastão](../../CONTINUIDADE_ALPHA.md).

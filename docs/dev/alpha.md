@@ -29,9 +29,13 @@ não passam a ter PLL válido por migração implícita. O
 Cromwell conforme a arena de 64/128 MiB. BUS0 v4/PFBM v1 preserva os valores;
 snapshots BUS0 v1–v3 continuam sem PFB modelado. Readback não implementa geometria
 elétrica nem altera o tamanho da RAM quando o guest reprograma o registro.
-Outros registradores NV2A,
-PFIFO/pushbuffer/PGRAPH e renderização 3D continuam pendentes. Os registros por
-ADR abaixo incluem bloqueios históricos, não substituem a passagem de bastão.
+O [ADR-0059](../adr/0059-consulta-memoria-instancia-gpu.md) atende a consulta
+retail 64 MiB de MmClaimGpuInstanceMemory com reserva física real, fronteira
+0x83FF0000/padding 0x10000 e KRNL v13/GINS v1. A reserva na primeira consulta é
+provisória (P13); resize/devkit recusam. Triangle alcança PRAMIN sem modelo e
+falha depois numa escrita VA=0x80000000/EIP=0x18F19, preparando DMA antes de
+WBINVD/pb_start. Posse dessa página, PRAMIN, PFIFO/pushbuffer/PGRAPH e renderização
+3D continuam pendentes. Os registros por ADR abaixo incluem bloqueios históricos, não substituem a passagem de bastão.
 
 ## Alvo escolhido
 
@@ -153,10 +157,11 @@ BSF/BSR e CLC/STC/CMC. Blocos em funções separadas corrigiram o estouro de pil
 host. O controle guest e as exceções pendentes sobrevivem a snapshot, mas ainda
 não há IRQ/NMI, IDT/SEH, scheduler geral ou retomada automática dessas exceções.
 
-A validação atual tem **499 testes workspace/doctests** e **212 casos de
+A validação atual no Linux tem **500 testes workspace/doctests** e **215 casos de
 Rust gerado em debug/release**, incluindo PFB/NVPLL, DMA e snapshots. O Rust
 fixado é 1.98.1. Hello executa main/apresenta em Win32; o segundo alvo triangle
-passa do PLL/PFB e para em MmClaimGpuInstanceMemory (168), retorno 0x182AB.
+passa do PLL/PFB e da consulta de instância GPU, mas ainda não renderiza.
+Sete testes Python passaram separadamente; a apresentação Win32 não foi revalidada aqui.
 O aceite não cobre GPU 3D ou scheduler geral. A primeira
 entrega de memória usou mídia comercial apenas como dado do loader; a BIOS não
 foi usada. A EEPROM padrão continua sintética, com bytes/origem explícitos.

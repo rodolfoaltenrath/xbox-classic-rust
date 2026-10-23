@@ -1,6 +1,6 @@
 # Homebrew nxdk e fronteira do kernel
 
-## Segundo alvo e perfis NVPLL/PFB — 2026-10-22
+## Segundo alvo, NVPLL/PFB e consulta de instância — 2026-10-22
 
 O triangle/pbkit usa as dez raízes documentadas na passagem de bastão, produzindo
 17883 blocos. O [ADR-0057](../adr/0057-pramdac-perfil-clock.md) implementa o
@@ -13,17 +13,27 @@ de firmware Cromwell: CFG0=0x03070003 para 64 MiB, 0x03070103 para 128 MiB;
 CFG1=0x11448000. Readback integral, sem geometria elétrica/tiling. BUS0 v4/PFBM
 v1 guarda a programação; snapshots v1–v3 preservam PFB sem modelo.
 
-Sessão nova passa das verificações PLL e PFB. Para em MmClaimGpuInstanceMemory
-(168), retorno 0x182AB, argumentos 0xFFFFFFFF/0x0005FE14, EIP no trampolim
-0x7FFE0540. Foram 24701909 retired/ciclos e 52 chamadas atendidas. Ainda sem
-memória de instância, PRAMIN ou triângulo. PTIMER continua somente registrando
-escritas. O replay BUS0 v3 reproduziu a rejeição anterior de PFB e a falta na
-limpeza em VA=0x40/PC=0x16EA2; pb_init ainda não retornou nesse caminho legado.
+O [ADR-0059](../adr/0059-consulta-memoria-instancia-gpu.md) atende a consulta
+MmClaimGpuInstanceMemory (168), argumentos 0xFFFFFFFF/0x0005FE14, retorno guest
+0x182AB. Perfil retail 64 MiB/Passive: reserva os 128 KiB finais da RAM, retorna
+0x83FF0000 e escreve padding=0x10000. São 32 frames próprios em CMEM, CPU RW e
+DMA sobre a mesma RAM. Repetição preserva os bytes. Resize/devkit recusam;
+bootstrap na primeira consulta é provisório P13. KRNL v13/GINS v1 preserva o
+estado e migra v1–v12 sem reserva de instância ativa.
 
-Validação: 499 testes workspace/doctests e 212 casos gerados em debug/release;
-dois testes locais ignorados do triangle comparam perfis e snapshot. Evidências:
-`target/pfb-triangle.log` e o ADR-0058. Próximo: contrato de memória de instância,
-posse dos frames e janela PRAMIN, com fontes verificadas.
+Sessão nova passa PLL/PFB e a consulta. Toca PRAMIN sem modelo (0xFD71386C,
+EIP=0x183AA); --fatias 4000 termina depois em escrita não mapeada
+VA=0x80000000/EIP=0x18F19, ainda sem triângulo. É a preparação DMA com pb_Head
+mascarado + 1, seguida de WBINVD/pb_start. Próximo: posse/mapeamento dessa página,
+PRAMIN e PFIFO, sem presumir alias PRAMIN/RAM. PTIMER continua somente registrando
+escritas. Snapshots BUS0 legados mantêm os bloqueios descritos no ADR-0058.
+
+Validação Linux: 500 testes workspace/doctests, 215 casos gerados debug/release
+e sete testes Python separados; apresentação Windows não revalidada aqui.
+Hello permanece 37/69 serviços, triangle 41/75. Evidências locais ignoradas:
+`target/instance-triangle-after.log`, `target/instance-triangle-probe.log` e
+ADR-0059. A sonda interrompe ao observar PRAMIN, conferindo os frames e a saída;
+não representa conclusão de pb_init.
 
 ## Build local
 

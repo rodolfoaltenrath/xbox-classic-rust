@@ -16,6 +16,7 @@ mod display;
 mod double_shifts;
 mod encoder_filters;
 mod exchange;
+mod gpu_instance;
 mod indirect;
 mod interlocked;
 mod interrupt;
@@ -84,6 +85,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
+    main.push_str(&gpu_instance::sources(output));
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));
     main.push_str(&interrupt::sources(output));

@@ -88,6 +88,38 @@ impl ContiguousMemory {
             alignment,
             protect,
         };
+        self.publish(bus, allocation)?;
+        Ok(Atendimento {
+            eax: allocation.address().0,
+        })
+    }
+    pub(super) fn reserve_instance(
+        &mut self,
+        bus: &mut Bus,
+        base: u32,
+        size: u32,
+    ) -> Result<bool, Erro> {
+        self.validate_bus(bus).map_err(Erro::MemoriaContigua)?;
+        if self.allocations.len() >= MAX_CONTIGUOUS_ALLOCATIONS
+            || size / PAGE > bus.frames().livres()
+            || candidate(bus, base, base + size, size, PAGE) != Some(base)
+        {
+            return Ok(false);
+        }
+        self.publish(
+            bus,
+            ContiguousAllocation {
+                physical: GuestPhys(base),
+                size,
+                alignment: PAGE,
+                protect: 4,
+            },
+        )?;
+        Ok(true)
+    }
+    fn publish(&mut self, bus: &mut Bus, allocation: ContiguousAllocation) -> Result<(), Erro> {
+        let base = allocation.physical.0;
+        let size = allocation.size;
         let mut frames = bus.frames().clone();
         let mut mmu = bus.mmu().clone();
         frames
@@ -109,9 +141,7 @@ impl ContiguousMemory {
         *bus.mmu_mut() = mmu;
         let at = self.allocations.partition_point(|a| a.physical.0 < base);
         self.allocations.insert(at, allocation);
-        Ok(Atendimento {
-            eax: allocation.address().0,
-        })
+        Ok(())
     }
     /// Consulta sem A/D: posse física, tradução linear e ausência de aliases externos.
     pub(super) fn validate_bus(&self, bus: &Bus) -> Result<(), &'static str> {

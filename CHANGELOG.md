@@ -10,6 +10,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/kernel: consulta MmClaimGpuInstanceMemory (168), retail 64 MiB/Passive,
+  com reserva de 32 frames reais, fronteira 0x83FF0000 e padding de 64 KiB.
+  Repetição preserva bytes; colisões retornam NULL; resize/devkit recusam.
+  Bootstrap provisório P13, KRNL v13/GINS v1 e migração v1–v12 sem estado ativo.
+  Triangle passa da consulta, toca PRAMIN sem modelo e falha depois em escrita
+  VA=0x80000000/EIP=0x18F19; ainda sem renderização. Gate Linux: 500 testes
+  workspace/doctests, 215 nativos debug/release e sete Python separados.
+  Hello permanece 37/69 serviços; triangle 41/75 (ADR-0059).
+
 - Fase 5: PFB_CFG0/CFG1 com perfil de firmware público Cromwell, distinguindo
   arenas de 64/128 MiB e mantendo readback por VA/alias/físico. BUS0 v4/PFBM v1
   guarda configuração; snapshots v1–v3 mantêm PFB sem modelo. Acessos inválidos
