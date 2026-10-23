@@ -117,22 +117,22 @@ mod flag_ops_verification {
     #[test]
     fn clc_stc_cmc_alteram_apenas_cf() {
         let mut s = Session::load(include_bytes!("flag_ops.xbe")).unwrap();
-        assert_eq!(s.state.eflags, 2, "estado inicial sem CF");
+        assert_eq!(s.state.eflags, 0x202, "estado inicial sem CF");
 
         // stc
         assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
-        assert_eq!(s.state.eflags, 3);
+        assert_eq!(s.state.eflags, 0x203);
         // clc
         assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
-        assert_eq!(s.state.eflags, 2);
+        assert_eq!(s.state.eflags, 0x202);
         // cmc com CF=0
         assert_eq!(flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(), Exit::Budget);
-        assert_eq!(s.state.eflags, 3);
+        assert_eq!(s.state.eflags, 0x203);
         // cmc com CF=1, depois ret
         assert_eq!(
             flag_ops::run(&mut s.state, &mut s.bus, 1).unwrap(),
             Exit::Returned
         );
-        assert_eq!(s.state.eflags, 2);
+        assert_eq!(s.state.eflags, 0x202);
     }
 }

@@ -27,6 +27,7 @@ use xbox_mem::{Bus, GuestVirt, Contexto};\n\
 pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
     if let Some(exit) = s.stopped_exit() { return Ok(exit); }\n\
     for _ in 0..blocks {\n\
+        if s.preemption_requested(bus) { return Ok(Exit::Budget); }\n\
         let block: fn(&mut State, &mut Bus) -> Result<()> = match s.eip {\n",
     );
     for export in &program.kernel_imports {
@@ -39,8 +40,10 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
             ),
         );
     }
-    for start in program.blocks.keys() {
-        line(&mut out, &format!("0x{start:08X} => block_{start:08X},"));
+    for (start, instructions) in &program.blocks {
+        for i in instructions {
+            line(&mut out, &format!("0x{:08X} => block_{start:08X},", i.pc));
+        }
     }
     out.push_str("            pc => return Err(Error::UnknownBlock(pc)),\n        };\n        block(s, bus)?;\n        if let Some(exit) = s.stopped_exit() { return Ok(exit); }\n    }\n    Ok(Exit::Budget)\n}\n");
     for (start, instructions) in &program.blocks {
@@ -50,8 +53,14 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
             out,
             "\n#[inline(never)]\n#[allow(unused_variables, non_snake_case)]\nfn block_{start:08X}(s: &mut State, bus: &mut Bus) -> Result<()> {{"
         );
+        line(&mut out, "let entry = s.eip;");
         for i in instructions {
+            line(&mut out, &format!("if entry <= 0x{:08X} {{", i.pc));
             line(&mut out, &format!("s.eip = 0x{:08X};", i.pc));
+            line(
+                &mut out,
+                "if s.preemption_requested(bus) { return Ok(()); }",
+            );
             line(&mut out, "s.check_time_step()?;");
             line(
                 &mut out,
@@ -70,6 +79,8 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
             } else {
                 line(&mut out, "s.retired = s.retired.wrapping_add(1);");
             }
+            line(&mut out, "s.finish_interrupt_step();");
+            line(&mut out, "}");
         }
         out.push_str("    Ok(())\n}\n");
     }
@@ -202,6 +213,7 @@ fn emit_operation(out: &mut String, operation: &Operation, next: u32) {
         Operation::ClearInterrupts => {
             line(out, "s.eflags &= !xbox_recomp::runtime::INTERRUPT_FLAG;");
         }
+        Operation::SetInterrupts => line(out, "s.set_interrupts();"),
         Operation::Halt => line(out, "s.halted = Some(s.eip);"),
         Operation::Breakpoint => line(out, "s.breakpoint = Some(s.eip);"),
         Operation::StoreFence => line(out, "bus.ordenar_escritas();"),

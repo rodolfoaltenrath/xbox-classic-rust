@@ -65,6 +65,12 @@ impl ThreadContext {
         }
         Ok(())
     }
+    pub(super) fn pending_wait(&self) -> bool {
+        self.eip == xbox_kernel::imports::trampoline(233)
+    }
+    pub(super) fn interrupts_enabled(&self) -> bool {
+        self.eflags & super::INTERRUPT_FLAG != 0
+    }
     pub(super) fn capture(state: &State) -> Self {
         Self {
             regs: state.regs,

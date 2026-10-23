@@ -367,6 +367,7 @@ pub enum Operation {
     ReadMsr,
     /// Perfil Xbox privilegiado: limpa IF guest, sem executar CLI no host.
     ClearInterrupts,
+    SetInterrupts,
     /// Suspende a CPU guest e entrega o controle ao host.
     Halt,
     /// INT3 (0xCC): fronteira de exceção #BP, sem entrega via IDT neste perfil.

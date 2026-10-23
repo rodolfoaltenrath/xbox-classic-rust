@@ -139,6 +139,7 @@ impl Scheduler {
             }
             if let Some(context) = &self.contexts[id] {
                 context.integer.validate_task(bus, id as u8, child)?;
+                context.validate_interrupt_profile(state.interrupt_profile)?;
             }
         }
         super::super::threads::ThreadContext::capture(state).validate_task(

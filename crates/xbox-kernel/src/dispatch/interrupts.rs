@@ -8,13 +8,15 @@
 //! Este módulo **não executa código guest**: ele diz à sessão o que chamar
 //! ([`GuestCall`]). Quem executa é `Session::conduzir`, que tem o código nativo.
 //!
-//! ## Valores declarados, não verificados
+//! ## Perfil histórico `LegacyBoundary` (ADR-0055; preservado em snapshots)
 //!
 //! - `HalGetInterruptVector`: vetor = `0x30 + nível` e `KIRQL = 27 − nível`. É a
 //!   convenção do HAL x86 do NT; nenhum alvo testado depende do número, que só passa pelo
 //!   guest de volta para `KeInitializeInterrupt`. Registrado como P10.
 //! - O ISR roda com o IRQL **inalterado**: o perfil só representa PASSIVE/APC/DISPATCH
 //!   (ADR-0042), e um DIRQL não existe nele.
+//!
+//! `MaskedV1` aplica prioridade/IF e entra em DIRQL na Session (ADR-0072).
 
 use std::collections::VecDeque;
 
@@ -91,6 +93,9 @@ impl Interrupts {
         if !bus.gpu_irq_line_asserted() {
             return None;
         }
+        self.connected_gpu(bus)
+    }
+    fn connected_gpu(&self, bus: &Bus) -> Option<GuestCall> {
         let interrupt = *self
             .connected
             .iter()
@@ -405,6 +410,11 @@ impl super::Dispatcher {
     /// A rotina de serviço a chamar agora, se a linha de interrupção está ligada.
     pub fn pending_interrupt(&self, bus: &Bus) -> Option<GuestCall> {
         self.interrupts.pending(bus)
+    }
+
+    /// Rotina conectada, mesmo sem linha ativa; usada para agendar o próximo poll CPU.
+    pub fn connected_gpu_interrupt(&self, bus: &Bus) -> Option<GuestCall> {
+        self.interrupts.connected_gpu(bus)
     }
 
     /// O próximo DPC, já desmarcado como enfileirado.

@@ -16,6 +16,8 @@ mod drive;
 mod interrupts;
 mod msr;
 mod muldiv;
+mod preemption;
+pub use preemption::InterruptProfile;
 mod scheduler;
 pub mod sse;
 mod threads;
@@ -109,6 +111,10 @@ pub struct State {
     pub fpu: x87::Fpu,
     /// Política global de publicação do dado `KeTickCount` (ADR-0071).
     pub tick_publication: TickPublication,
+    pub interrupt_profile: InterruptProfile,
+    /// Uma instrução após STI (0 ou 1 nas fronteiras persistentes).
+    pub sti_shadow: u8,
+    poll: Option<preemption::Poll>,
 }
 
 impl State {
@@ -129,6 +135,9 @@ impl State {
             mxcsr: MXCSR_RESET,
             fpu: x87::Fpu::new(),
             tick_publication: TickPublication::ClockLinkedV1,
+            interrupt_profile: InterruptProfile::MaskedV1,
+            sti_shadow: 0,
+            poll: None,
         }
     }
 
@@ -176,7 +185,7 @@ impl State {
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 9);
+        out.section("AOTC", 10);
         for r in self.regs {
             out.u32(r);
         }
@@ -207,10 +216,12 @@ impl Snapshot for State {
         }
         self.fpu.save(out);
         out.u8(self.tick_publication as u8);
+        out.u8(self.interrupt_profile as u8);
+        out.u8(self.sti_shadow);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 9)?;
+        let version = inp.section("AOTC", 10)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "AOTC",
@@ -279,20 +290,7 @@ impl Snapshot for State {
             self.xmm = [[0; 4]; 8];
             self.fpu = x87::Fpu::new();
         }
-        self.tick_publication = if version >= 9 {
-            match inp.u8()? {
-                0 => TickPublication::BoundariesOnly,
-                1 => TickPublication::ClockLinkedV1,
-                _ => {
-                    return Err(SnapshotError::BadValue {
-                        section: "AOTC",
-                        what: "perfil de publicação de tick desconhecido",
-                    });
-                }
-            }
-        } else {
-            TickPublication::BoundariesOnly
-        };
+        self.load_execution_profiles(version, inp)?;
         Ok(())
     }
 }
@@ -347,6 +345,8 @@ impl Session {
         let startup = xbox_kernel::loader::Image::prepare_aot(bytes)?;
         let bus = startup.image.bus;
         let mut state = State::new(xbe.entry_point);
+        // Bootstrap HLE público: entrega habilitada ao entrar no título (ADR-0072).
+        state.eflags |= INTERRUPT_FLAG;
         state.fs_base = startup.fs_base;
         state.regs[ESP] = startup.esp;
         Ok(Self {

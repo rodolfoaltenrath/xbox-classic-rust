@@ -37,6 +37,7 @@ mod pfb;
 mod pfifo;
 mod pramdac;
 mod pramin;
+mod preemption;
 mod rotations;
 mod scan;
 mod scheduler;
@@ -99,6 +100,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));
     main.push_str(&interrupt::sources(output));
+    main.push_str(&preemption::sources(output));
     main.push_str(&pramdac::sources(output));
     main.push_str(&pfb::sources(output));
     main.push_str(&pfifo::sources(output));

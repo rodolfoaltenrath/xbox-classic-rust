@@ -8,9 +8,9 @@
 //!
 //! ## Pontos de entrega
 //!
-//! Só nas fronteiras que o host já tem: antes de cada fatia de `conduzir` (inclusive a que
-//! repete uma chamada de kernel bloqueada). Não há preempção no meio de um bloco, e não
-//! precisa haver: um quadro dura ~12 milhões de ciclos e uma fatia, ~1 milhão.
+//! `LegacyBoundary` entrega antes de cada fatia. `MaskedV1` também cede entre
+//! instruções/elementos REP por linha ou deadline de vblank (ADR-0072); o emissor
+//! preserva o EIP interno para retomar sem repetir o prefixo do bloco.
 //!
 //! ## Atômico para o host
 //!
@@ -29,7 +29,8 @@ use xbox_kernel::dispatch::{GuestCall, Irql};
 use xbox_mem::Bus;
 
 use super::{
-    ESP, Exit, INTERRUPT_FLAG, RETURN_SENTINEL, Servico, Session, State, threads::ThreadContext,
+    ESP, Exit, INTERRUPT_FLAG, InterruptProfile, RETURN_SENTINEL, Servico, Session, State,
+    threads::ThreadContext,
 };
 use crate::{Error, Result};
 
@@ -82,12 +83,28 @@ impl Session {
         if self.state.stopped_exit().is_some() {
             return Ok(());
         }
-        // IF não é consultada: o AOT não tem STI e o main começa com IF desligada (P11).
-        if let Some(call) = self.kernel.pending_interrupt(&self.bus) {
-            self.invoke_guest(call, run, blocks, false)?;
+        let masked = self.state.interrupt_profile == InterruptProfile::MaskedV1;
+        if (!masked || self.state.maskable_interrupts_enabled())
+            && let Some(call) = self.kernel.pending_interrupt(&self.bus)
+        {
+            let previous = self.kernel.irql();
+            let priority = if masked {
+                self.interrupt_priority(call)?
+            } else {
+                previous
+            };
+            if !masked || previous < priority {
+                if masked {
+                    self.kernel.restore_irql(priority);
+                }
+                let result = self.invoke_guest(call, run, blocks, false);
+                self.kernel.restore_irql(previous);
+                result?;
+            }
         }
         let mut delivered = 0;
-        while self.kernel.irql() < Irql::Dispatch
+        while (!masked || self.state.maskable_interrupts_enabled())
+            && self.kernel.irql() < Irql::Dispatch
             && delivered < MAX_DPCS_PER_DELIVERY
             && let Some(call) = self.kernel.next_dpc(&mut self.bus)?
         {
@@ -128,6 +145,8 @@ impl Session {
         R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
     {
         let saved = ThreadContext::capture(&self.state);
+        let shadow = self.state.sti_shadow;
+        self.state.sti_shadow = 0;
         let mut esp = self.state.regs[ESP];
         for argument in call.arguments[..call.count].iter().rev() {
             esp = esp.wrapping_sub(4);
@@ -150,6 +169,7 @@ impl Session {
             match self.run_slice(run, blocks)? {
                 Exit::Returned => {
                     saved.restore(&mut self.state);
+                    self.state.sti_shadow = shadow;
                     return Ok(());
                 }
                 Exit::Budget => {}

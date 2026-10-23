@@ -213,4 +213,15 @@ atendida, com `GATE OK`, ADR e CHANGELOG.
   wrap ULONG em 2^32 ms e snapshot/replay integral; página continua RO guest.
   AOTC v9 migra v8 para BoundariesOnly e recusa perfil desconhecido.
   ADR-0071, P7 encerrado para sessões novas.
-- [ ] 3.4 P10/P11: DIRQL/IF/`STI` como máscara real.
+- [x] 3.4 P10/P11: DIRQL/IF/`STI` como máscara real.
+  Evidência: GATE OK 576 testes (target/gate/20261023-081048.log), 253 casos
+  gerados debug/release (target/plan-34-native-release-rep.log). Guest observa
+  ISR=24/DPC=2, IF/CLI/STI e DIRQL mascaram entrega; interrupção dentro de
+  bloco/loop e replay por EIP interno. REP após STI permite IRQ após uma
+  iteração (ECX=2), com bytes e replay integral; correção fundamentada no xemu
+  fixado. Migrações AOTC v9/v10, IRQL v1/v2 e TCTX v1/v2; política legada
+  preservada. P19 recusa segunda espera pendente sem sobrescrever o waiter.
+  Sonda target/sonda/triangle-20261023-080822.log: 278 chamadas/zero recusadas,
+  305922 pixels/479 linhas, 9 draws/27 triângulos; probe
+  target/plan-34-real-probe-final.log confirma snapshot/replay de CPU, RAM,
+  GPU e scheduler. ADR-0072 e limites P20; plano concluído.

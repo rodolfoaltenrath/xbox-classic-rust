@@ -3,7 +3,7 @@ use xbox_formats::fixtures::xbe_com_imports;
 use xbox_recomp::{analysis, emit};
 
 // Ordem dos imports = índice do slot na thunk table (`0x12000 + 4 * índice`).
-const IMPORTS: [u32; 8] = [
+const IMPORTS: [u32; 9] = [
     44,  // HalGetInterruptVector
     107, // KeInitializeDpc
     109, // KeInitializeInterrupt
@@ -12,6 +12,7 @@ const IMPORTS: [u32; 8] = [
     205, // NtPulseEvent
     189, // NtCreateEvent
     233, // NtWaitForSingleObject
+    103, // KeGetCurrentIrql
 ];
 const HAL_VECTOR: u32 = 0;
 const INIT_DPC: u32 = 1;
@@ -81,6 +82,8 @@ fn load_arg(c: &mut Vec<u8>, disp: u8) {
 /// ISR `stdcall(Interrupt*, ServiceContext)`: conta, desliga o INTA e enfileira o DPC.
 fn isr() -> Vec<u8> {
     let mut c = Vec::new();
+    call(&mut c, 8);
+    store_eax(&mut c, 0x12A34);
     inc(&mut c, ISR_COUNT);
     load_arg(&mut c, 4);
     store_eax(&mut c, ISR_ARG0);
@@ -103,6 +106,8 @@ fn isr() -> Vec<u8> {
 /// religa o INTA.
 fn dpc() -> Vec<u8> {
     let mut c = Vec::new();
+    call(&mut c, 8);
+    store_eax(&mut c, 0x12A38);
     inc(&mut c, DPC_COUNT);
     load_arg(&mut c, 4);
     store_eax(&mut c, DPC_ARG0);

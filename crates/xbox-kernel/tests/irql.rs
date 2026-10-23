@@ -57,8 +57,11 @@ fn raise_e_lower_continuam_recusados_sem_normalizar_nivel() {
         ));
         assert_eq!(d.irql(), Irql::Dispatch);
     }
-    for level in 3..=255 {
+    for level in 32..=255 {
         assert!(Irql::from_level(level).is_none());
+    }
+    for level in 3..=31 {
+        assert_eq!(Irql::from_level(level).unwrap().level(), level);
     }
     assert_eq!((d.atendidas(), d.recusadas()), (0, 2));
 }
@@ -66,7 +69,13 @@ fn raise_e_lower_continuam_recusados_sem_normalizar_nivel() {
 #[test]
 fn snapshot_preserva_niveis_e_carga_de_kernel_recusa_corrupcao_sem_commit_parcial() {
     let (mut bus, regs) = setup();
-    for irql in [Irql::Passive, Irql::Apc, Irql::Dispatch] {
+    for irql in [
+        Irql::Passive,
+        Irql::Apc,
+        Irql::Dispatch,
+        Irql::Device24,
+        Irql::Device31,
+    ] {
         let mut d = Dispatcher::with_irql(irql);
         d.atender(&mut bus, imports::trampoline(103), &regs)
             .unwrap();
@@ -85,7 +94,7 @@ fn snapshot_preserva_niveis_e_carga_de_kernel_recusa_corrupcao_sem_commit_parcia
             u32::from(irql.level())
         );
         let original = saved(&restored);
-        for (version, level) in [(0u32, 0u8), (2, 0), (1, 3), (1, 31), (1, 255)] {
+        for (version, level) in [(0u32, 0u8), (3, 0), (1, 3), (1, 31), (2, 255)] {
             let mut bad = bytes.clone();
             let at = bad.windows(4).position(|tag| tag == b"IRQL").unwrap();
             bad[at + 4..at + 8].copy_from_slice(&version.to_le_bytes());
@@ -152,5 +161,25 @@ fn krnl_v1_a_v4_migram_para_passive_sem_herdar_contexto_destino() {
                 SystemTimeReference::default()
             }
         );
+    }
+}
+
+#[test]
+fn irql_v1_migra_niveis_antigos_e_v2_preserva_todos_dirqls() {
+    for level in 0..=31 {
+        let mut w = SnapshotWriter::new();
+        w.section("IRQL", if level <= 2 { 1 } else { 2 });
+        w.u8(level);
+        let bytes = w.finish();
+        let mut irql = Irql::Passive;
+        irql.load(&mut SnapshotReader::new(&bytes).unwrap())
+            .unwrap();
+        assert_eq!(irql.level(), level);
+        let migrated = saved(&irql);
+        let mut r = Irql::Device31;
+        r.load(&mut SnapshotReader::new(&migrated).unwrap())
+            .unwrap();
+        assert_eq!(r, irql);
+        assert_eq!(saved(&r), migrated);
     }
 }

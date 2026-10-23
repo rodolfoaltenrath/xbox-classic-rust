@@ -1,17 +1,17 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`9c565ab`** e implementação local
-do ADR **0071** (tick acoplado ao Clock).
+Atualizado em **2026-10-23**, com base no commit **`3557192`** e implementação local
+do ADR **0072** (DIRQL/IF/STI e preempção AOT).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
 
-> **Como ler este arquivo.** O estado vigente está na "**Passagem de bastão**" abaixo e
-> na tabela de contratos ("Fim da execução atual" e "Comando completo"). As seções
-> por ADR mais adiante são **registros datados**: frases como "Próximo bloqueio" ou "o
-> bloqueio atual" dentro delas descrevem o momento em que cada ADR foi escrito e estão
-> preservadas como histórico, não como estado vigente. Na dúvida, reproduza com o
-> comando completo da tabela de contratos antes de investigar qualquer bloqueio.
+> **Como ler este arquivo.** O estado vigente e os comandos atuais estão na
+> **Passagem de bastão** abaixo. As seções por ADR e a tabela de contratos do
+> hello mais adiante são registros históricos: "atual"/"próximo bloqueio" ali
+> descrevem a revisão em que foram escritos. Antes de investigar um bloqueio,
+> reproduza com os comandos da passagem de bastão.
+
 
 ## Passagem de bastão — estado em 2026-10-23
 
@@ -29,16 +29,16 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P19), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0071) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0072) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
 5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
-   `KINT` v2, `AOTC` v9, `AOTS` v4/`SCHD` v1/`TCTX` v1/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
+   `KINT` v2, `AOTC` v10/`IRQL` v2, `AOTS` v4/`SCHD` v1/`TCTX` v2/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
    outro trailer de autoria (pedido explícito do mantenedor). Desde 2026-10-23 o agente
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (572 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (576 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `242 passed` em x86-64 e `226` fora dele —
+   confere o **contador de casos gerados**, hoje `253 passed` em x86-64 e `237` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -59,29 +59,32 @@ MOV/MUL/ADD/MAD/RCP e rasteriza as listas submetidas; não reconhece título ou
 shader por nome/hash. O ISR guest trata os traps de NOP e atualiza PRAMIN antes
 de clear/draw. PCRTC_START escolhe o buffer capturado. O host lê os bytes reais.
 
-Sonda oficial de referência `target/sonda/triangle-20261023-073247.log`, 320 fatias:
+Sonda oficial de referência `target/sonda/triangle-20261023-080822.log`, 320 fatias:
 
 | Medida | Resultado |
 |---|---|
-| Parada | orçamento em EIP=0x1648F, sem serviço faltante |
-| Kernel | 279 atendidas, zero recusadas; cobertura triangle 42/75 |
-| CPU/tempo sintético | 240238761 instruções, 298395953 ciclos, 406 ms guest |
-| Clear | primeira cor 0x00000000; 1649 chamadas/6157786 pixels-alvo |
+| Parada | orçamento em EIP=0x16440, sem serviço faltante |
+| Kernel | 278 atendidas, zero recusadas; cobertura triangle 42/75 |
+| CPU/tempo sintético | 231556968 instruções, 296627592 ciclos, 404 ms guest |
+| Clear | primeira cor 0x00000000; 1647 chamadas/5543386 pixels-alvo |
 | Draw | 9 pacotes, 27 triângulos submetidos, 4147200 fragmentos aprovados |
 | Framebuffer | habilitado, **305922 pixels coloridos/479 linhas** (clear+texto era 1542/32) |
 | Regiões de cor | R=4977, G=4998, B=4977; canal >=192 e outros <=32 |
 | MMIO sem modelo | 165 endereços distintos |
 | Tradução | sem --entry manual, 19707 blocos; contém os 14 endereços anteriores |
 
-Gate `target/gate/20261023-074259.log`: **572 testes** Linux/workspace/doctests,
-242 casos gerados debug/release. A sonda acima ainda usa o emissor pré-ADR-0071;
-o novo contador é validado pelos quatro casos nativos de polling/REP/wrap/replay. Golden RGB analítica 4×4 em
+Gate `target/gate/20261023-081048.log`: **576 testes** Linux/workspace/doctests,
+253 casos gerados debug/release. Polling/REP/wrap/replay, máscara IF/DIRQL,
+preempção dentro de bloco, esperas concorrentes e migrações CPU/TCTX/IRQL.
+Golden RGB analítica 4×4 em
 `crates/xbox-gpu/tests/reference/triangle-4x4.ppm`; testes de limites, máscaras,
 clip, culling/depth, uploads incompletos, overflow, corrupção e replay.
-Probe `target/plan-32-real-probe.log`: scanout 0x210000, captura em
-`target/pfifo-evidence/triangle-auto-software.ppm`/`.png`, snapshot integral e mais
-20 fatias byte a byte idênticos após restauração. Imagem inspecionada: triângulo
-RGB, fundo interpolado e texto Triangle Demo/Frames.
+Probe `target/plan-34-real-probe-final.log`: scanout 0x210000, captura em
+`target/pfifo-evidence/triangle-irq-software.ppm`/`.png`, snapshot integral e mais
+20 fatias byte a byte idênticos após restauração no perfil atual. Imagem inspecionada: triângulo
+RGB, fundo interpolado e texto Triangle Demo/Frames. SHA-256 do PPM atual:
+`1c2d8fc58e5852926ae8c54377174aea5b5a6f21308db2ad804b9c60dd7c280c`,
+igual à referência gráfica do ADR-0069 apesar dos novos perfis de execução.
 O perfil software tem precisão/recortes declarados em P18; não é validação
 física nem compatibilidade gráfica geral. P17 conserva a incerteza pública de
 ativação do NOP de software/NSOURCE. Textura, blend, outros formatos/opcodes e
@@ -109,13 +112,24 @@ Não existe evidência para prometer jogos comerciais por estes números.
 - **MmFreeContiguousMemory (171)** devolve frames e remove mapeamentos reais;
   preserva página boot, pool GPU, backing do modo de vídeo e scanout ativo.
   Não liberar recursos referenciados nem silenciar inconsistência de posse.
-- Vblank e PGRAPH compartilham PMC/INTA. Entrega ainda sofre P10/P11: DIRQL e
-  IF/STI/preempção são próximos itens do plano, sem afirmar máscara CPU completa.
-- **AOTS v4/SCHD v1/TCTX v1**: TwoThreadV1 seleciona inicial/filha, bloqueia Delay,
+- **AOTC v10/IRQL v2/InterruptProfile**: MaskedV1 consulta IF/shadow/DIRQL,
+  ISR GPU no nível registrado (24), DPC em 2, restaura a prioridade anterior.
+  Vblank/linha cede entre instruções/elementos REP, inclusive dentro de bloco;
+  retoma pelo EIP interno sem repetir prefixo. Bootstrap HLE inicia IF habilitada.
+  AOTC v1–v9 conserva LegacyBoundary e IF serializada; IRQL v1 só aceita 0–2.
+  A primeira iteração REP consome a janela de STI; ISR observa ECX restante e
+  replay retoma sem repetir o elemento já escrito (pin xemu no ADR-0072).
+  TCTX v1 migra shadow zero; v2 guarda a janela da thread inativa. Poll efêmero
+  é rederivado do Clock/dispositivos antes de run. P10/P11 encerrados; ISR/DPC
+  atômicos, somente INTR GPU, sem HLT/NMI/controlador geral: recorte P20.
+  PMC/INTA continua compartilhado entre vblank e PGRAPH.
+- **AOTS v4/SCHD v1/TCTX v2**: TwoThreadV1 seleciona inicial/filha, bloqueia Delay,
   executa outra Ready e só salta Clock quando ocioso. Contextos completos SSE/x87,
-  quantum sintético 4096/Passive, deadlines e espera por objeto/filha com replay.
+  quantum sintético 4096/Passive/IF/shadow, deadlines e espera por objeto/filha com replay.
   AOTS v1–v3 conserva LegacyBootstrap ao migrar/regravar. P3 encerrado para novas
   sessões; P19 declara duas threads, filas/prioridades/waits limitados.
+  Events conserva um único waiter: MaskedV1 recusa segunda chamada NtWait pendente,
+  incluindo se a outra continuação já foi acordada mas ainda não consumiu o retorno.
 - **THRD v2**: NtClose escalonado invalida o handle sem terminar a filha ou liberar
   stack/TLS ativos. THRD v1 migra aberto. CRT real cria/detach/retorna no pai;
   a filha continua. Duas provas de ciclo de vida/migração, cinco casos nativos.
@@ -138,7 +152,7 @@ Hashes do triangle raw XBE e PE:
 ```bash
 bash scripts/build-nxdk-sample.sh triangle homebrew2
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
-  --out target/homebrew2/auto-tables-review-20261023
+  --out target/homebrew2/irq-step-review-20261023
 bash scripts/sonda.sh triangle 320
 bash scripts/gate.sh
 ```
@@ -146,7 +160,7 @@ bash scripts/gate.sh
 Em outra máquina usar diretório novo para a tradução e ajustar `scripts/sonda.sh`.
 O projeto local separa `generated` numa lib para sondas pequenas; a primeira
 compilação release dos 19707 blocos leva cerca de seis minutos.
-Mudança do emissor (como ADR-0071) exige retraduzir para atualizar o Rust gerado. O limite de
+Mudança do emissor (ADRs 0071/0072) exige retraduzir para atualizar o Rust gerado. O limite de
 execução não inclui essa compilação. `target/` é ignorado: logs/probes não
 substituem a referência PPM e os testes versionados.
 
@@ -159,8 +173,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-Fases 0, 1 e 2 do PLANO entregam consumo real, clear e triângulos. Seguir Fase 3
-no item **P10/P11 DIRQL/IF/STI**. Cada tarefa exige ADR, gate, evidência e commit.
+O PLANO atual foi concluído com a evidência final da tarefa 3.4. Não existe
+próxima tarefa autorizada nesse arquivo: novo escopo depende do mantenedor.
+Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
+Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
 callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda
 podem exigir --entry. Não adicionar listas de endereços de títulos ao analisador.

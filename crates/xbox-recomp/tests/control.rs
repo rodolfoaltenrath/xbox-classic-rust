@@ -16,7 +16,7 @@ fn cli_hlt_tem_ir_propria_e_continuacao_traduzida() {
 
 #[test]
 fn hlt_nao_esconde_instrucao_faltante_na_continuacao() {
-    let err = analyze(&xbe_com_codigo(&[0xF4, 0xFB, 0xC3]).unwrap()).unwrap_err();
+    let err = analyze(&xbe_com_codigo(&[0xF4, 0x0F, 0x0B]).unwrap()).unwrap_err();
     assert!(matches!(
         err,
         xbox_recomp::Error::Analysis { pc: 0x11001, .. }

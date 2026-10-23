@@ -812,6 +812,7 @@ fn lower_stack_and_flow(i: &Instruction) -> Result<Operation> {
         Code::Rdtsc => Operation::ReadTimestamp,
         Code::Rdmsr => Operation::ReadMsr,
         Code::Cli => Operation::ClearInterrupts,
+        Code::Sti => Operation::SetInterrupts,
         Code::Hlt => Operation::Halt,
         Code::Int3 => Operation::Breakpoint,
         Code::Sfence => Operation::StoreFence,

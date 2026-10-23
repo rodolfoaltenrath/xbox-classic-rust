@@ -17,6 +17,17 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3/P10/P11: DIRQL no ISR e prioridade como máscara, IF/CLI/STI com janela
+  de uma instrução e preempção por linha/vblank dentro de blocos AOT. Retomada
+  por EIP interno evita repetir stores; REP libera a shadow após a primeira
+  iteração, com ECX restante observado pelo ISR (fonte xemu fixada).
+  AOTC v10/IRQL v2/TCTX v2 com migração explícita de política/shadow, bootstrap
+  HLE habilitado fundamentado em fonte pública fixada. Onze casos nativos e
+  quatro testes CPU/kernel; limites de ISR/DPC atômicos em P20 (ADR-0072). P19 recusa segunda chamada NtWait pendente
+  no perfil novo, preservando o único waiter e a continuação anterior.
+  Gate 576/253 nativos debug/release; triangle retraduzido: 278 chamadas/zero
+  recusadas, 305922 pixels/479 linhas e snapshot/replay integral.
+
 - Fase 3/P7: KeTickCount ligado ao avanço de Clock nas instruções e elementos
   REP, com backing RO guest e wrap ULONG. AOTC v9 preserva BoundariesOnly
   dos snapshots v1–v8. Polling sem HLE, REP parcial, wrap e replay no Rust

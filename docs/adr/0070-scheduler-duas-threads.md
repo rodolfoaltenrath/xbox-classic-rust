@@ -4,7 +4,7 @@ Data: 2026-10-23. Estado: aceito. PLANO 3.2, encerra P3; recorte P19.
 
 ## Contexto
 
-O bootstrap do ADR-0027 estacionava o pai até a filha terminar. O ADR-0051
+O bootstrap do ADR-0045 estacionava o pai até a filha terminar. O ADR-0051
 avançava Clock diretamente em KeDelayExecutionThread: correto apenas enquanto
 nenhuma outra thread pode executar. A condição de saída de P3 exige que a espera
 bloqueie a thread e que o scheduler decida quando avançar tempo. Os consumidores

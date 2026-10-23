@@ -125,4 +125,9 @@ mod interrupt_verification {
         restaurada.save(&mut de_novo);
         assert_eq!(de_novo.finish(), bytes, "ida e volta idêntica");
     }
+    #[test]
+    fn guest_observa_dirql_no_isr_dispatch_no_dpc_e_passive_apos_retorno(){let s=rodar_ok();assert_eq!(u32_at(&s,0x12A34),24);assert_eq!(u32_at(&s,0x12A38),2);assert_eq!(s.kernel.irql(),xbox_kernel::dispatch::Irql::Passive);}
+    #[test]
+    fn perfil_legado_conserva_irql_inalterado_no_isr(){let mut s=Session::load(include_bytes!("interrupt_ok.xbe")).unwrap();s.state.interrupt_profile=xbox_recomp::runtime::InterruptProfile::LegacyBoundary;assert_eq!(s.conduzir(LIMITES,ok::run,|_|Ok(false)).unwrap(),Desfecho::Retornou);assert_eq!(u32_at(&s,0x12A34),0);assert_eq!(u32_at(&s,0x12A38),2);}
+
 }

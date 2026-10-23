@@ -51,7 +51,7 @@ fn snapshot_atual_preserva_perfil_e_rejeita_id_desconhecido() {
     let mut out = SnapshotWriter::new();
     state.save(&mut out);
     let bytes = out.finish();
-    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 9);
+    assert_eq!(u32::from_le_bytes(bytes[16..20].try_into().unwrap()), 10);
     let mut restored = State::new(0);
     let mut reader = SnapshotReader::new(&bytes).unwrap();
     restored.load(&mut reader).unwrap();
@@ -68,7 +68,7 @@ fn snapshot_atual_preserva_perfil_e_rejeita_id_desconhecido() {
         let mut bad = bytes.clone();
         // O id do perfil vem antes de MXCSR (4), XMM (8 × 16) e a pilha x87 (TOP, tags e
         // 8 × 12 bytes): 4 + 128 + 104 bytes depois dele.
-        let tail = bad.len() - (4 + 4 + 128 + 104 + 1);
+        let tail = bad.len() - (4 + 4 + 128 + 104 + 3);
         bad[tail..tail + 4].copy_from_slice(&id.to_le_bytes());
         assert!(matches!(
             State::new(0).load(&mut SnapshotReader::new(&bad).unwrap()),

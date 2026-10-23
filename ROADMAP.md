@@ -1103,8 +1103,6 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P6 | **Apresentação só no Windows**, e só `--janela` opt-in | o alvo de desenvolvimento é Windows e o nxdk hello é o único alvo | o alvo final (appliance Linux, Fase 10) não tem janela alguma | backend Linux desktop (Fase 8) e DRM/KMS (Fase 10) atrás do mesmo `Apresentador` |
 | P8 | **SSE sem MXCSR dinâmico**: flags de exceção nunca atualizadas, todas as exceções mascaradas, arredondamento sempre ao mais próximo, sem FTZ/DAZ; `LDMXCSR`/`STMXCSR` recusados (ADR-0053) | nenhum alvo testado alterou o MXCSR | um título que mude o modo de arredondamento ou leia as flags obtém resultado errado sem erro | modelar o MXCSR por completo quando um alvo real o usar |
 | P9 | **x87 só carga e armazenamento**: sem aritmética, sem palavras de controle/estado nem exceções (ADR-0053) | o `triangle` usa `fild`/`fstp`/`fldz`; aritmética ainda não foi alcançada | instruções x87 além das listadas são recusadas na análise, com o nome | implementar a aritmética quando um caminho executado a alcançar, com a precisão de 80 bits já exata na pilha |
-| P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
-| P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
 | P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; PFIFO tem consumidor parcial P16; PGRAPH tem recortes P17/P18; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
 | P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN; MmFreeContiguousMemory recusa o pool provisionado (ADR-0062) | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN, teardown e perfis maiores com evidência |
 | P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; consumo PFIFO/PGRAPH parcial existe, vínculo físico permanece pendente | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
@@ -1112,7 +1110,13 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P16 | **PFIFO serial limitado** (ADR-0065): até 4096 palavras por fronteira CPU, canal DMA zero e memória linear UMA | consumidor real guiado pelo pbkit, com estados explícitos e replay | sem timing GPU ou PIO/outros canais; IRQ/clear PGRAPH passam ao perfil P17, filas EMPTY representam o consumidor serial | integrar PGRAPH, sincronização/backpressure e perfis com evidência, preservando snapshots |
 | P17 | **PGRAPH ClearV1 público e serial** (ADR-0067): NOP não zero captura ERROR/NOTIFICATION, FIFO controla consumo; clear BGRA8/Z24S8 linear e scanout físico | métodos/MMIO observados no pbkit e referências públicas fixadas, com ISR guest real | ativação física de NOP/NSOURCE não medida; sem timing, raster/shaders/texturas; formato e dimensões limitados | evidência física de trap/IRQ e novos perfis de renderização/timing validados, preservando ClearV1 e snapshots legados |
 | P18 | **PGRAPH SoftwareV1 em RAM** (ADR-0068): F32 arrays, VP MOV/MUL/ADD/MAD/RCP, raster de listas TRIANGLES e combiner diffuse | caminho público do triangle, referência analítica versionada e dados guest reais | precisão software (arestas 8 bits, VP f32, pesos f64), opcodes/modos limitados, sem textura/blend; não é comparação física do NV2A | novos perfis com capturas/hardware e extensão validada de raster/combiner/shaders, preservando SoftwareV1 e replay |
-| P19 | **Scheduler TwoThreadV1** (ADR-0070): inicial + uma filha, Passive, quantum sintético 4096 e reavaliação de waits após HLE | Delay bloqueia e outra Ready executa sem salto de Clock; contexto completo e replay | sem múltiplas filhas/prioridades/APC/timeout absoluto; contenção de critical section recusa; não representa o dispatcher NT geral | casos guest reais exigindo extensão de threads/filas/prioridades/waits, com perfil e migração testados |
+| P19 | **Scheduler TwoThreadV1** (ADR-0070): inicial + uma filha, Passive/IF/shadow, quantum sintético 4096 e reavaliação de waits após HLE | Delay bloqueia e outra Ready executa sem salto de Clock; contexto completo e replay | sem múltiplas filhas/prioridades/APC/timeout absoluto; no perfil MaskedV1 há uma única chamada NtWait pendente e a segunda recusa; contenção de critical section recusa; não representa o dispatcher NT geral | casos guest reais exigindo extensão de threads/filas/prioridades/waits, com perfil e migração testados |
+| P20 | **IRQ MaskedV1/HLE** (ADR-0072): IF/shadow e DIRQL efetivos entre instruções, mas ISR/DPC atômicos e somente linha GPU conectada | pbkit executa seus callbacks reais, com replay e preempção dentro de bloco | sem IRQ aninhada nos callbacks, PIC/APIC geral, NMI, IDT/IRET de kernel guest ou retomada de HLT; KfRaise/KfLower continuam recusados | consumidor real exigindo esses caminhos, evidência e frames/interrupções persistentes com migração/replay |
+
+P10/P11 encerrados para sessões novas em 2026-10-23 pelo ADR-0072:
+IRQL 0–31, ISR no nível registrado (GPU=24), máscara IF e shadow de STI,
+vblank/linha preemptando dentro de blocos com retomada exata. AOTC v1–v9
+conserva LegacyBoundary; limites restantes declarados em P20.
 
 P7 encerrado para sessões novas em 2026-10-23 pelo ADR-0071: ClockLinkedV1
 publica a cada milissegundo cruzado por instrução/elemento REP e nos saltos
@@ -1210,10 +1214,24 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-22 | 5 / alpha | Armazenamento PRAMIN (ADR-0060/P14) | — | Tabelas/contextos persistentes, BUS0 v5/PRAM v1 e migração v1–v4 sem modelo; página zero do loader ainda bloqueia DMA; 506 testes Linux e 218 nativos debug/release |
 | 2026-10-22 | 5 / alpha | Página D3D no boot (ADR-0061) | — | PA zero reservada antes dos frames XBE, headers em PA=0x1000/RO, BUS0 v6/BTPG v1 e migração sem reserva; triangle com 12 raízes passa escrita/WBINVD e ISR/DPC; timeout DMA leva à limpeza em ordinal 171; 513 testes Linux e 221 nativos debug/release |
 | 2026-10-23 | 5 / alpha | Liberação contígua (ADR-0062) | — | Ordinal 171 devolve frames e remove mapas; protege backings referenciados; triangle libera 133 frames e continua no esvaziamento PFIFO; sonda 320 fatias com 93 chamadas/zero recusadas; GATE OK 519 testes e 224 nativos debug/release; hello 38/69, triangle 42/75 |
+| 2026-10-23 | 3-AOT | P5 encerrado para triangle (ADR-0069) | 3ff0a63 | Sem --entry manual, 19707 blocos e quadro com replay; gate 566/233 nativos |
+| 2026-10-23 | 3 / runtime | P3 encerrado para novas sessões (ADR-0070) | 9c565ab | Delay bloqueia, scheduler escolhe Clock ocioso, detach preserva filha; AOTS v4/SCHD v1/THRD v2; gate 570/238 nativos; recorte P19 |
+| 2026-10-23 | 3 / runtime | P7 encerrado para novas sessões (ADR-0071) | 3557192 | Tick a cada milissegundo por instrução/REP, RO e wrap; AOTC v9 preserva legado; gate 572/242 nativos |
+| 2026-10-23 | 3 / runtime | P10/P11 encerrados para novas sessões (ADR-0072) | — | IF/shadow e DIRQL, preempção dentro de bloco, AOTC v10/IRQL v2/TCTX v2, guard de segunda espera; gate 576/253 nativos; recorte P20 |
+
 
 ---
 
 ### Próxima ação
+
+PLANO atual concluído: análise automática, scheduler bloqueante, tick ligado ao
+Clock e DIRQL/IF/STI com preempção (ADRs 0069–0072). Gate 576 testes e 253 casos
+nativos debug/release. Triangle sem raízes manuais produz quadro RGB na RAM;
+limites atuais ficam em §16.1/P19/P20 e na passagem de bastão. O próximo escopo
+depende do mantenedor; apresentação Linux e compatibilidade comercial permanecem
+fora da validação do sample. Não repetir as investigações históricas abaixo.
+
+#### Histórico das ações anteriores
 
 Tarefa 2.1 concluída: ADR-0066 e CSV das 274 chaves NV097, fontes/valores/efeitos.
 14 raízes/19391 blocos, sonda com 226 chamadas/zero recusadas e 40 DRAW_ARRAYS de

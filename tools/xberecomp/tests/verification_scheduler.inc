@@ -11,6 +11,7 @@ mod scheduler_verification {
  use xbox_recomp::runtime::{Session,Exit,Limites,Desfecho,SchedulingProfile};
  mod sleep{include!("scheduler_sleep.rs");}
  mod deadlines{include!("scheduler_deadlines.rs");}
+ mod waits{include!("scheduler_waits.rs");}
  mod detach{include!("scheduler_detach.rs");}
  mod quantum{include!("scheduler_quantum.rs");}
  fn loaded()->Session{Session::load(include_bytes!("scheduler_sleep.xbe")).unwrap()}
@@ -44,6 +45,20 @@ mod scheduler_verification {
   assert_eq!(detach::run(&mut s.state,&mut s.bus,1000).unwrap(),Exit::KernelCall{ordinal:187});s.atender_kernel().unwrap();assert_eq!(s.state.regs[0],0);
   let checkpoint=saved(&s);finish(&mut s,detach::run);context_results(&s);assert_eq!(word(&s,0x1212C),0);let complete=saved(&s);
   let mut r=Session::load(image).unwrap();r.load(&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();finish(&mut r,detach::run);assert!(saved(&r)==complete);
+ }
+
+ #[test]
+ fn tctx_v1_migra_shadow_zero_e_v2_recusa_shadow_impossivel(){
+  let mut s=loaded();start(&mut s,sleep::run);let current=saved(&s);let at=current.windows(4).rposition(|v|v==b"TCTX").unwrap();let shadow=at+8+54+128+4+104;assert_eq!(current[shadow],0);
+  let mut old=current.clone();old.remove(shadow);old[at+4..at+8].copy_from_slice(&1u32.to_le_bytes());let sch=old.windows(4).rposition(|v|v==b"SCHD").unwrap();let len=u64::from_le_bytes(old[sch+12..sch+20].try_into().unwrap());old[sch+12..sch+20].copy_from_slice(&(len-1).to_le_bytes());let mut r=loaded();r.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(saved(&r)==current);finish(&mut s,sleep::run);finish(&mut r,sleep::run);assert!(saved(&r)==saved(&s));
+  for value in [2,255]{let mut bad=current.clone();bad[shadow]=value;assert!(loaded().load(&mut SnapshotReader::new(&bad).unwrap()).is_err());}
+  let mut bad=current.clone();bad[shadow]=1;bad[at+52..at+56].copy_from_slice(&2u32.to_le_bytes());assert!(loaded().load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
+ }
+
+ #[test]
+ fn segunda_chamada_wait_pendente_recusa_sem_sobrescrever_evento_ou_continuacao(){
+  let mut s=Session::load(include_bytes!("scheduler_waits.xbe")).unwrap();let result=s.conduzir(Limites{blocos_por_fatia:10000,fatias:100},waits::run,|_|Ok(false));let error=result.unwrap_err();assert!(matches!(error,xbox_recomp::Error::Kernel(xbox_kernel::dispatch::Erro::VarianteNaoImplementada{ordinal:233,..})));assert!(error.to_string().contains("uma única chamada NtWait"));assert_eq!(word(&s,0x12100),1);let checkpoint=saved(&s);assert!(s.atender_kernel().is_err());assert!(saved(&s)==checkpoint);
+  let mut r=Session::load(include_bytes!("scheduler_waits.xbe")).unwrap();r.load(&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();assert!(r.atender_kernel().is_err());assert!(saved(&r)==checkpoint);
  }
 
 }

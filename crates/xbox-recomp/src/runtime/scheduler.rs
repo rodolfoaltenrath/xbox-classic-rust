@@ -130,6 +130,7 @@ impl Session {
         self.state.regs[ESP] = child.esp();
         self.state.eip = child.entry;
         self.state.eflags = 2 | INTERRUPT_FLAG;
+        self.state.sti_shadow = 0;
         self.state.fs_base = child.tib();
         self.state.repeat = None;
         self.state.returned = false;
@@ -191,7 +192,10 @@ impl Session {
             return Ok(());
         };
         scheduler.wake_deadlines(self.state.clock.cycles());
-        if self.kernel.irql() != Irql::Passive {
+        if self.kernel.irql() != Irql::Passive
+            || self.state.interrupt_profile == super::InterruptProfile::MaskedV1
+                && !self.state.maskable_interrupts_enabled()
+        {
             return Ok(());
         }
         let current = usize::from(scheduler.current);
@@ -226,6 +230,26 @@ impl Session {
             requested
         }
     }
+    fn validate_wait_slot(&self, call: &xbox_kernel::imports::Call) -> Result<()> {
+        if self.in_interrupt
+            || self.state.interrupt_profile != super::InterruptProfile::MaskedV1
+            || call.export.ordinal != 233
+        {
+            return Ok(());
+        }
+        let scheduler = self.scheduler.as_ref().expect("scheduler");
+        if scheduler.contexts[scheduler.other()]
+            .as_ref()
+            .is_some_and(|task| task.integer.pending_wait())
+        {
+            return Err(xbox_kernel::dispatch::Erro::VarianteNaoImplementada {
+                nome:call.export.name, ordinal:call.export.ordinal, chamador:call.return_pc,
+                detalhe:"P19: uma única chamada NtWait pendente; segunda espera exige filas por thread",
+                argumentos:format!("0x{:08X}, 0x{:08X}, 0x{:08X}",call.argument(&self.bus,0)?,call.argument(&self.bus,1)?,call.argument(&self.bus,2)?),
+            }.into());
+        }
+        Ok(())
+    }
     pub(super) fn scheduled_kernel(&mut self) -> Result<Servico> {
         use xbox_kernel::dispatch::{
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX, ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
@@ -234,6 +258,7 @@ impl Session {
             return Err(xbox_core::Error::format("CPU parada não atende serviço").into());
         }
         let call = self.kernel_call()?;
+        self.validate_wait_slot(&call)?;
         let terminating = call.export.ordinal == ORDINAL_PS_TERMINATE_SYSTEM_THREAD;
         if self.in_interrupt
             && matches!(

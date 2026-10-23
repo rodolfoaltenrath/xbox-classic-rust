@@ -18,8 +18,27 @@ fn scalar(code: &mut Vec<u8>, at: u32, load: bool) {
     code.extend([0xF3, 0x0F, if load { 0x10 } else { 0x11 }, 0x05]);
     code.extend(at.to_le_bytes());
 }
-fn image(output: &Path, name: &str, parent_sleep: bool, counter: bool, detach: bool) {
+#[derive(Clone, Copy)]
+enum Scenario {
+    Sleep,
+    Deadlines,
+    Quantum,
+    Detach,
+    CompetingWaits,
+}
+fn image(output: &Path, name: &str, scenario: Scenario) {
+    let parent_sleep = matches!(scenario, Scenario::Deadlines);
+    let counter = matches!(scenario, Scenario::Quantum);
+    let detach = matches!(scenario, Scenario::Detach);
+    let two_waits = matches!(scenario, Scenario::CompetingWaits);
     let mut code = Vec::new();
+    if two_waits {
+        for value in [0, 0, 0, 0x12048] {
+            push(&mut code, value);
+        }
+        call(&mut code, 5);
+    }
+
     for (at, value) in [
         (0x12200, (-20000i32).cast_unsigned()),
         (0x12204, u32::MAX),
@@ -60,7 +79,14 @@ fn image(output: &Path, name: &str, parent_sleep: bool, counter: bool, detach: b
     scalar(&mut code, 0x12120, false);
     code.extend([0xD9, 0x1D, 0x24, 0x21, 1, 0, 0x31, 0xC0, 0xC3]);
     code.resize(0x200, 0xCC);
-    if counter {
+    if two_waits {
+        store(&mut code, 0x12100, 1);
+        push(&mut code, 0);
+        push(&mut code, 0);
+        code.extend([0xFF, 0x35, 0x48, 0x20, 1, 0]);
+        call(&mut code, 3);
+        store(&mut code, 0x12100, 2);
+    } else if counter {
         code.push(0xB9);
         code.extend(10000u32.to_le_bytes());
         code.extend([0xFF, 0x05, 0, 0x21, 1, 0, 0x49, 0x75, 0xF7]);
@@ -82,7 +108,7 @@ fn image(output: &Path, name: &str, parent_sleep: bool, counter: bool, detach: b
     code.push(0xB8);
     code.extend(42u32.to_le_bytes());
     code.extend([0xC2, 8, 0]);
-    let bytes = xbe_com_imports(&code, &[255, 99, 258, 233, 187]).unwrap();
+    let bytes = xbe_com_imports(&code, &[255, 99, 258, 233, 187, 189]).unwrap();
     let program = analysis::analyze(&bytes).unwrap();
     assert!(program.blocks.contains_key(&0x11200));
     std::fs::write(
@@ -93,9 +119,10 @@ fn image(output: &Path, name: &str, parent_sleep: bool, counter: bool, detach: b
     std::fs::write(output.join(format!("src/{name}.xbe")), bytes).unwrap();
 }
 pub(super) fn sources(output: &Path) -> String {
-    image(output, "scheduler_sleep", false, false, false);
-    image(output, "scheduler_deadlines", true, false, false);
-    image(output, "scheduler_quantum", false, true, false);
-    image(output, "scheduler_detach", false, false, true);
+    image(output, "scheduler_sleep", Scenario::Sleep);
+    image(output, "scheduler_deadlines", Scenario::Deadlines);
+    image(output, "scheduler_quantum", Scenario::Quantum);
+    image(output, "scheduler_detach", Scenario::Detach);
+    image(output, "scheduler_waits", Scenario::CompetingWaits);
     include_str!("../verification_scheduler.inc").to_owned()
 }

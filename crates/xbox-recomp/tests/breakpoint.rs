@@ -3,13 +3,13 @@ use xbox_recomp::{Error, analysis, ir::Operation};
 
 #[test]
 fn int3_e_uma_fronteira_terminal_com_pc_seguinte_explicito() {
-    let bytes = xbe_com_codigo(&[0xCC, 0xFB, 0xC3]).unwrap();
+    let bytes = xbe_com_codigo(&[0xCC, 0x0F, 0x0B]).unwrap();
     let p = analysis::analyze(&bytes).unwrap();
     assert_eq!(p.instructions.len(), 1);
     assert_eq!(p.instructions[&0x11000].operation, Operation::Breakpoint);
     assert_eq!(p.instructions[&0x11000].next, 0x11001);
     assert_eq!(p.blocks[&0x11000].len(), 1);
-    // A recusa de STI não é escondida se esse PC é uma raiz legítima.
+    // A recusa de UD2 não é escondida se esse PC é uma raiz legítima.
     assert!(matches!(
         analysis::analyze_with_entries(&bytes, &[0x11001]),
         Err(Error::Analysis { pc: 0x11001, .. })

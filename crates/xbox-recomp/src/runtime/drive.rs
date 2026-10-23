@@ -130,7 +130,10 @@ impl Session {
     where
         R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
     {
-        run(&mut self.state, &mut self.bus, blocks).map_err(|error| match error {
+        self.state.poll = self.execution_poll()?;
+        let result = run(&mut self.state, &mut self.bus, blocks);
+        self.state.poll = None;
+        result.map_err(|error| match error {
             Error::Memory(fault) => Error::MemoryAt {
                 pc: self.state.eip,
                 fault,

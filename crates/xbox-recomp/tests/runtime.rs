@@ -118,6 +118,7 @@ fn snapshot_v2_preserva_rep_e_migra_v1_sem_continuacao() {
         .unwrap();
     state.repeat = None;
     state.tick_publication = xbox_recomp::runtime::TickPublication::BoundariesOnly;
+    state.interrupt_profile = xbox_recomp::runtime::InterruptProfile::LegacyBoundary;
     assert_eq!(restored, state);
 }
 
