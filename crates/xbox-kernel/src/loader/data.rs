@@ -178,9 +178,8 @@ pub fn install(bus: &mut Bus, caminho_da_imagem: &str) -> Result<()> {
 /// não passa pela permissão da MMU — é o dono do dado, como o hardware seria.
 ///
 /// O valor é de 32 bits e dá a volta em ~49,7 dias, como o `ULONG` do console.
-/// **Provisório:** só é atualizado quando o host chama esta função (fronteiras de
-/// serviço de kernel e fim de fatia). Um laço do guest que leia o contador sem nenhuma
-/// chamada de kernel o vê parado até o fim da fatia (ROADMAP §16.1, P7).
+/// O AOT `ClockLinkedV1` publica ao cruzar cada milissegundo, além dos saltos
+/// ociosos do scheduler. Snapshots antigos conservam `BoundariesOnly` (ADR-0071).
 pub fn publish_tick_count(bus: &mut Bus, milissegundos: u64) -> Result<()> {
     // A região só existe quando a imagem importa algum dado do kernel (`install`). Sem
     // ela ninguém lê o contador, e publicar seria falhar por um dado que não foi pedido.

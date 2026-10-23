@@ -68,6 +68,14 @@ pub struct RepeatState {
     pub eflags: u32,
 }
 
+/// Snapshots antigos conservam publicação apenas nas fronteiras da sessão.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TickPublication {
+    BoundariesOnly = 0,
+    ClockLinkedV1 = 1,
+}
+
 /// CPU inteira mínima, com continuação serializável de comparação REP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct State {
@@ -99,6 +107,8 @@ pub struct State {
     pub mxcsr: u32,
     /// Pilha x87 de 80 bits. Só carga/armazenamento são modelados (ADR-0053, P9).
     pub fpu: x87::Fpu,
+    /// Política global de publicação do dado `KeTickCount` (ADR-0071).
+    pub tick_publication: TickPublication,
 }
 
 impl State {
@@ -118,6 +128,7 @@ impl State {
             xmm: [[0; 4]; 8],
             mxcsr: MXCSR_RESET,
             fpu: x87::Fpu::new(),
+            tick_publication: TickPublication::ClockLinkedV1,
         }
     }
 
@@ -128,6 +139,19 @@ impl State {
             .cycles()
             .checked_add(AOT_STEP_CYCLES)
             .ok_or(crate::Error::TimeExhausted { pc: self.eip })?;
+        Ok(())
+    }
+
+    /// Custo sintético de um passo concluído, inclusive elemento REP parcial.
+    /// A preflight `check_time_step` já ocorreu antes dos efeitos da instrução.
+    #[inline(never)]
+    pub fn finish_time_step(&mut self, bus: &mut Bus) -> Result<()> {
+        let before = self.clock.tick_count_ms();
+        self.clock.advance(AOT_STEP_CYCLES);
+        let now = self.clock.tick_count_ms();
+        if self.tick_publication == TickPublication::ClockLinkedV1 && now != before {
+            xbox_kernel::loader::data::publish_tick_count(bus, now)?;
+        }
         Ok(())
     }
 
@@ -152,7 +176,7 @@ impl State {
 
 impl Snapshot for State {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AOTC", 8);
+        out.section("AOTC", 9);
         for r in self.regs {
             out.u32(r);
         }
@@ -182,10 +206,11 @@ impl Snapshot for State {
             out.u32(*lane);
         }
         self.fpu.save(out);
+        out.u8(self.tick_publication as u8);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let version = inp.section("AOTC", 8)?;
+        let version = inp.section("AOTC", 9)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "AOTC",
@@ -254,6 +279,20 @@ impl Snapshot for State {
             self.xmm = [[0; 4]; 8];
             self.fpu = x87::Fpu::new();
         }
+        self.tick_publication = if version >= 9 {
+            match inp.u8()? {
+                0 => TickPublication::BoundariesOnly,
+                1 => TickPublication::ClockLinkedV1,
+                _ => {
+                    return Err(SnapshotError::BadValue {
+                        section: "AOTC",
+                        what: "perfil de publicação de tick desconhecido",
+                    });
+                }
+            }
+        } else {
+            TickPublication::BoundariesOnly
+        };
         Ok(())
     }
 }

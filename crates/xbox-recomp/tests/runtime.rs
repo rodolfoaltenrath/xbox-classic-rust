@@ -117,6 +117,7 @@ fn snapshot_v2_preserva_rep_e_migra_v1_sem_continuacao() {
         .load(&mut SnapshotReader::new(&old).unwrap())
         .unwrap();
     state.repeat = None;
+    state.tick_publication = xbox_recomp::runtime::TickPublication::BoundariesOnly;
     assert_eq!(restored, state);
 }
 

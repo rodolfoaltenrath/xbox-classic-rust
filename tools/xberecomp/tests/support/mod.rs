@@ -46,6 +46,7 @@ mod sse;
 mod strings;
 mod system_time;
 mod threads;
+mod tick;
 mod timing;
 mod video;
 mod virtual_memory;
@@ -116,6 +117,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&pci::sources(output));
     main.push_str(&exchange::sources(output));
     main.push_str(&timing::sources(output));
+    main.push_str(&tick::sources(output));
     main.push_str(&threads::sources(output));
     main.push_str(&scheduler::sources(output));
     main.push_str(&msr::sources(output));

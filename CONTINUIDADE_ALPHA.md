@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`3ff0a63`** e implementação local
-do ADR **0070** (scheduler e ciclo de vida de handle de thread).
+Atualizado em **2026-10-23**, com base no commit **`9c565ab`** e implementação local
+do ADR **0071** (tick acoplado ao Clock).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,14 +31,14 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P19), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0070) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0071) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
 5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
-   `KINT` v2, `AOTC` v8, `AOTS` v4/`SCHD` v1/`TCTX` v1/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
+   `KINT` v2, `AOTC` v9, `AOTS` v4/`SCHD` v1/`TCTX` v1/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
    outro trailer de autoria (pedido explícito do mantenedor). Desde 2026-10-23 o agente
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (570 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (572 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `238 passed` em x86-64 e `222` fora dele —
+   confere o **contador de casos gerados**, hoje `242 passed` em x86-64 e `226` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -73,8 +73,9 @@ Sonda oficial de referência `target/sonda/triangle-20261023-073247.log`, 320 fa
 | MMIO sem modelo | 165 endereços distintos |
 | Tradução | sem --entry manual, 19707 blocos; contém os 14 endereços anteriores |
 
-Gate `target/gate/20261023-073340.log`: **570 testes** Linux/workspace/doctests,
-238 casos gerados debug/release. Golden RGB analítica 4×4 em
+Gate `target/gate/20261023-074259.log`: **572 testes** Linux/workspace/doctests,
+242 casos gerados debug/release. A sonda acima ainda usa o emissor pré-ADR-0071;
+o novo contador é validado pelos quatro casos nativos de polling/REP/wrap/replay. Golden RGB analítica 4×4 em
 `crates/xbox-gpu/tests/reference/triangle-4x4.ppm`; testes de limites, máscaras,
 clip, culling/depth, uploads incompletos, overflow, corrupção e replay.
 Probe `target/plan-32-real-probe.log`: scanout 0x210000, captura em
@@ -118,7 +119,11 @@ Não existe evidência para prometer jogos comerciais por estes números.
 - **THRD v2**: NtClose escalonado invalida o handle sem terminar a filha ou liberar
   stack/TLS ativos. THRD v1 migra aberto. CRT real cria/detach/retorna no pai;
   a filha continua. Duas provas de ciclo de vida/migração, cinco casos nativos.
-- CPU com SSE/x87 tem recortes P8/P9. KeTickCount só publica nas fronteiras (P7).
+- **AOTC v9/TickPublication**: ClockLinkedV1 publica KeTickCount ao cruzar cada
+  milissegundo, inclusive REP parcial; página RO guest, wrap ULONG. AOTC v1–v8
+  conserva BoundariesOnly no restore/re-save. Saltos do scheduler publicam.
+  Polling sem HLE observa progresso dentro de run; P7 encerrado para novas sessões.
+- CPU com SSE/x87 tem recortes P8/P9.
 
 ### Reprodução e artefatos
 
@@ -140,7 +145,8 @@ bash scripts/gate.sh
 
 Em outra máquina usar diretório novo para a tradução e ajustar `scripts/sonda.sh`.
 O projeto local separa `generated` numa lib para sondas pequenas; a primeira
-compilação release dos 19707 blocos leva cerca de seis minutos. O limite de
+compilação release dos 19707 blocos leva cerca de seis minutos.
+Mudança do emissor (como ADR-0071) exige retraduzir para atualizar o Rust gerado. O limite de
 execução não inclui essa compilação. `target/` é ignorado: logs/probes não
 substituem a referência PPM e os testes versionados.
 
@@ -154,7 +160,7 @@ na tarefa 0.0).
 ### Próximo trabalho e cuidados
 
 Fases 0, 1 e 2 do PLANO entregam consumo real, clear e triângulos. Seguir Fase 3
-na ordem: **P7 tick ligado ao Clock**, P10/P11 DIRQL/IF/STI. Cada tarefa exige ADR, gate, evidência e commit.
+no item **P10/P11 DIRQL/IF/STI**. Cada tarefa exige ADR, gate, evidência e commit.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
 callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda
 podem exigir --entry. Não adicionar listas de endereços de títulos ao analisador.

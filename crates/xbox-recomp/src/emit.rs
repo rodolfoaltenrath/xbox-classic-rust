@@ -58,10 +58,7 @@ pub fn run(s: &mut State, bus: &mut Bus, blocks: u64) -> Result<Exit> {\n\
                 "bus.definir_contexto(Contexto { pc: Some(GuestVirt(s.eip)), thread: None });",
             );
             emit_operation(&mut out, &i.operation, i.next);
-            line(
-                &mut out,
-                "s.clock.advance(xbox_recomp::runtime::AOT_STEP_CYCLES);",
-            );
+            line(&mut out, "s.finish_time_step(bus)?;");
             if matches!(i.operation, Operation::String { repeat, .. } if repeat != Repeat::None) {
                 line(
                     &mut out,

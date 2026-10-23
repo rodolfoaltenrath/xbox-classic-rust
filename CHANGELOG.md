@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3/P7: KeTickCount ligado ao avanço de Clock nas instruções e elementos
+  REP, com backing RO guest e wrap ULONG. AOTC v9 preserva BoundariesOnly
+  dos snapshots v1–v8. Polling sem HLE, REP parcial, wrap e replay no Rust
+  gerado; dois testes de persistência e quatro casos nativos (ADR-0071).
+
 - Fase 3/P3: scheduler TwoThreadV1 com Delay bloqueante, pai runnable, espera
   por filha/evento/mutant e escolha do menor deadline quando ocioso. Quantum
   sintético em Passive e contexto GPR/FS/REP/SSE/x87 por thread, Clock global.

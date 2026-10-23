@@ -206,5 +206,11 @@ atendida, com `GATE OK`, ADR e CHANGELOG.
   305922 pixels/479 linhas, 9 draws/27 triângulos. Probe
   target/plan-32-real-probe.log confirma snapshot/replay integral. ADR-0070,
   P3 encerrado para novas sessões; recorte de duas threads declarado em P19.
-- [ ] 3.3 P7: `KeTickCount` em tempo real.
+- [x] 3.3 P7: `KeTickCount` em tempo real.
+  Evidência: GATE OK 572 testes (target/gate/20261023-074259.log), 242 casos
+  gerados debug/release (target/plan-33-native-release.log). Polling sem HLE
+  enxerga 1 ms dentro de run, REP parcial publica sem aposentar instrução,
+  wrap ULONG em 2^32 ms e snapshot/replay integral; página continua RO guest.
+  AOTC v9 migra v8 para BoundariesOnly e recusa perfil desconhecido.
+  ADR-0071, P7 encerrado para sessões novas.
 - [ ] 3.4 P10/P11: DIRQL/IF/`STI` como máscara real.
