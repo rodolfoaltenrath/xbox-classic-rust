@@ -334,7 +334,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   compara sessão completa após CALL pendente. Main salvo/carregado em processos
   distintos avança CPU/Clock; HLT/INT3 preservados com falha de gravação. ADR-0076.
 
-- [ ] 5.2 Execução contínua e comandos de sessão no host. `--continuo` com janela
+- [x] 5.2 Execução contínua e comandos de sessão no host. `--continuo` com janela
   repete fatias finitas sem reiniciar a sessão; Espaço pausa/retoma, F5 salva
   geração nova em `--estados`, F9 restaura a última geração desta execução.
   Fechamento tem prioridade, repetição automática da tecla é ignorada; os
@@ -344,6 +344,13 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   falha de restauração mantendo a sessão anterior e recusa de combinação inválida
   de argumentos; eventos Win32 testados; nenhum erro guest diferente de orçamento
   é tratado como continuação. ADR, CHANGELOG, ROADMAP e continuidade atualizados.
+
+  Evidência: `GATE OK: 586 testes`, target/gate/20261023-165351-qTfDPCiI.log;
+  261 casos gerados/245 fora de x86-64. `pausa_nao_executa_guest_e_continuacao_so_aceita_orcamento`,
+  `geracoes_nao_substituem_arquivo_e_restore_falhado_preserva_sessao` e
+  `atalhos_preservam_ordem_ignoram_autorepeticao_e_close_tem_prioridade` passando;
+  `controle_continuo_pausa_codigo_nativo_e_retoma_sem_perder_clock` conclui demo
+  real com EAX=62/37 instruções após pausa sem mudança de snapshot. ADR-0077.
 
 - [ ] 5.3 Integrar o iniciador e validar o fluxo real. Encaminhar modo contínuo,
   restauração e saída de estado pelo comando do alpha, mantendo execução finita

@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Modo --continuo no main recompilado, pausa por Espaço, save state por F5
+  e restauração por F9. Host pausado não avança guest; erros diferentes de
+  orçamento continuam falhas. Gerações sem sobrescrita e restore transacional,
+  título PAUSADO e eventos Win32 ordenados sem autorrepetição (ADR-0077, PLANO 5.2).
+
 - Arquivos de estado SAVE v1 vinculados ao XBE, com CRC32, limite de 256 MiB,
   restauração em sessão candidata e publicação sem sobrescrita. O main nativo
   aceita --salvar/--carregar e preserva falhas guest se a gravação falhar;

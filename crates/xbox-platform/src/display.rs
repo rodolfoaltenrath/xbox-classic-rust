@@ -124,10 +124,18 @@ pub enum Evento {
     /// O usuário pediu para fechar. O emulador deve encerrar a execução de forma
     /// controlada — é assim que o host interrompe um título que não retorna sozinho.
     Fechar,
+    /// Espaço: alterna pausa da sessão no host; não é input do Xbox.
+    PausarRetomar,
+    /// F5: grava uma nova geração de estado completo.
+    SalvarEstado,
+    /// F9: restaura a última geração salva nesta execução.
+    RestaurarEstado,
 }
 
 /// Uma superfície onde quadros aparecem.
 pub trait Apresentador: std::fmt::Debug {
+    /// Atualiza o título da superfície (estado/atalhos do programa).
+    fn definir_titulo(&mut self, titulo: &str) -> Result<()>;
     /// Mostra um quadro, substituindo o anterior.
     fn apresentar(&mut self, quadro: &Quadro) -> Result<()>;
 
@@ -146,6 +154,7 @@ pub trait Apresentador: std::fmt::Debug {
 /// janela implementada.
 #[derive(Debug, Default)]
 pub struct Gravador {
+    titulo: String,
     quadros: Vec<Quadro>,
     fechar_depois_de: Option<usize>,
 }
@@ -160,6 +169,7 @@ impl Gravador {
     /// janela, para testar a interrupção controlada da execução.
     pub fn fechar_depois_de(n: usize) -> Self {
         Self {
+            titulo: String::new(),
             quadros: Vec::new(),
             fechar_depois_de: Some(n),
         }
@@ -172,6 +182,10 @@ impl Gravador {
 }
 
 impl Apresentador for Gravador {
+    fn definir_titulo(&mut self, titulo: &str) -> Result<()> {
+        titulo.clone_into(&mut self.titulo);
+        Ok(())
+    }
     fn apresentar(&mut self, quadro: &Quadro) -> Result<()> {
         self.quadros.push(quadro.clone());
         Ok(())

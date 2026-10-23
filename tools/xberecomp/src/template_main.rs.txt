@@ -14,12 +14,14 @@ struct Opcoes {
     quadro: Option<std::path::PathBuf>,
     salvar: Option<std::path::PathBuf>,
     carregar: Option<std::path::PathBuf>,
+    continuo: bool,
+    estados: Option<std::path::PathBuf>,
 }
 
 /// Valida toda a linha de comando antes de executar o guest.
 fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> {
     let mut args = args.into_iter();
-    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None, salvar: None, carregar: None };
+    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None, salvar: None, carregar: None, continuo: false, estados: None };
     let mut fatias_definidas = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -30,13 +32,14 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
                 fatias_definidas = true;
             }
             "--janela" if !opcoes.janela => opcoes.janela = true,
+            "--continuo" if !opcoes.continuo => opcoes.continuo = true,
             "--quadro" if opcoes.quadro.is_none() => {
                 let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
                     .ok_or("--quadro exige caminho para BGRA bruto")?;
                 opcoes.quadro = Some(valor.into());
             }
-            "--salvar" | "--carregar" => {
-                let campo = if arg == "--salvar" { &mut opcoes.salvar } else { &mut opcoes.carregar };
+            "--salvar" | "--carregar" | "--estados" => {
+                let campo = match arg.as_str() { "--salvar" => &mut opcoes.salvar, "--carregar" => &mut opcoes.carregar, _ => &mut opcoes.estados };
                 if campo.is_some() { return Err(format!("argumento repetido: {arg}")); }
                 let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
                     .ok_or_else(|| format!("{arg} exige caminho de estado"))?;
@@ -45,6 +48,8 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
             _ => return Err(format!("argumento desconhecido ou repetido: {arg}")),
         }
     }
+    if opcoes.continuo && !opcoes.janela { return Err("--continuo exige --janela".into()); }
+    if opcoes.estados.is_some() && !opcoes.continuo { return Err("--estados exige --continuo".into()); }
     Ok(opcoes)
 }
 
@@ -177,24 +182,28 @@ fn apresentar(
     janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
     abrir: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    Ok(apresentar_eventos(session, janela, abrir)? == xbox_platform::display::Evento::Fechar)
+}
+
+fn apresentar_eventos(
+    session: &xbox_recomp::runtime::Session,
+    janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
+    abrir: bool,
+) -> Result<xbox_platform::display::Evento, Box<dyn std::error::Error>> {
+    use xbox_platform::display::Evento;
     if !abrir {
-        return Ok(false);
+        return Ok(Evento::Nenhum);
     }
-    let Some(quadro) = capturar_quadro(session) else {
-        return Ok(false);
-    };
-    if janela.is_none() {
-        *janela = Some(xbox_platform::criar_janela(
-            "Obsidian — Xbox",
-            quadro.largura(),
-            quadro.altura(),
-        )?);
+    if let Some(quadro) = capturar_quadro(session) {
+        if janela.is_none() {
+            *janela = Some(xbox_platform::criar_janela("Obsidian — Xbox", quadro.largura(), quadro.altura())?);
+        }
+        if let Some(j) = janela.as_mut() { j.apresentar(&quadro)?; }
     }
     if let Some(j) = janela.as_mut() {
-        j.apresentar(&quadro)?;
-        return Ok(j.eventos()? == xbox_platform::display::Evento::Fechar);
+        return Ok(j.eventos()?);
     }
-    Ok(false)
+    Ok(Evento::Nenhum)
 }
 
 fn exportar_quadro(session: &xbox_recomp::runtime::Session, caminho: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -219,7 +228,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         blocos_por_fatia: BLOCOS_POR_FATIA,
         fatias: opcoes.fatias,
     };
-    let resultado = executar(&mut session, &mut janela, opcoes.janela, limites);
+    let resultado = if opcoes.continuo {
+        executar_continuo(&mut session, &mut janela, limites, opcoes.estados)
+    } else { executar(&mut session, &mut janela, opcoes.janela, limites) };
     eprintln!("Kernel: {} chamadas atendidas, {} recusadas; instruções={}, EIP=0x{:08X}",session.kernel.atendidas(),session.kernel.recusadas(),session.state.retired,session.state.eip);
     relatar_mmio(&session);
     relatar_framebuffer(&session);
@@ -252,6 +263,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     resultado.map(|_| ())
+}
+
+fn executar_continuo(
+    session: &mut xbox_recomp::runtime::Session,
+    janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
+    limites: Limites,
+    estados: Option<std::path::PathBuf>,
+) -> Result<Desfecho, Box<dyn std::error::Error>> {
+    use xbox_platform::display::Evento;
+    let mut control = xbox_recomp::control::Control::new(estados);
+    let mut pending = Evento::Nenhum;
+    eprintln!("Modo contínuo: Espaço pausa/retoma; F5 salva; F9 restaura; X encerra.");
+    loop {
+        let event = if pending == Evento::Nenhum { apresentar_eventos(session, janela, true)? }
+            else { std::mem::replace(&mut pending, Evento::Nenhum) };
+        match event {
+            Evento::Fechar => {
+                eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
+                return Ok(Desfecho::ParadoPeloHost);
+            }
+            Evento::PausarRetomar => {
+                control.toggle_pause();
+                eprintln!("Sessão {}: instruções={}, ciclos={}, EIP=0x{:08X}", if control.paused() { "pausada" } else { "retomada" }, session.state.retired, session.state.clock.cycles(), session.state.eip);
+            }
+            Evento::SalvarEstado => match control.save(session, include_bytes!("image.xbe")) {
+                Ok(path) => eprintln!("Estado salvo: {} (instruções={}, ciclos={}, EIP=0x{:08X})", path.display(), session.state.retired, session.state.clock.cycles(), session.state.eip),
+                Err(error) => eprintln!("Falha ao salvar estado por F5: {error}"),
+            },
+            Evento::RestaurarEstado => match control.restore(session, include_bytes!("image.xbe")) {
+                Ok(()) => eprintln!("Estado restaurado: instruções={}, ciclos={}, EIP=0x{:08X}", session.state.retired, session.state.clock.cycles(), session.state.eip),
+                Err(error) => eprintln!("Falha ao restaurar estado por F9: {error}"),
+            },
+            Evento::Nenhum => {},
+        }
+        if let Some(j) = janela.as_mut() {
+            j.definir_titulo(if control.paused() { "Obsidian — PAUSADO | Espaço: retomar | F5: salvar | F9: restaurar" }
+                else { "Obsidian — Xbox | Espaço: pausar | F5: salvar | F9: restaurar" })?;
+        }
+        if control.paused() {
+            std::thread::sleep(std::time::Duration::from_millis(16));
+            continue;
+        }
+        let result = control.advance(session, limites, generated::run, |s| {
+            pending = apresentar_eventos(s, janela, true).map_err(|e| xbox_recomp::Error::Presentation(e.to_string()))?;
+            Ok(pending != Evento::Nenhum)
+        }).map_err(|e| e.to_string())?;
+        match result {
+            Some(Desfecho::Retornou) => return Ok(Desfecho::Retornou),
+            Some(Desfecho::ParadoPeloHost) => {}, // evento pendente, tratado antes de avançar
+            None => eprintln!("Trecho concluído: instruções={}, ciclos={}, EIP=0x{:08X}", session.state.retired, session.state.clock.cycles(), session.state.eip),
+        }
+    }
 }
 
 fn executar(

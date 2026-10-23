@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`a2fc5e9`** e implementação local
-do ADR **0076** (arquivos de estado; PLANO Fase 5 em execução).
+Atualizado em **2026-10-23**, com base no commit **`d7c07a4`** e implementação local
+do ADR **0077** (modo contínuo e comandos host; PLANO Fase 5 em execução).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0076) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0077) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (583 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (586 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `259 passed` em x86-64 e `243` fora dele —
+   confere o **contador de casos gerados**, hoje `261 passed` em x86-64 e `245` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -108,6 +108,10 @@ Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Estado e migrações que precisam ser preservados
 
+- **Controle host (ADR-0077)**: --continuo exige --janela; Espaço pausa,
+  F5 salva em --estados, F9 restaura última geração desta execução. Apenas
+  orçamento vira próximo trecho. Pausa/fila de teclas não são estado guest;
+  não mudam formatos internos. Sem pacing em tempo real ou controles Xbox.
 - **SAVE v1 (ADR-0076)**: camada de arquivo com XBE exato, snapshot integral e
   CRC32. --carregar restaura uma sessão candidata, --salvar publica nome novo;
   256 MiB máximos, sem sobrescrita. Não muda as versões abaixo. Não é assinatura

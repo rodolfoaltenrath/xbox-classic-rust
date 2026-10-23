@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod checkpoint;
+pub mod control;
 pub mod emit;
 pub mod ir;
 pub mod runtime;

@@ -15,10 +15,11 @@
 //! | `wnd_proc` | só lê o `Estado` por ponteiro obtido do `GWLP_USERDATA`, nulo até `nova` o configurar |
 //!
 //! A `wnd_proc` não toca em estado global mutável: o único canal entre ela e o
-//! apresentador é o `Estado` da janela, e ele só contém dois booleanos (`Cell`), porque
-//! tudo acontece na thread que criou a janela.
+//! apresentador é o `Estado` da janela: sinal de fechamento (`Cell`) e fila limitada
+//! de comandos (`RefCell`). Tudo acontece na thread que criou a janela.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -42,6 +43,7 @@ type Lresult = isize;
 type Atom = u16;
 
 const WM_CLOSE: u32 = 0x0010;
+const WM_KEYDOWN: u32 = 0x0100;
 const WM_ERASEBKGND: u32 = 0x0014;
 const PM_REMOVE: u32 = 0x0001;
 const WS_OVERLAPPED: u32 = 0x0000_0000;
@@ -135,6 +137,7 @@ unsafe extern "system" {
     ) -> Hwnd;
     fn DestroyWindow(janela: Hwnd) -> i32;
     fn ShowWindow(janela: Hwnd, modo: i32) -> i32;
+    fn SetWindowTextW(janela: Hwnd, texto: *const u16) -> i32;
     fn PeekMessageW(msg: *mut Msg, janela: Hwnd, min: u32, max: u32, remover: u32) -> i32;
     fn TranslateMessage(msg: *const Msg) -> i32;
     fn DispatchMessageW(msg: *const Msg) -> Lresult;
@@ -184,6 +187,7 @@ unsafe extern "system" {
 #[derive(Default)]
 struct Estado {
     fechar_pedido: Cell<bool>,
+    comandos: RefCell<VecDeque<Evento>>,
 }
 
 /// Janela Win32 que apresenta quadros.
@@ -216,6 +220,27 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, w: Wparam, l: Lparam) -
     // um ponteiro solto.
     let estado = unsafe { (GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Estado).as_ref() };
     match msg {
+        WM_KEYDOWN => {
+            let command = match w {
+                0x20 => Some(Evento::PausarRetomar),
+                0x74 => Some(Evento::SalvarEstado),
+                0x78 => Some(Evento::RestaurarEstado),
+                _ => None,
+            };
+            if let (Some(estado), Some(command)) = (estado, command) {
+                // WM_KEYDOWN bit 30: ignora autorrepetição. Limita backlog sem
+                // jamais perder WM_CLOSE, que usa um sinal separado e prioritário.
+                if l & (1 << 30) == 0 {
+                    let mut queue = estado.comandos.borrow_mut();
+                    if queue.len() < 32 {
+                        queue.push_back(command);
+                    }
+                }
+                return 0;
+            }
+            // SAFETY: repassa a mensagem desconhecida com os argumentos recebidos.
+            unsafe { DefWindowProcW(hwnd, msg, w, l) }
+        }
         WM_CLOSE => {
             // Não destrói: quem decide encerrar é o laço de emulação, via `Evento::Fechar`.
             if let Some(e) = estado {
@@ -370,6 +395,14 @@ impl Janela {
 }
 
 impl Apresentador for Janela {
+    fn definir_titulo(&mut self, titulo: &str) -> Result<()> {
+        let titulo = utf16(titulo);
+        // SAFETY: hwnd válido; buffer UTF-16 terminado em NUL vivo na chamada.
+        if unsafe { SetWindowTextW(self.hwnd, titulo.as_ptr()) } == 0 {
+            return Err(erro_win32("SetWindowTextW"));
+        }
+        Ok(())
+    }
     fn apresentar(&mut self, quadro: &Quadro) -> Result<()> {
         let largura = i32::try_from(quadro.largura())
             .map_err(|_| Error::format("largura do quadro não cabe em i32"))?;
@@ -460,7 +493,11 @@ impl Apresentador for Janela {
         Ok(if self.estado.fechar_pedido.get() {
             Evento::Fechar
         } else {
-            Evento::Nenhum
+            self.estado
+                .comandos
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or(Evento::Nenhum)
         })
     }
 }
@@ -504,6 +541,34 @@ mod tests {
     /// 2x. Em 640x480 a escala é 1:1, e o teste afirma isso em vez de assumir.
     const L: u32 = 640;
     const A: u32 = 480;
+
+    #[test]
+    fn atalhos_preservam_ordem_ignoram_autorepeticao_e_close_tem_prioridade() {
+        let mut window = Janela::nova("obsidian-atalhos", L, A).unwrap();
+        window.definir_titulo("Obsidian — pausado").unwrap();
+        for (key, flags) in [(0x20, 0), (0x20, 1 << 30), (0x74, 0), (0x78, 0)] {
+            // SAFETY: janela válida e parâmetros WM_KEYDOWN documentados.
+            assert_ne!(
+                unsafe { PostMessageW(window.hwnd, super::WM_KEYDOWN, key, flags) },
+                0
+            );
+        }
+        for expected in [
+            Evento::PausarRetomar,
+            Evento::SalvarEstado,
+            Evento::RestaurarEstado,
+            Evento::Nenhum,
+        ] {
+            assert_eq!(window.eventos().unwrap(), expected);
+        }
+        // SAFETY: mensagens normais para a janela viva criada pelo teste.
+        unsafe {
+            PostMessageW(window.hwnd, super::WM_KEYDOWN, 0x74, 0);
+            PostMessageW(window.hwnd, WM_CLOSE, 0, 0);
+        }
+        assert_eq!(window.eventos().unwrap(), Evento::Fechar);
+        assert_eq!(window.eventos().unwrap(), Evento::Fechar);
+    }
 
     /// Cores distintas por quadrante, em ordem `B,G,R,A`, para detectar qualquer
     /// espelhamento ou troca de canal: se algo estiver invertido, o quadrante errado

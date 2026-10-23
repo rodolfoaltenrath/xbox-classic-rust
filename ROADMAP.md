@@ -1222,6 +1222,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-23 | 4 / alpha visual | Imagem e encerramento Win32 (ADR-0074, PLANO 4.2) | — | Zero diferenças RGB em 640×480 para hello/triangle; WM_CLOSE durante run 191/174 ms, sem retomada/espera congelada; --quadro, parser completo e lib AOT separada; gate 580/257 gerados debug/release; P2/P6/P18 preservados |
 | 2026-10-23 | 4 / alpha visual | Comando de uso e cache do alpha (ADR-0075, PLANO 4.3) | — | run-alpha.sh hello/triangle abre Win32; identidade de imagem/lock/fontes atual, logs/artefatos preservados; caminhos com espaços; gate 580/257 e 16 testes de ferramentas; fases 0–4 concluídas |
 | 2026-10-23 | Alpha / estados | Arquivos completos ligados ao XBE (ADR-0076, PLANO 5.1) | — | SAVE v1, CRC32, teto 256 MiB, sessão candidata e publicação sem sobrescrita; --salvar/--carregar no main; formatos internos preservados |
+| 2026-10-23 | Alpha / execução | Modo contínuo e pausa/save/restore host (ADR-0077, PLANO 5.2) | — | Mesmo guest entre trechos; só orçamento permite continuar; pausa sem Clock/CPU; F5 gera estado e F9 restaura candidato; teclado Win32 não é input Xbox |
 
 
 ---

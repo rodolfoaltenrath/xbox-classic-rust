@@ -68,6 +68,21 @@ mod verification {
     }
 
     #[test]
+    fn controle_continuo_pausa_codigo_nativo_e_retoma_sem_perder_clock() {
+        let image=include_bytes!("image.xbe"); let mut s=Session::load(image).unwrap();
+        let limits=Limites {blocos_por_fatia:1,fatias:1};
+        let mut control=xbox_recomp::control::Control::default();
+        assert_eq!(control.advance(&mut s,limits,generated::run, |_|Ok(false)).unwrap(),None);
+        let checkpoint=xbox_recomp::checkpoint::encode(&s,image).unwrap();
+        control.toggle_pause();
+        for _ in 0..3 {assert_eq!(control.advance(&mut s,limits,generated::run, |_|panic!("pausado")).unwrap(),None);}
+        assert_eq!(xbox_recomp::checkpoint::encode(&s,image).unwrap(),checkpoint);
+        control.toggle_pause();
+        while control.advance(&mut s,limits,generated::run, |_|Ok(false)).unwrap().is_none() {}
+        assert_eq!(s.state.regs[0],62); assert_eq!(s.state.retired,37);
+    }
+
+    #[test]
     fn flags_overflow_imediato_negativo_e_branch_tomado() {
         let mut s = Session::load(include_bytes!("overflow.xbe")).unwrap();
         overflow::run(&mut s.state, &mut s.bus, 100).unwrap();

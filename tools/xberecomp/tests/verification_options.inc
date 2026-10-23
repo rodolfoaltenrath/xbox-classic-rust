@@ -37,4 +37,13 @@ mod options_verification {
             assert!(parse(&args).is_err(),"{args:?}");
         }
     }
+    #[test]
+    fn continuo_exige_janela_e_estados_exigem_continuo() {
+        assert!(parse(&["--continuo"]).is_err());
+        assert!(parse(&["--estados","saves"]).is_err());
+        assert!(parse(&["--janela","--continuo","--continuo"]).is_err());
+        assert!(parse(&["--janela","--continuo","--estados","a","--estados","b"]).is_err());
+        let options=parse(&["--continuo","--estados","meus estados","--janela"]).unwrap();
+        assert!(options.continuo); assert_eq!(options.estados.unwrap(),std::path::PathBuf::from("meus estados"));
+    }
 }
