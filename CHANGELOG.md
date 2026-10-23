@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 4/alpha visual: preparo dos samples em projetos novos com o emissor atual,
+  hashes e logs preservados; sonda configurável por entrada/projeto/cache, com
+  build separado e erros propagados. Seis testes de orquestração cobrem caminhos
+  com espaços e falhas sem sucesso silencioso (ADR-0073, PLANO 4.1).
+
 - Fase 3/P10/P11: DIRQL no ISR e prioridade como máscara, IF/CLI/STI com janela
   de uma instrução e preempção por linha/vblank dentro de blocos AOT. Retomada
   por EIP interno evita repetir stores; REP libera a shadow após a primeira

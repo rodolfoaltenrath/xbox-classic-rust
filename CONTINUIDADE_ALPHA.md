@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`3557192`** e implementação local
-do ADR **0072** (DIRQL/IF/STI e preempção AOT).
+Atualizado em **2026-10-23**, com base no commit **`17cbc1d`** e implementação local
+do ADR **0073** (reprodução dos samples no Windows; PLANO 4.1 em validação).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0072) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0073) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -141,6 +141,17 @@ Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Reprodução e artefatos
 
+Retomada Windows (PLANO 4.1, em validação): `prepare-sample.sh` cria projeto novo
+com o emissor atual e registra hash/toolchain. `sonda.sh` retraduz por padrão;
+SONDA_XBE seleciona entrada, SONDA_PROJETO reutiliza projeto explícito e
+SONDA_TARGET_DIR muda o cache. Gate tem pisos separados: Windows=580,
+Linux=576; 253 casos gerados. Dez testes Python de gate/preparo/sonda passaram
+no WSL. Gate Windows: target/gate/20261023-152653-XlQbs6tT.log.
+Hello local de hash baaa8811… em 64 fatias: 45 atendidas/zero recusadas,
+302 pixels/12 linhas, orçamento, log target/sonda/hello-20261023-151407-gMdXUwHB.log.
+Triangle local ainda em compilação; não substituir a referência Linux por
+resultado não medido. Hashes completos e ferramentas no ADR-0073.
+
 SDK nxdk fixado em `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local
 `/home/altenrath/.cache/obsidian/nxdk-14d5ee9`. Xemu de referência
 `03b988c9d76553b33ed712ba00822ffdf49f0e7d`; fatos/consumidores nos ADRs 0063–0068.
@@ -173,8 +184,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-O PLANO atual foi concluído com a evidência final da tarefa 3.4. Não existe
-próxima tarefa autorizada nesse arquivo: novo escopo depende do mantenedor.
+As fases 0–3 do PLANO foram concluídas com a evidência final da tarefa 3.4.
+O mantenedor autorizou em 2026-10-23 a nova Fase 4: reprodução no Windows,
+apresentação/encerramento reais e comando de uso do alpha. Seguir 4.1–4.3
+em modo autônomo; seus aceites e as evidências vivem no PLANO.md.
 Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de

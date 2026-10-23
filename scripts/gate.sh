@@ -7,16 +7,26 @@
 # de saída é 0 ou 1. O log completo fica em target/gate/<data>.log.
 #
 # A contagem de testes aprovados (soma de todas as linhas "test result") nunca pode
-# cair abaixo de scripts/gate-baseline.txt. Quando sobe, o baseline é atualizado e
-# deve entrar no mesmo commit da tarefa.
+# cair abaixo do baseline da plataforma. Windows tem quatro testes de janela a
+# mais que Linux: comparar a mesma contagem entre SOs criaria regressão falsa.
+# O fallback anterior fica em gate-baseline.txt; incluir qualquer baseline
+# atualizado no commit da tarefa. Nenhum piso conhecido pode ser reduzido.
 set -uo pipefail
 
 raiz="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$raiz"
 mkdir -p target/gate
-log="target/gate/$(date +%Y%m%d-%H%M%S).log"
+log=$(mktemp "target/gate/$(date +%Y%m%d-%H%M%S)-XXXXXXXX.log")
 baseline_arq="scripts/gate-baseline.txt"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) baseline_arq="scripts/gate-baseline-windows.txt" ;;
+    Linux*) baseline_arq="scripts/gate-baseline-linux.txt" ;;
+esac
 baseline="$(cat "$baseline_arq" 2>/dev/null || echo 0)"
+# Baseline ausente/inválido é configuração quebrada, não autorização para perder testes.
+[[ "$baseline" =~ ^[1-9][0-9]*$ ]] || {
+    echo "GATE FALHOU: baseline inválido/ausente: $baseline_arq"; exit 1;
+}
 
 falhou() {
     echo "GATE FALHOU: $1 (log: $log)"
@@ -40,11 +50,14 @@ echo "== cargo test (o teste native.rs leva ~80 s)" | tee -a "$log"
 cargo test --workspace --offline --no-fail-fast >>"$log" 2>&1
 status_testes=$?
 
-read -r aprovados reprovados < <(grep -E '^test result:' "$log" | awk '
-    { for (i = 1; i < NF; i++) {
-        if ($(i + 1) ~ /^passed/) p += $i
-        if ($(i + 1) ~ /^failed/) f += $i } }
-    END { print p + 0, f + 0 }')
+aprovados=0
+reprovados=0
+while IFS= read -r linha; do
+    if [[ "$linha" =~ ^test[[:space:]]result:.*[[:space:]]([0-9]+)[[:space:]]passed\;[[:space:]]([0-9]+)[[:space:]]failed ]]; then
+        aprovados=$((aprovados + 10#${BASH_REMATCH[1]}))
+        reprovados=$((reprovados + 10#${BASH_REMATCH[2]}))
+    fi
+done < "$log"
 
 [ "$status_testes" -eq 0 ] && [ "$reprovados" -eq 0 ] ||
     falhou "$reprovados teste(s) falharam; $aprovados aprovados"

@@ -1,4 +1,4 @@
-# Plano: do polling de DMA_GET ao triângulo na tela
+# Plano: alpha visual reproduzível no Windows
 
 Modo: autônomo
 
@@ -18,7 +18,13 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Ponto de partida (CONTINUIDADE_ALPHA.md, 2026-10-22): o triangle chega ao polling de
+Bloco vigente: **Fase 4**, acrescentada em 2026-10-23 por autorização do mantenedor.
+As fases 0–3 abaixo preservam o plano anterior concluído e suas evidências.
+Meta: traduzir/reproduzir hello e triangle com o código atual neste Windows,
+mostrar seus frames reais na janela e comprovar encerramento controlado.
+Não inclui jogos comerciais, controles, áudio, texturas ou backend Linux.
+
+Ponto de partida histórico (CONTINUIDADE_ALPHA.md, 2026-10-22): o triangle chega ao polling de
 NV_USER DMA_GET (0xFD800044, sem modelo), DMA_GET fica em zero por 12402025 leituras,
 pb_init/pb_kill expiram e a execução para no ordinal 171 (MmFreeContiguousMemory),
 com 81 chamadas e 1 recusada. O framebuffer mostra o diagnóstico (1580 pixels/29
@@ -225,3 +231,56 @@ atendida, com `GATE OK`, ADR e CHANGELOG.
   305922 pixels/479 linhas, 9 draws/27 triângulos; probe
   target/plan-34-real-probe-final.log confirma snapshot/replay de CPU, RAM,
   GPU e scheduler. ADR-0072 e limites P20; plano concluído.
+
+## Fase 4 — Alpha visual reproduzível no Windows
+
+Autorização: mantenedor pediu o próximo bloco seguindo AGENTS.md/PLANO.md em
+2026-10-23. Executar 4.1–4.3 sem confirmação entre tarefas. Preservar os aceites
+abaixo e registrar bloqueios reais conforme AGENTS.md. Ao concluir 4.3, encerrar
+este plano; outro bloco de compatibilidade depende de novo escopo.
+
+- [~] 4.1 Reproduzir os samples e o gate no Windows sem depender dos projetos
+  gerados no outro computador. Tornar a sonda configurável/reprodutível para
+  projetos locais, preservando logs e propagando falhas de preparação/build.
+  **Aceite:**
+  - `bash scripts/gate.sh` termina em `GATE OK` no Rust fixado do Windows; não
+    reduzir baseline, remover/ignorar testes ou ocultar divergências por plataforma;
+  - hello e triangle são retraduzidos com o emissor atual, sem lista manual de
+    raízes e sem sobrescrever projetos existentes; registrar SHA-256 dos XBEs;
+  - `bash scripts/sonda.sh hello` e `bash scripts/sonda.sh triangle 320` executam
+    os projetos desta máquina, com `recusadas: 0`, framebuffer habilitado e
+    parada por orçamento; hello tem texto e triangle tem draws e regiões R/G/B;
+  - erros de arquivo ausente, projeto inválido e compilação não podem aparecer
+    como sonda bem-sucedida com métricas vazias; testes da ferramenta cobrem isso;
+  - ADR novo, CHANGELOG e passagem de bastão distinguem evidência Windows da
+    referência Linux e identificam os artefatos locais usados.
+
+- [ ] 4.2 Validar apresentação e encerramento do alpha real. Corrigir problemas
+  observados no template/laço de apresentação mantendo CPU/Clock guest isolados
+  da temporização do host e a posse exclusiva da arena.
+  **Aceite:**
+  - `GATE OK`, com testes que exercitam o caminho efetivamente corrigido;
+  - executar hello e triangle com `--janela` no Windows; capturar a área cliente
+    640×480 pelo sistema, registrar contagens de pixels/cores e comparar os
+    canais RGB com os bytes do mesmo framebuffer guest, sem imagem substituta;
+  - o botão fechar/WM_CLOSE durante execução longa encerra o processo em até
+    cinco segundos, com saída de parada pelo host e sem retomar execução/janela;
+  - fechamento após esgotar o orçamento também encerra; artefatos e logs da
+    verificação ficam em target, com procedimento reproduzível versionado;
+  - snapshot/replay e execução sem janela permanecem passando; documentar
+    limites de P2/P6/P18 e não declarar fidelidade analógica ou compatibilidade geral;
+  - ADR novo, CHANGELOG, ROADMAP §16.1 e passagem de bastão atualizados.
+
+- [ ] 4.3 Entregar um comando de uso do alpha. Preparar/traduzir/compilar os
+  samples locais e abrir a janela com opções claras, sem exigir editar caminhos
+  do outro PC ou reconstruir manualmente comandos de target.
+  **Aceite:**
+  - `GATE OK` e testes significativos de argumentos/erros da ferramenta;
+  - um comando documentado por sample abre a janela usando as entregas 4.1/4.2;
+    aceitar caminhos com espaços, preservar logs/artefatos e recusar entrada
+    inexistente ou configuração inválida sem sucesso silencioso;
+  - preparo/build e execução têm relatos separados; não atribuir tempo de
+    compilação à velocidade do guest nem anunciar suporte a jogos comerciais;
+  - README e docs/dev/alpha.md trazem pré-requisitos, comandos, encerramento,
+    limitações atuais e localização dos logs; atualizar CHANGELOG e passagem
+    de bastão com evidências finais e manter o histórico das fases 0–3.
