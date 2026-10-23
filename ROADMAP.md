@@ -1221,6 +1221,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-23 | 4 / alpha visual | Reprodução no Windows (ADR-0073, PLANO 4.1) | — | Gate 580/253 nativos, dez testes Python; projetos locais sem --entry; hello 302 pixels/12 linhas, triangle 305922/479 e RGB4977/4998/4977, ambos sem recusas; baseline por plataforma e logs exclusivos; janela em validação 4.2 |
 | 2026-10-23 | 4 / alpha visual | Imagem e encerramento Win32 (ADR-0074, PLANO 4.2) | — | Zero diferenças RGB em 640×480 para hello/triangle; WM_CLOSE durante run 191/174 ms, sem retomada/espera congelada; --quadro, parser completo e lib AOT separada; gate 580/257 gerados debug/release; P2/P6/P18 preservados |
 | 2026-10-23 | 4 / alpha visual | Comando de uso e cache do alpha (ADR-0075, PLANO 4.3) | — | run-alpha.sh hello/triangle abre Win32; identidade de imagem/lock/fontes atual, logs/artefatos preservados; caminhos com espaços; gate 580/257 e 16 testes de ferramentas; fases 0–4 concluídas |
+| 2026-10-23 | Alpha / estados | Arquivos completos ligados ao XBE (ADR-0076, PLANO 5.1) | — | SAVE v1, CRC32, teto 256 MiB, sessão candidata e publicação sem sobrescrita; --salvar/--carregar no main; formatos internos preservados |
 
 
 ---
@@ -1232,7 +1233,9 @@ PLANO fases 0–4 concluído: análise/scheduler/tick/IRQ e alpha visual Windows
 reaproveita build equivalente e abre janela. RGB idêntico ao framebuffer e
 fechamento durante run verificados. Gate Windows 580, 257 casos gerados
 debug/release e 16 testes de ferramentas. Limites em §16.1 e passagem de bastão.
-Novo escopo depende do mantenedor; Linux gráfico, controles/áudio, filtros e
+Novo escopo autorizado: PLANO Fase 5, alpha contínua e retomável. SAVE v1 e
+--salvar/--carregar (ADR-0076) precedem comandos de pausa/estado no host e
+validação do iniciador. Linux gráfico, controles guest/áudio, filtros e
 compatibilidade comercial permanecem fora deste aceite. Não repetir os bloqueios
 históricos abaixo como se fossem o estado vigente.
 

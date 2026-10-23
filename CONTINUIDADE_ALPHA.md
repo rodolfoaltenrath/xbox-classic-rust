@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`6de0aa4`** e implementação local
-do ADR **0075** (comando do alpha; PLANO Fase 4 concluída).
+Atualizado em **2026-10-23**, com base no commit **`a2fc5e9`** e implementação local
+do ADR **0076** (arquivos de estado; PLANO Fase 5 em execução).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0075) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0076) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (580 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (583 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `257 passed` em x86-64 e `241` fora dele —
+   confere o **contador de casos gerados**, hoje `259 passed` em x86-64 e `243` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -108,6 +108,10 @@ Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Estado e migrações que precisam ser preservados
 
+- **SAVE v1 (ADR-0076)**: camada de arquivo com XBE exato, snapshot integral e
+  CRC32. --carregar restaura uma sessão candidata, --salvar publica nome novo;
+  256 MiB máximos, sem sobrescrita. Não muda as versões abaixo. Não é assinatura
+  criptográfica nem garantia de replay entre revisões diferentes do modelo.
 - **BUS0 v9/PGRF v2/PRND v1/PFFO v2**: programa, constantes e máscaras de upload,
   cursores, BEGIN, registers, contadores, surface, trap/IRQ/FIFO e scanout no snapshot.
   PGRF v1 migra para ClearV1, sem raster; BUS0 v1–v8 continua sem PGRAPH novo.
@@ -231,9 +235,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases 0–4 do PLANO estão concluídas, com evidências na tarefa 4.3 e ADRs
-0073–0075: reprodução Windows, apresentação/encerramento reais e comando do
-alpha. Não há próxima tarefa aberta; novo bloco depende de escopo do mantenedor.
+As fases 0–4 estão concluídas. O mantenedor autorizou a **Fase 5**: alpha
+contínua e retomável, com pausa e estados completos. 5.1 instala o contêiner
+SAVE e --salvar/--carregar; 5.2 adiciona comandos host e laço contínuo; 5.3
+integra o launcher e valida hello/triangle reais. Seguir PLANO em ordem.
 Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de

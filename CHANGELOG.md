@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Arquivos de estado SAVE v1 vinculados ao XBE, com CRC32, limite de 256 MiB,
+  restauração em sessão candidata e publicação sem sobrescrita. O main nativo
+  aceita --salvar/--carregar e preserva falhas guest se a gravação falhar;
+  snapshots internos e migrações mantidos (ADR-0076, PLANO 5.1).
+
 - Comando do alpha `bash scripts/run-alpha.sh <hello|triangle>`: prepara a
   tradução atual, fixa lock offline, compila e abre Win32, com argumentos
   validados e logs por rodada. Reuso compara imagem/manifest/lock/fontes;

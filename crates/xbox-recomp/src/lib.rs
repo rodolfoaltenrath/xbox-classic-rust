@@ -4,6 +4,7 @@
 //! estado explícito, sem pilha nativa para representar chamadas do guest.
 
 pub mod analysis;
+pub mod checkpoint;
 pub mod emit;
 pub mod ir;
 pub mod runtime;

@@ -27,4 +27,14 @@ mod options_verification {
         for limit in ["0","-1","4294967296","abc"] {assert!(parse(&["--fatias",limit]).is_err());}
         assert_eq!(parse(&["--fatias","4294967295"]).unwrap().fatias,u32::MAX);
     }
+    #[test]
+    fn estados_validam_caminhos_e_repeticoes_antes_de_executar() {
+        let result=parse(&["--salvar","novo estado.obsstate","--carregar","estado anterior.obsstate"]).unwrap();
+        assert_eq!(result.salvar.unwrap(),std::path::PathBuf::from("novo estado.obsstate"));
+        assert_eq!(result.carregar.unwrap(),std::path::PathBuf::from("estado anterior.obsstate"));
+        for args in [vec!["--salvar"],vec!["--carregar","--janela"],vec!["--salvar",""],
+            vec!["--salvar","a","--salvar","b"],vec!["--carregar","a","--carregar","b"]] {
+            assert!(parse(&args).is_err(),"{args:?}");
+        }
+    }
 }

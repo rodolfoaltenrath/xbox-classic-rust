@@ -55,6 +55,19 @@ mod verification {
     }
 
     #[test]
+    fn arquivo_de_estado_retoma_call_real_e_replay_integral() {
+        let image = include_bytes!("image.xbe");
+        let mut s = Session::load(image).unwrap();
+        assert_eq!(generated::run(&mut s.state, &mut s.bus, 12).unwrap(), Exit::Budget);
+        let checkpoint = xbox_recomp::checkpoint::encode(&s, image).unwrap();
+        generated::run(&mut s.state, &mut s.bus, 100).unwrap();
+        let expected = xbox_recomp::checkpoint::encode(&s, image).unwrap();
+        let mut resumed = xbox_recomp::checkpoint::decode(&checkpoint, image).unwrap();
+        assert_eq!(generated::run(&mut resumed.state, &mut resumed.bus, 100).unwrap(), Exit::Returned);
+        assert_eq!(xbox_recomp::checkpoint::encode(&resumed, image).unwrap(), expected);
+    }
+
+    #[test]
     fn flags_overflow_imediato_negativo_e_branch_tomado() {
         let mut s = Session::load(include_bytes!("overflow.xbe")).unwrap();
         overflow::run(&mut s.state, &mut s.bus, 100).unwrap();

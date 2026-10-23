@@ -12,12 +12,14 @@ struct Opcoes {
     fatias: u32,
     janela: bool,
     quadro: Option<std::path::PathBuf>,
+    salvar: Option<std::path::PathBuf>,
+    carregar: Option<std::path::PathBuf>,
 }
 
 /// Valida toda a linha de comando antes de executar o guest.
 fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> {
     let mut args = args.into_iter();
-    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None };
+    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None, salvar: None, carregar: None };
     let mut fatias_definidas = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -32,6 +34,13 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
                 let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
                     .ok_or("--quadro exige caminho para BGRA bruto")?;
                 opcoes.quadro = Some(valor.into());
+            }
+            "--salvar" | "--carregar" => {
+                let campo = if arg == "--salvar" { &mut opcoes.salvar } else { &mut opcoes.carregar };
+                if campo.is_some() { return Err(format!("argumento repetido: {arg}")); }
+                let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
+                    .ok_or_else(|| format!("{arg} exige caminho de estado"))?;
+                *campo = Some(valor.into());
             }
             _ => return Err(format!("argumento desconhecido ou repetido: {arg}")),
         }
@@ -199,7 +208,11 @@ fn exportar_quadro(session: &xbox_recomp::runtime::Session, caminho: &std::path:
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opcoes = ler_opcoes(std::env::args().skip(1))?;
-    let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
+    let mut session = if let Some(path) = &opcoes.carregar {
+        let session = xbox_recomp::checkpoint::load_file(path, include_bytes!("image.xbe"))?;
+        eprintln!("Estado carregado: {} (instruções={}, ciclos={}, EIP=0x{:08X})", path.display(), session.state.retired, session.state.clock.cycles(), session.state.eip);
+        session
+    } else { xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))? };
     let mut janela: Option<Box<dyn xbox_platform::display::Apresentador>> = None;
 
     let limites = Limites {
@@ -210,6 +223,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Kernel: {} chamadas atendidas, {} recusadas; instruções={}, EIP=0x{:08X}",session.kernel.atendidas(),session.kernel.recusadas(),session.state.retired,session.state.eip);
     relatar_mmio(&session);
     relatar_framebuffer(&session);
+    if let Some(path) = opcoes.salvar {
+        if let Err(erro) = xbox_recomp::checkpoint::save_new(&path, &session, include_bytes!("image.xbe")) {
+            eprintln!("Falha ao salvar estado: {erro}");
+            if resultado.is_ok() { return Err(erro.into()); }
+        } else {
+            eprintln!("Estado salvo: {} (instruções={}, ciclos={}, EIP=0x{:08X})", path.display(), session.state.retired, session.state.clock.cycles(), session.state.eip);
+        }
+    }
     if let Some(caminho) = opcoes.quadro {
         if let Err(erro) = exportar_quadro(&session, &caminho) {
             eprintln!("Falha ao exportar quadro: {erro}");

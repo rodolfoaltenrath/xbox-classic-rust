@@ -135,6 +135,64 @@ fn check_generated_mains(cli: &str, output: &Path, cargo: &std::ffi::OsStr, targ
     check_stopped_main(cli, output, cargo, target);
     check_thread_main(cli, output, cargo, target);
     check_frame_export(cli, output, cargo, target);
+    check_state_file(cli, output, cargo, target);
+}
+
+fn check_state_file(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    let project = output.join("state-main");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/forever.xbe"))
+            .arg("--out")
+            .arg(&project),
+    );
+    let saved = project.join("estado com espaços.obsstate");
+    let run = |args: &[&std::ffi::OsStr]| {
+        Command::new(cargo)
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(project.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target)
+            .arg("--")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let first = run(&[
+        "--fatias".as_ref(),
+        "1".as_ref(),
+        "--salvar".as_ref(),
+        saved.as_os_str(),
+    ]);
+    assert!(!first.status.success());
+    assert!(String::from_utf8_lossy(&first.stderr).contains("Estado salvo:"));
+    let image = std::fs::read(project.join("src/image.xbe")).unwrap();
+    let before = xbox_recomp::checkpoint::load_file(&saved, &image).unwrap();
+    assert!(before.state.retired > 0);
+    let next = project.join("segundo.obsstate");
+    let second = run(&[
+        "--fatias".as_ref(),
+        "1".as_ref(),
+        "--carregar".as_ref(),
+        saved.as_os_str(),
+        "--salvar".as_ref(),
+        next.as_os_str(),
+    ]);
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("Estado carregado:"));
+    let after = xbox_recomp::checkpoint::load_file(&next, &image).unwrap();
+    assert!(after.state.retired > before.state.retired);
+    assert!(after.state.clock.cycles() > before.state.clock.cycles());
+    let original = std::fs::read(&saved).unwrap();
+    let third = run(&[
+        "--fatias".as_ref(),
+        "1".as_ref(),
+        "--salvar".as_ref(),
+        saved.as_os_str(),
+    ]);
+    assert!(String::from_utf8_lossy(&third.stderr).contains("Falha ao salvar estado"));
+    assert_eq!(std::fs::read(&saved).unwrap(), original);
 }
 
 fn check_frame_export(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
@@ -231,11 +289,17 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
             .arg("--")
             .arg("--quadro")
             .arg(halted_project.join("no-frame.bgra"))
+            .arg("--salvar")
+            .arg(halted_project.join("missing-folder/state.obsstate"))
             .output()
             .unwrap();
         assert!(!halted.status.success());
         let diagnostic = String::from_utf8_lossy(&halted.stderr);
         assert!(diagnostic.contains(expected), "{diagnostic}");
+        assert!(
+            diagnostic.contains("Falha ao salvar estado"),
+            "{diagnostic}"
+        );
         let next = if fixture == "control_assert" {
             "próximo EIP=0x00011002, IF=0"
         } else {
@@ -248,9 +312,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "257 passed"
+        "259 passed"
     } else {
-        "241 passed"
+        "243 passed"
     }
 }
 

@@ -1,4 +1,4 @@
-# Plano: alpha visual reproduzível no Windows
+# Plano: alpha contínua e retomável no Windows
 
 Modo: autônomo
 
@@ -18,11 +18,11 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 4**, acrescentada em 2026-10-23 por autorização do mantenedor.
-As fases 0–3 abaixo preservam o plano anterior concluído e suas evidências.
-Meta: traduzir/reproduzir hello e triangle com o código atual neste Windows,
-mostrar seus frames reais na janela e comprovar encerramento controlado.
-Não inclui jogos comerciais, controles, áudio, texturas ou backend Linux.
+Bloco vigente: **Fase 5**, acrescentada em 2026-10-23 por autorização do mantenedor.
+As fases 0–4 abaixo preservam o plano anterior concluído e suas evidências.
+Meta: executar continuamente, pausar e salvar/restaurar a sessão inteira com
+vínculo ao XBE, preservando erros e reprodução determinística.
+Não inclui controles guest/USB, áudio, texturas ou backend Linux.
 
 Ponto de partida histórico (CONTINUIDADE_ALPHA.md, 2026-10-22): o triangle chega ao polling de
 NV_USER DMA_GET (0xFD800044, sem modelo), DMA_GET fica em zero por 12402025 leituras,
@@ -314,3 +314,45 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   seis arquivos com a tradução/lock atuais, preserva projetos/logs e arquiva
   índice inválido após rebuild aprovado. ADR-0075, README, alpha, CHANGELOG,
   ROADMAP e passagem de bastão atualizados. Fase 4 e plano concluídos.
+
+## Fase 5 — Alpha contínua e retomável
+
+- [x] 5.1 Arquivos de estado completos e vinculados ao XBE. Criar contêiner
+  versionado com integridade, limite de tamanho, recusa de imagem divergente e
+  restauração em sessão nova; publicar arquivo sem sobrescrever outro. Expor
+  `--salvar` e `--carregar` no executável gerado.
+
+  **Aceite:** gate verde; testes de ida/volta CPU/RAM/kernel, replay, imagem
+  divergente, corrupção, truncamento, versão futura, bytes excedentes e arquivo
+  existente; testes no main realmente gerado salvam/carregam e preservam a
+  causa original de HLT/INT3 se salvar falhar. Snapshots internos antigos
+  continuam com seus formatos/migrações. ADR, CHANGELOG e continuidade atualizados.
+
+  Evidência: `GATE OK: 583 testes`, target/gate/20261023-164712-eg76sf5k.log;
+  259 casos nativos/243 fora de x86-64. Três testes checkpoint validam CRC,
+  integridade/versões/limites e publicação; `arquivo_de_estado_retoma_call_real_e_replay_integral`
+  compara sessão completa após CALL pendente. Main salvo/carregado em processos
+  distintos avança CPU/Clock; HLT/INT3 preservados com falha de gravação. ADR-0076.
+
+- [ ] 5.2 Execução contínua e comandos de sessão no host. `--continuo` com janela
+  repete fatias finitas sem reiniciar a sessão; Espaço pausa/retoma, F5 salva
+  geração nova em `--estados`, F9 restaura a última geração desta execução.
+  Fechamento tem prioridade, repetição automática da tecla é ignorada; os
+  comandos não são enviados ao controle Xbox. Sem progresso guest durante pausa.
+
+  **Aceite:** gate verde; testes exercitam pausa sem avanço CPU/Clock, retomada,
+  falha de restauração mantendo a sessão anterior e recusa de combinação inválida
+  de argumentos; eventos Win32 testados; nenhum erro guest diferente de orçamento
+  é tratado como continuação. ADR, CHANGELOG, ROADMAP e continuidade atualizados.
+
+- [ ] 5.3 Integrar o iniciador e validar o fluxo real. Encaminhar modo contínuo,
+  restauração e saída de estado pelo comando do alpha, mantendo execução finita
+  padrão e logs separados. Automatizar os atalhos contra uma janela real e
+  documentar os comandos.
+
+  **Aceite:** gate verde e sonda hello/triangle com zero recusas e os pixels de
+  referência; no Windows, hello e triangle continuam além do orçamento padrão,
+  pausam, salvam, avançam e restauram CPU/Clock/RAM/GPU/kernel, sem avanço durante
+  pausa; fechamento durante execução e pausa em até 5 s. Testes de launcher
+  passam; README, docs/dev/alpha.md, ADR, CHANGELOG, ROADMAP e passagem de bastão
+  registram evidências e limitações. Commit por tarefa e nenhum push.
