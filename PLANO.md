@@ -239,7 +239,7 @@ Autorização: mantenedor pediu o próximo bloco seguindo AGENTS.md/PLANO.md em
 abaixo e registrar bloqueios reais conforme AGENTS.md. Ao concluir 4.3, encerrar
 este plano; outro bloco de compatibilidade depende de novo escopo.
 
-- [~] 4.1 Reproduzir os samples e o gate no Windows sem depender dos projetos
+- [x] 4.1 Reproduzir os samples e o gate no Windows sem depender dos projetos
   gerados no outro computador. Tornar a sonda configurável/reprodutível para
   projetos locais, preservando logs e propagando falhas de preparação/build.
   **Aceite:**
@@ -255,7 +255,17 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   - ADR novo, CHANGELOG e passagem de bastão distinguem evidência Windows da
     referência Linux e identificam os artefatos locais usados.
 
-- [ ] 4.2 Validar apresentação e encerramento do alpha real. Corrigir problemas
+  Evidência: GATE OK: 580 testes (target/gate/20261023-152653-XlQbs6tT.log),
+  253 casos gerados; seis testes de samples e quatro de gate no WSL. Traduções
+  novas hello-eNjFLeSb (12345 blocos) e triangle-NBBSOjUk (19707), sem --entry.
+  Hashes e perfis no ADR-0073. Sondas target/sonda/hello-20261023-151407-gMdXUwHB.log
+  e triangle-20261023-151407-XlZPyXo0.log: orçamento, recusadas=0; hello 45 chamadas,
+  302 pixels/12 linhas; triangle 278 chamadas, 305922/479, 9 draws/27 triângulos,
+  R=4977/G=4998/B=4977. Build separado: hello 13m58, triangle 22m03; baseline
+  preservado por SO (Windows580/Linux576), logs exclusivos e métricas obrigatórias.
+  Commit intermediário 1029bb0; ADR/CHANGELOG/passagem de bastão atualizados.
+
+- [~] 4.2 Validar apresentação e encerramento do alpha real. Corrigir problemas
   observados no template/laço de apresentação mantendo CPU/Clock guest isolados
   da temporização do host e a posse exclusiva da arena.
   **Aceite:**

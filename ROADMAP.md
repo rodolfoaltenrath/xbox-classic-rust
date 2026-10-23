@@ -1218,6 +1218,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-23 | 3 / runtime | P3 encerrado para novas sessões (ADR-0070) | 9c565ab | Delay bloqueia, scheduler escolhe Clock ocioso, detach preserva filha; AOTS v4/SCHD v1/THRD v2; gate 570/238 nativos; recorte P19 |
 | 2026-10-23 | 3 / runtime | P7 encerrado para novas sessões (ADR-0071) | 3557192 | Tick a cada milissegundo por instrução/REP, RO e wrap; AOTC v9 preserva legado; gate 572/242 nativos |
 | 2026-10-23 | 3 / runtime | P10/P11 encerrados para novas sessões (ADR-0072) | — | IF/shadow e DIRQL, preempção dentro de bloco, AOTC v10/IRQL v2/TCTX v2, guard de segunda espera; gate 576/253 nativos; recorte P20 |
+| 2026-10-23 | 4 / alpha visual | Reprodução no Windows (ADR-0073, PLANO 4.1) | — | Gate 580/253 nativos, dez testes Python; projetos locais sem --entry; hello 302 pixels/12 linhas, triangle 305922/479 e RGB4977/4998/4977, ambos sem recusas; baseline por plataforma e logs exclusivos; janela em validação 4.2 |
 
 
 ---

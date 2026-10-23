@@ -82,3 +82,11 @@ orçamento: 45 chamadas, zero recusadas, 17290355 instruções, 2023 ms guest,
 Log: `target/sonda/hello-20261023-151407-gMdXUwHB.log`. É uma linha de texto;
 o histórico Linux com quatro linhas/1208 pixels não foi declarado idêntico.
 O build release inicial levou 13m58 neste host, separado da execução.
+
+Triangle, 320 fatias, projeto target/samples/triangle-NBBSOjUk: **278 chamadas,
+zero recusadas, 231556968 instruções/296627592 ciclos/404 ms guest**, orçamento
+em EIP=0x16440. Framebuffer habilitado com **305922 pixels/479 linhas**,
+R=4977/G=4998/B=4977, nove draws/27 triângulos/4147200 fragmentos e 165 MMIO sem
+modelo. Log target/sonda/triangle-20261023-151407-XlZPyXo0.log; build inicial
+release 22m03. Essas contagens coincidem com a referência Linux, mas a entrada
+tem outro hash; a apresentação real e comparação RGB são o aceite separado 4.2.

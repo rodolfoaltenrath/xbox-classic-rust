@@ -20,7 +20,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 - Fase 4/alpha visual: preparo dos samples em projetos novos com o emissor atual,
   hashes e logs preservados; sonda configurável por entrada/projeto/cache, com
   build separado e erros propagados. Seis testes de orquestração cobrem caminhos
-  com espaços e falhas sem sucesso silencioso (ADR-0073, PLANO 4.1).
+  com espaços e falhas sem sucesso silencioso (ADR-0073, PLANO 4.1). Gate Windows
+  580/253 gerados; quatro testes adicionais protegem os pisos por plataforma.
+  Sondas sem recusas: hello 302 pixels/12 linhas; triangle 305922/479,
+  nove draws/27 triângulos e regiões RGB 4977/4998/4977. Janela é o marco 4.2.
 
 - Fase 3/P10/P11: DIRQL no ISR e prioridade como máscara, IF/CLI/STI com janela
   de uma instrução e preempção por linha/vblank dentro de blocos AOT. Retomada

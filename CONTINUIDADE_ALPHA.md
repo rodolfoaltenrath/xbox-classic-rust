@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
 Atualizado em **2026-10-23**, com base no commit **`17cbc1d`** e implementação local
-do ADR **0073** (reprodução dos samples no Windows; PLANO 4.1 em validação).
+do ADR **0073** (reprodução dos samples no Windows; PLANO 4.1 concluído).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -141,7 +141,7 @@ Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Reprodução e artefatos
 
-Retomada Windows (PLANO 4.1, em validação): `prepare-sample.sh` cria projeto novo
+Retomada Windows (PLANO 4.1 concluído): `prepare-sample.sh` cria projeto novo
 com o emissor atual e registra hash/toolchain. `sonda.sh` retraduz por padrão;
 SONDA_XBE seleciona entrada, SONDA_PROJETO reutiliza projeto explícito e
 SONDA_TARGET_DIR muda o cache. Gate tem pisos separados: Windows=580,
@@ -149,8 +149,14 @@ Linux=576; 253 casos gerados. Dez testes Python de gate/preparo/sonda passaram
 no WSL. Gate Windows: target/gate/20261023-152653-XlQbs6tT.log.
 Hello local de hash baaa8811… em 64 fatias: 45 atendidas/zero recusadas,
 302 pixels/12 linhas, orçamento, log target/sonda/hello-20261023-151407-gMdXUwHB.log.
-Triangle local ainda em compilação; não substituir a referência Linux por
-resultado não medido. Hashes completos e ferramentas no ADR-0073.
+Triangle local e2571d9d… em 320 fatias: 278 atendidas/zero recusadas, orçamento
+em EIP=0x16440, 231556968 instruções/296627592 ciclos/404 ms guest, 9 draws/27
+triângulos, 305922 pixels/479 linhas, R=4977/G=4998/B=4977 e 165 MMIO sem modelo.
+Log target/sonda/triangle-20261023-151407-XlZPyXo0.log. Contagens coincidem com
+a referência Linux apesar dos hashes de entrada distintos; isso não prova
+identidade binária. Builds iniciais separados da execução: hello 13m58,
+triangle 22m03. Apresentação/encerramento ainda são o aceite da tarefa 4.2.
+Hashes completos e ferramentas no ADR-0073.
 
 SDK nxdk fixado em `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local
 `/home/altenrath/.cache/obsidian/nxdk-14d5ee9`. Xemu de referência

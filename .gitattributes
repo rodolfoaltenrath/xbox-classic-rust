@@ -1,2 +1,3 @@
 *.sh text eol=lf
 *.py text eol=lf
+scripts/gate-baseline*.txt text eol=lf
