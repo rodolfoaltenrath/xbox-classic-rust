@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`63752f5`** e ajustes locais
-da tarefa **0.0** (Clippy 1.99; sem mudança de runtime).
+Atualizado em **2026-10-23**, com base no commit **`44d582b`** e inventário local
+do ADR **0063** (PFIFO/NV_USER/PRAMIN; sem mudança de runtime).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -26,7 +26,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P14), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0062) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0063) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -132,6 +132,13 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 (`llvm-objdump -d -M intel --start-address=... triangle.exe`); `awk` não existe lá.
 
 ### O que tem que ser feito agora, em ordem
+
+A tarefa 1.1 do PLANO foi concluída pelo ADR-0063: captura até a primeira leitura
+GET, 37 controles PFIFO + dois endereços USER e 5120 DWORDs PRAMIN. Fontes e valores
+estão nas tabelas do ADR. Próxima tarefa 1.2: readback persistente dos controles
+selecionados e aliases USER, com snapshot/migração. Não atribuir EMPTY nem mover
+GET sem execução de comandos. Baseline da sonda: 209 MMIO sem modelo,
+93 chamadas/zero recusadas, 1580 pixels/29 linhas (target/sonda/triangle-20261023-002421.log).
 
 1. **PFIFO/DMA_GET com efeitos reais.** O
    [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;

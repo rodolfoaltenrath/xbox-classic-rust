@@ -1200,6 +1200,11 @@ Uma linha por marco concluído. Append-only.
 
 ### Próxima ação
 
+Inventário concluído em 2026-10-23: [ADR-0063](docs/adr/0063-inventario-pfifo-triangle.md),
+37 controles PFIFO + USER PUT/GET e toda PRAMIN tocada até o primeiro polling.
+Próxima tarefa do PLANO: readback/aliases com snapshot, mantendo estados de fila
+sem modelo até consumo real. Baseline da sonda: 209 MMIO sem modelo. Gate: 519 testes.
+
 Marco mais recente, 2026-10-23: [ADR-0062](docs/adr/0062-liberacao-memoria-contigua.md).
 MmFreeContiguousMemory (171) libera quatro alocações reais do triangle, 133 frames,
 preservando boot, framebuffer e pool GPU. Snapshot/replay antes/depois da liberação

@@ -62,7 +62,7 @@ linhas), sem triângulo.
 
 ## Fase 1 — PFIFO e pushbuffer com efeito real
 
-- [ ] 1.1 Inventário e evidência, sem código de emulação. Listar todo registrador
+- [x] 1.1 Inventário e evidência, sem código de emulação. Listar todo registrador
   PFIFO/NV_USER/PRAMIN que o triangle toca entre pb_init e o polling, com a fonte
   pública de cada um (como no ADR-0056) e o valor que o guest escreve.
   **Aceite:**
@@ -70,6 +70,12 @@ linhas), sem triângulo.
   - a tabela cita o log da sonda usado (caminho em `target/sonda/`);
   - define quais registradores a tarefa 1.2 modela e quais continuam lendo zero
     declarado.
+  Evidência: ADR-0063 lista 37 controles PFIFO, dois endereços USER e os 5120
+  DWORDs PRAMIN por faixa/estrutura; captura de 12183 acessos PRAMIN em
+  target/sonda/triangle-pfifo-inventory-20261023.log, até o primeiro GET,
+  54 chamadas/zero recusadas. Sonda oficial target/sonda/triangle-20261023-002421.log:
+  93 chamadas/zero recusadas, 209 MMIO sem modelo, 1580 pixels/29 linhas.
+  GATE OK: 519 testes (target/gate/20261023-002549.log). Sem emulação nova.
 
 - [ ] 1.2 Modelar os registradores escolhidos em 1.1 (DMA_PUT, DMA_GET, estado do
   canal e o que mais o ADR listar) com leitura/escrita persistente no `Bus`.

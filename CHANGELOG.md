@@ -17,6 +17,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/investigação: inventário PFIFO/NV_USER/PRAMIN até o primeiro polling do
+  triangle, com valores de todas as escritas escalares e fontes públicas fixadas.
+  ADR-0063 delimita 37 controles persistentes e aliases USER para a tarefa 1.2;
+  estados EMPTY/DEBUG e execução DMA continuam fora desse recorte. Sonda base:
+  209 MMIO sem modelo, 93 chamadas/zero recusadas; gate 519 testes, sem emulação nova.
+
 - Fase 5/kernel: MmFreeContiguousMemory (171), stdcall/4, remove mapeamentos e
   devolve os frames da alocação CMEM inteira em Passive. Valida posse/aliases,
   recusa bases inválidas e preserva boot e backings de vídeo/instância GPU.
