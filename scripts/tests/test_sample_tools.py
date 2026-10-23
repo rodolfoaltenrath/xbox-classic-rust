@@ -8,6 +8,7 @@ import unittest
 SCRIPTS = Path(__file__).resolve().parents[1]
 GUEST = r'''#!/usr/bin/env python3
 import os, sys
+sys.stdout = sys.stderr
 mode = os.environ.get('TEST_MODE', '')
 if mode == 'runtime-fail': print('Error: falha real'); sys.exit(23)
 if mode == 'false-budget': print('Error: outro erro'); sys.exit(1)
@@ -25,6 +26,10 @@ import os, pathlib, shutil, sys
 a = sys.argv[1:]
 mode = os.environ.get('TEST_MODE', '')
 if a[0] == '--version': print('cargo fixture'); sys.exit(0)
+if a[0] == 'generate-lockfile':
+    if mode == 'lock-fail': sys.exit(24)
+    (pathlib.Path(a[a.index('--manifest-path') + 1]).parent / 'Cargo.lock').write_text('lock fixture')
+    sys.exit(0)
 if a[0] == 'run':
     if mode == 'translate-fail': sys.exit(21)
     out = pathlib.Path(a[a.index('--out') + 1]); (out / 'src').mkdir(parents=True)
@@ -85,7 +90,7 @@ class SampleToolsTest(unittest.TestCase):
                 self.assertIn(text, result.stdout)
 
     def test_translation_build_and_runtime_errors_keep_status_without_summary(self):
-        for mode, status in [('translate-fail', 21), ('build-fail', 22), ('runtime-fail', 23), ('false-budget', 1)]:
+        for mode, status in [('translate-fail', 21), ('lock-fail', 24), ('build-fail', 22), ('runtime-fail', 23), ('false-budget', 1)]:
             with self.subTest(mode=mode):
                 result = self.run_tool(TEST_MODE=mode)
                 self.assertEqual(result.returncode, status, result.stderr)

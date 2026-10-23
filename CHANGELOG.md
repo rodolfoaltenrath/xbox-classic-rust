@@ -17,6 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Comando do alpha `bash scripts/run-alpha.sh <hello|triangle>`: prepara a
+  tradução atual, fixa lock offline, compila e abre Win32, com argumentos
+  validados e logs por rodada. Reuso compara imagem/manifest/lock/fontes;
+  projetos anteriores são preservados e índices inválidos arquivados.
+  Caminhos com espaços e comandos reais verificados; 16 testes de ferramentas,
+  gate 580/257 gerados. Guia de uso atualizado (ADR-0075, PLANO 4 concluído).
+
 - Alpha visual Windows: captura BGRA opcional sem sobrescrita, validação completa
   de argumentos e biblioteca AOT separada da CLI. WM_CLOSE durante execução
   encerra sem voltar ao modo de janela congelada. Captura Win32 compara todo RGB:

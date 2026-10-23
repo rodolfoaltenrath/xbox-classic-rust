@@ -290,7 +290,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   =95,7878/52,2096 ms. Sondas headless repetem CPU/pixels da 4.1, sem recusas;
   snapshots/replay passam. ADR-0074 documenta os comandos, hashes e limites.
 
-- [~] 4.3 Entregar um comando de uso do alpha. Preparar/traduzir/compilar os
+- [x] 4.3 Entregar um comando de uso do alpha. Preparar/traduzir/compilar os
   samples locais e abrir a janela com opções claras, sem exigir editar caminhos
   do outro PC ou reconstruir manualmente comandos de target.
   **Aceite:**
@@ -303,3 +303,14 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   - README e docs/dev/alpha.md trazem pré-requisitos, comandos, encerramento,
     limitações atuais e localização dos logs; atualizar CHANGELOG e passagem
     de bastão com evidências finais e manter o histórico das fases 0–3.
+
+  Evidência: GATE OK: 580 testes (target/gate/20261023-162456-sLpqiXCh.log),
+  257 gerados; seis testes novos de launcher, seis de preparo/sonda e quatro
+  de gate (16 ferramentas, separados). run-alpha.sh hello e triangle abriram
+  as janelas sem --projeto: runs hello-XfFakWTu/triangle-mM890OSS, mesmo BGRA do
+  ADR-0074, X em 58,3149/54,859 ms e status 1/orçamento preservado; Cargo
+  reutilizado em 0,20/0,23 s. Entrada e estado com espaços em
+  target/alpha spaces/runs/hello-CU9eCXwu, mesmo hash do hello. Cache compara
+  seis arquivos com a tradução/lock atuais, preserva projetos/logs e arquiva
+  índice inválido após rebuild aprovado. ADR-0075, README, alpha, CHANGELOG,
+  ROADMAP e passagem de bastão atualizados. Fase 4 e plano concluídos.

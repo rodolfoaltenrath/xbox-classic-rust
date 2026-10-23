@@ -1,5 +1,82 @@
 # Primeiro alpha: homebrew real
 
+## Uso vigente — 2026-10-23
+
+O bloco visual Windows do PLANO 4.1–4.3 reproduz hello/triangle, apresenta seus
+frames reais e encerra pelo X. Leia CONTINUIDADE_ALPHA.md para o estado técnico
+completo; os relatos por ADR mais abaixo são históricos.
+
+Requisitos: Rust fixado 1.98.1, linker compatível, Cargo/dependências disponíveis
+offline, Git Bash no Windows e os dois XBEs homebrew locais. Para gerar entradas,
+usar o nxdk público fixado e [os scripts de build](homebrew.md); o launcher não
+baixa jogos/SDK nem usa BIOS. Sem entrada, ele informa o caminho ausente.
+
+```bash
+# Git Bash, raiz do repositório
+bash scripts/run-alpha.sh hello
+bash scripts/run-alpha.sh triangle
+```
+
+PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
+Usar o Bash do Git, não o atalho do WSL para a execução visual Windows.
+
+As mensagens separam **preparo → build → execução**. O preparo sempre traduz
+para uma pasta nova, sem --entry, gera Cargo.lock offline e registra hashes e
+toolchain. O launcher só reutiliza projeto com imagem, manifest, lock e fontes
+idênticos à preparação atual; Cargo ainda verifica/recompila os crates alterados.
+Projetos/logs anteriores ficam preservados. Índice inválido do cache é arquivado
+antes de apontar para um rebuild aprovado. Não editar target para usar outro PC.
+
+O primeiro build release é custoso: as medições Windows iniciais foram 13m58
+para hello e 22m03 para triangle. Não são tempos da execução guest nem garantia
+de duração em outra máquina. Reabrir um projeto igual pode aproveitar o build
+(0,20/0,23 s nas checagens observadas). CPU guest usa Clock sintético; não tratar
+seus milissegundos como medição de FPS ou velocidade do jogo no host.
+
+Opções (caminhos Windows em Git Bash podem usar `C:/pasta/arquivo.xbe`):
+
+```bash
+bash scripts/run-alpha.sh hello --xbe "C:/meus samples/hello.xbe"
+bash scripts/run-alpha.sh triangle --fatias 4000
+bash scripts/run-alpha.sh triangle --sem-janela
+bash scripts/run-alpha.sh --help
+```
+
+--projeto seleciona um build já preparado; exige equivalência com a tradução
+atual e não aceita projeto divergente. Normalmente o cache automático basta.
+ALPHA_STATE_DIR muda a raiz de logs/índices (padrão target/alpha), ALPHA_BUILD_DIR
+muda o target Cargo do sample. Valores relativos são relativos ao repositório.
+O modo visual exige Windows; no Linux somente --sem-janela está disponível.
+
+**Encerramento:** X durante run produz parada pelo host/status 0. Quando o
+orçamento acaba, a janela mantém o frame final até X e o processo preserva
+status 1 com diagnóstico de orçamento. Headless também usa status 1 ao esgotar
+orçamento; outras falhas não são convertidas em sucesso. Erros de opções,
+entrada, tradução, dependências ou build são explícitos. O modo padrão é
+limitado (hello 64, triangle 320 fatias), para investigação controlada.
+
+Cada pasta nova em target/alpha/runs guarda build.log, stdout.log, stderr.log,
+guest.bgra (640×480 BGRA bruto, sem header/padding), project.txt,
+prepared-project.txt e build-identity.txt; no Windows também pid.txt.
+guest.bgra é só a imagem final, não um snapshot da sessão. Capturas PNG e
+comparação RGB pelo sistema usam scripts/verify-window.ps1, com procedimento
+no [ADR-0074](../adr/0074-alpha-visual-e-encerramento.md).
+
+Aceite visual: zero diferenças RGB em 640×480, hello 302 pixels/12 linhas e
+triangle 305922/479, R4977/G4998/B4977. Fechamento durante run ficou abaixo de
+200 ms em ambos. Gate Windows 580 testes, 257 casos gerados debug/release;
+snapshots/replay preservados. Fontes, métricas e comandos nos ADRs
+[0073](../adr/0073-reproducao-samples-windows.md),
+[0074](../adr/0074-alpha-visual-e-encerramento.md) e
+[0075](../adr/0075-comando-alpha-e-cache.md).
+
+Limites: dois homebrews, kernel parcial (38/69 hello, 42/75 triangle), raster
+software NV097 limitado; sem texturas/blend/renderer geral, áudio ou controles.
+Gamma/filtros continuam pendentes (P2); Linux gráfico é P6; precisão e recortes
+do raster permanecem P18. Jogos comerciais não foram habilitados por este marco.
+
+## Histórico das entregas anteriores
+
 Estado vigente do [ADR-0065](../adr/0065-consumidor-pushbuffer.md): PFIFO consome
 comandos por PRAMIN/RAM e o triangle passa o polling por GET=PUT. BUS0 v8/PFFO v2;
 v7 preserva controles sem consumo. Sonda com 13 raízes/17997 blocos recebe NV097

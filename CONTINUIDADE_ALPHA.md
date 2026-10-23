@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`319dbea`** e implementação local
-do ADR **0074** (alpha visual Win32; PLANO 4.1/4.2 concluídos).
+Atualizado em **2026-10-23**, com base no commit **`6de0aa4`** e implementação local
+do ADR **0075** (comando do alpha; PLANO Fase 4 concluída).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0074) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0075) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -101,8 +101,9 @@ Sondas headless no código final preservam CPU/pixels do ADR-0073. Gate Windows
 580 e 257 gerados debug/release, snapshots/replay passando, formatos mantidos.
 Hello histórico 1208/48/47 chamadas usava outro ponto de execução; não é a
 medição atual de 64 fatias. Cobertura segue 38/69 hello e 42/75 triangle.
-Apresentação Linux continua P6. Dez testes Python atuais de ferramentas passaram
-no WSL; os sete testes anteriores de busca de raízes não foram repetidos.
+Apresentação Linux continua P6. Dezesseis testes Python atuais de ferramentas
+passaram no WSL (6 launcher, 6 preparo/sonda, 4 gate); os sete testes anteriores
+de busca de raízes não foram repetidos.
 Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Estado e migrações que precisam ser preservados
@@ -149,6 +150,33 @@ Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Reprodução e artefatos
 
+**Uso atual (Git Bash no Windows, raiz do repo):**
+
+```bash
+bash scripts/run-alpha.sh hello
+bash scripts/run-alpha.sh triangle
+# Linux ou diagnóstico sem janela:
+bash scripts/run-alpha.sh triangle --sem-janela
+```
+
+PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
+O atalho bash.exe do WindowsApps pode ser WSL; usar o Bash do Git para Win32.
+O comando precisa dos XBEs locais (não versionados), Rust fixado e linker/cache
+Cargo. Não baixa SDK/entradas. --xbe aceita entrada explícita, --fatias muda
+orçamento; --projeto só reusa tradução/lock/fontes idênticos aos atuais.
+Cache automático evita recompilar a biblioteca igual. Cada preparo/rodada fica
+preservado em target/samples e target/alpha/runs; índice em target/alpha/cache.
+ALPHA_STATE_DIR/ALPHA_BUILD_DIR mudam essas raízes, relativos ao repo ou absolutos.
+Logs separados de build e execução, guest.bgra e proveniência ficam na rodada.
+Guest BGRA não é snapshot. X durante run retorna 0/host; após orçamento, a
+janela mantém a imagem até X e retorna 1/orçamento. Não silenciar outros erros.
+
+Tarefa 4.3: comandos padrão abriram hello/triangle sem caminhos do outro PC,
+usando runs hello-XfFakWTu/triangle-mM890OSS; Cargo 0,20/0,23 s e os mesmos
+hashes BGRA do ADR-0074. Entrada/saída com espaços foram verificadas no Windows.
+Gate final target/gate/20261023-162456-sLpqiXCh.log: 580 testes, 257 gerados.
+ADR-0075 e docs/dev/alpha.md explicam cache/primeiro build e limites.
+
 Retomada Windows (PLANO 4.1 concluído): `prepare-sample.sh` cria projeto novo
 com o emissor atual e registra hash/toolchain. `sonda.sh` retraduz por padrão;
 SONDA_XBE seleciona entrada, SONDA_PROJETO reutiliza projeto explícito e
@@ -170,7 +198,8 @@ host para não voltar à espera de janela congelada. A biblioteca AOT fica em
 src/lib.rs, separada do main; alterações só na CLI não recompilam os blocos.
 Hashes completos e ferramentas no ADR-0073.
 
-SDK nxdk fixado em `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local
+Referência de build na máquina Linux anterior: SDK nxdk fixado em
+`14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local
 `/home/altenrath/.cache/obsidian/nxdk-14d5ee9`. Xemu de referência
 `03b988c9d76553b33ed712ba00822ffdf49f0e7d`; fatos/consumidores nos ADRs 0063–0068.
 Hashes do triangle raw XBE e PE:
@@ -202,10 +231,9 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases 0–3 do PLANO foram concluídas com a evidência final da tarefa 3.4.
-O mantenedor autorizou em 2026-10-23 a nova Fase 4: reprodução no Windows,
-apresentação/encerramento reais e comando de uso do alpha. Seguir 4.1–4.3
-em modo autônomo; seus aceites e as evidências vivem no PLANO.md.
+As fases 0–4 do PLANO estão concluídas, com evidências na tarefa 4.3 e ADRs
+0073–0075: reprodução Windows, apresentação/encerramento reais e comando do
+alpha. Não há próxima tarefa aberta; novo bloco depende de escopo do mantenedor.
 Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
@@ -235,6 +263,8 @@ sucesso genérico para variantes pendentes.
 | xbox-platform | contrato de apresentação e backend Win32 |
 | tools/xberecomp | CLI, template e testes de Rust gerado |
 | scripts/ | gate, sonda e ferramentas de build/descoberta de raízes |
+| scripts/run-alpha.sh, start-alpha.ps1 | preparo/cache/build/lançamento do alpha e logs por rodada |
+| scripts/verify-window.ps1 | captura RGB real versus BGRA e teste WM_CLOSE com deadlines |
 
 ## Objetivo do software e do primeiro alpha
 
