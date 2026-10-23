@@ -115,10 +115,10 @@ fn largura_invalida_e_store_composto_nao_alteram_controle_ou_saida() {
 #[test]
 fn controles_fora_do_inventario_e_estados_empty_continuam_na_telemetria() {
     let mut b = bus();
-    for off in [0x2080, 0x2400, 0x3214, 0x32A0] {
+    for off in [0x2080, 0x32A0] {
         assert_eq!(read(&b, off), 0);
     }
-    assert_eq!(b.telemetria().total_de_acessos(), 4);
+    assert_eq!(b.telemetria().total_de_acessos(), 2);
     write(&mut b, 0x3240, 4);
     assert_eq!(read(&b, 0x3244), 0);
     assert_eq!(read(&b, 0x3214), 0);
@@ -139,8 +139,8 @@ fn snapshot_restabelece_perfil_controles_aliases_e_valida_payload() {
     let fifo = dest.nv2a_pfifo().clone();
     for (off, v) in [
         (4, 0u32),
-        (4, 2),
-        (8, 2),
+        (4, 3),
+        (8, 3),
         (12, 0),
         (12, 38),
         (16 + 3 * 4, 1),

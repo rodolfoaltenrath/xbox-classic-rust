@@ -1,5 +1,14 @@
 # Homebrew nxdk e fronteira do kernel
 
+Estado vigente do [ADR-0065](../adr/0065-consumidor-pushbuffer.md): PFIFO consome
+comandos por PRAMIN/RAM e o triangle passa o polling por GET=PUT. BUS0 v8/PFFO v2;
+v7 preserva controles sem consumo. Sonda com 13 raízes/17997 blocos recebe NV097
+e para no formatador 0x1E9B6 -> 0x1E9B8; 66 chamadas/zero recusadas. Framebuffer
+preto habilitado, sem efeitos gráficos ainda. Gate 535 testes/230 nativos debug/
+release. Próxima tarefa 1.4 verifica snapshot no meio do pacote; depois PGRAPH.
+As seções seguintes registram as entregas anteriores.
+
+
 Estado vigente após o [ADR-0064](../adr/0064-controles-pfifo-persistentes.md):
 37 controles PFIFO persistentes e aliases USER, BUS0 v7/PFFO v1. Snapshots v1–v6
 conservam ausência de PFIFO. Sonda triangle: MMIO sem modelo 209 -> 170, PUT/GET

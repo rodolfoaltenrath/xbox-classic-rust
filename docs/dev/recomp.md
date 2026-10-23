@@ -865,3 +865,16 @@ USER recusam. Sem consumo de comandos, GET não avança nem há EMPTY inferido.
 BUS0 v7/PFFO v1 salva perfil/controles; v1–v6 mantêm PFIFO sem modelo. Sete testes
 de memória e três casos gerados cobrem aliases, preflight, replay e migração v6.
 Gate 526 testes/227 gerados debug e release; sonda reduz MMIO sem modelo 209 -> 170.
+
+### Consumo de pushbuffer (ADR-0065, 2026-10-23)
+
+O decoder puro em xbox-gpu reconhece jump/call/return e métodos inc/non-inc. O
+Bus busca descritores PRAMIN/RAM, mantém pacote e bindings, e registra métodos
+sem efeito gráfico. Conduzir serve até 4096 palavras por fronteira normal, sem
+avançar Clock; guest::run isolado permite service_gpu explícito. Erros preservam
+a palavra inválida e o prefixo já consumido, sem desfazer a fatia CPU anterior.
+
+BUS0 v8/PFFO v2/PCMD v1 guarda perfis, bindings e registros. v7 permanece com
+controles sem consumo; v1–v6 mantêm PFIFO sem modelo. Triangle com 13 raízes passa
+GET=PUT pelo jump real e lista NV097, mas para no formatador 0x1E9B8. Gate 535
+workspace/230 gerados debug/release. A apresentação ainda está preta, sem PGRAPH.

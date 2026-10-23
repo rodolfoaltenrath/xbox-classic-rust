@@ -6,7 +6,7 @@
 #
 # Projetos usados (Rust gerado pelo xberecomp; recompilam contra o código atual):
 #   hello    -> target/homebrew/boot-review-20261022        (--fatias 64 por padrão)
-#   triangle -> target/homebrew2/boot-irq-review-20261022   (12 raízes; --fatias 4000)
+#   triangle -> target/homebrew2/dma-review-20261023   (13 raízes; --fatias 4000)
 # Se a tarefa exigir raízes novas, retraduza (CONTINUIDADE_ALPHA.md, "Reproduzir o
 # triangle") e atualize o caminho aqui no mesmo commit.
 #
@@ -31,7 +31,7 @@ hello)
     fatias="${2:-64}"
     ;;
 triangle)
-    proj="target/homebrew2/boot-irq-review-20261022"
+    proj="target/homebrew2/dma-review-20261023"
     alvo="target/homebrew2/pramin-target"
     fatias="${2:-4000}"
     ;;

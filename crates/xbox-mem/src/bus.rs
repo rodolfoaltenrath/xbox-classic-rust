@@ -160,6 +160,15 @@ impl Bus {
         &self.nv2a_pfifo
     }
 
+    /// Consome até `words` palavras DMA, sem executar instruções ou avançar Clock.
+    pub fn service_gpu(
+        &mut self,
+        words: u32,
+    ) -> Result<crate::nv2a_pfifo::StepReport, crate::nv2a_pfifo::GpuFault> {
+        self.nv2a_pfifo
+            .run(self.arena.bytes(), &self.nv2a_pramin, words)
+    }
+
     /// Idem, para o relógio de vblank travar a pendência.
     pub const fn nv2a_irq_mut(&mut self) -> &mut Nv2aIrq {
         &mut self.nv2a_irq
@@ -710,7 +719,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 7);
+        out.section("BUS0", 8);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -724,8 +733,8 @@ impl Snapshot for Bus {
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 7)?;
-        if !matches!(versao, 1..=7) {
+        let versao = inp.section("BUS0", 8)?;
+        if !matches!(versao, 1..=8) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",

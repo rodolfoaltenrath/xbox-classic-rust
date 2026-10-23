@@ -14,6 +14,7 @@ mod control;
 mod critical;
 mod delay;
 mod display;
+mod dma;
 mod double_shifts;
 mod encoder_filters;
 mod exchange;
@@ -97,6 +98,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&pramdac::sources(output));
     main.push_str(&pfb::sources(output));
     main.push_str(&pfifo::sources(output));
+    main.push_str(&dma::sources(output));
     main.push_str(&pramin::sources(output));
     main.push_str(&boot_dma::sources(output));
     main.push_str(&sse::sources(output));

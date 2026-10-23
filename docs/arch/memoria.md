@@ -602,3 +602,17 @@ Checklist de aceite, substituindo o do ROADMAP:
 
 Fora de escopo, por decisão: fastmem (Fase 3b), janela tiled (Fase 5), escrita em
 dispositivo que não seja stub (Fases 5 e 6).
+
+## Consumidor PFIFO serial (ADR-0065)
+
+A configuração PFIFO, pacote pendente e bindings pertencem ao Bus. O decoder de
+cabeçalhos é puro em xbox-gpu, sem dependência de memória; xbox-mem depende dele.
+Bus::service_gpu lê a arena/PRAMIN únicas, valida descritores e limita palavras
+por chamada. Session::conduzir o chama nas fronteiras normais sem outro relógio.
+GET muda por decodificação, e a fila serial só anuncia EMPTY quando não restam
+palavras nem parâmetros. Não há renderização, worker ou IRQ gráfico nesse perfil.
+
+BUS0 v8/PFFO v2/PCMD v1 preserva o estado completo do frontend. v7 restaura o perfil
+anterior de controles sem consumidor, e v1–v6 mantêm ausência de PFIFO. O perfil
+serial é P16; a independência de PRAMIN/RAM continua P14. Erros de comando não
+retrocedem o prefixo já consumido nem a CPU que produziu os dados.

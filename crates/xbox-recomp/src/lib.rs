@@ -35,6 +35,8 @@ pub const DEMO_CODE: &[u8] = &[
 /// Falha recuperável de análise, carregamento ou execução AOT.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(transparent)]
+    Gpu(#[from] xbox_mem::nv2a_pfifo::GpuFault),
     #[error("RDMSR em 0x{pc:08X}: MSR 0x{index:08X} ainda sem modelo no perfil guest")]
     UnsupportedMsr { pc: u32, index: u32 },
     #[error("relógio virtual esgotado antes da instrução em 0x{pc:08X}")]

@@ -28,6 +28,9 @@ fn ler_fatias() -> Result<u32, Box<dyn std::error::Error>> {
 /// É a lista exata de registradores que o título usa: sem ela, um acesso que não parou a
 /// execução ficaria invisível, e um que parou só diria o endereço do primeiro.
 fn relatar_mmio(session: &xbox_recomp::runtime::Session) {
+    for r in session.bus.nv2a_pfifo().methods() {
+        eprintln!("GPU método classe=0x{:04X} método=0x{:04X} subcanal={} contagem={} primeiro=0x{:08X} último=0x{:08X} efeito gráfico=não modelado",r.class,r.method,r.subchannel,r.count,r.first,r.last);
+    }
     let telemetria = session.bus.telemetria();
     if telemetria.total_de_acessos() > 0 {
         eprintln!("\nMMIO sem modelo tocado pelo guest:\n{}", telemetria.relatorio());
@@ -170,6 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fatias: ler_fatias()?,
     };
     let resultado = executar(&mut session, &mut janela, abrir_janela, limites);
+    eprintln!("Kernel: {} chamadas atendidas, {} recusadas; instruções={}, EIP=0x{:08X}",session.kernel.atendidas(),session.kernel.recusadas(),session.state.retired,session.state.eip);
     relatar_mmio(&session);
     relatar_framebuffer(&session);
 

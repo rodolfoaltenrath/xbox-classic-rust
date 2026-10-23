@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 xbox-core = { workspace = true }
+xbox-gpu = { workspace = true }
 tracing = { workspace = true }
 
 [lints]

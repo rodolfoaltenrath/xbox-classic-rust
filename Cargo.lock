@@ -548,6 +548,7 @@ version = "0.0.1"
 dependencies = [
  "tracing",
  "xbox-core",
+ "xbox-gpu",
 ]
 
 [[package]]

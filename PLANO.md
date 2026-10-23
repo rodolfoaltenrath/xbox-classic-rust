@@ -95,7 +95,7 @@ linhas), sem triângulo.
   memória e três nativos cobrem aliases, preflight, replay e migração v6.
   ADR-0064/P15: controles persistem, GET não avança sem consumo; EMPTY sem modelo.
 
-- [ ] 1.3 Consumir o pushbuffer: ler comandos entre GET e PUT pelos descritores de
+- [x] 1.3 Consumir o pushbuffer: ler comandos entre GET e PUT pelos descritores de
   DMA na PRAMIN, decodificar cabeçalhos (incremento, não incremento, jump, call/return
   se o triangle usar) e avançar DMA_GET conforme consome. Métodos sem efeito ainda
   ficam registrados na telemetria, nunca descartados em silêncio.
@@ -106,6 +106,15 @@ linhas), sem triângulo.
   - sonda triangle: o polling termina por GET == PUT, não por timeout. `parada` não
     vem de pb_kill, e o log lista os métodos NV097 recebidos (classe, método, contagem);
   - ADR novo ou adendo ao de 1.1 explicando a origem dos descritores.
+
+  Evidência: GATE OK 535 testes (target/gate/20261023-010738.log), 230 casos
+  gerados debug/release. Sonda de bootstrap target/sonda/triangle-dma-root13-probe-20261023.log:
+  GET=PUT=0x18C000 após consumir jump, retired=25749621, 54 chamadas/zero recusadas,
+  snapshot integral estável. Sonda oficial target/sonda/triangle-20261023-010537.log:
+  66 chamadas/zero recusadas, parada UnknownTarget 0x1E9B6 -> 0x1E9B8 fora de pb_kill;
+  257 chaves/376 parâmetros, NV097 com 249 chaves/366 parâmetros (inclui binding).
+  Métodos sem efeito gráfico são relatados. ADR-0065/BUS0 v8/PFFO v2; 13 raízes/
+  17997 blocos, acrescida 0x196CF para o switch de cor de 32 bits. P16 declara limites.
 
 - [ ] 1.4 Estado do PFIFO no snapshot no meio do pushbuffer.
   **Aceite:**

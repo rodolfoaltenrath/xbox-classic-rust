@@ -17,6 +17,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/PFIFO: consumidor limitado de pushbuffer pela PRAMIN/RAM reais, jump
+  antigo/novo, call/return e pacotes inc/non-inc, RAMHT e bindings, contagem de
+  métodos sem efeito gráfico. Conduzir serve até 4096 palavras por fronteira;
+  estados EMPTY derivam do consumo, sem copiar PUT para GET. BUS0 v8/PFFO v2
+  preserva pacotes/bindings/telemetria, com migração v7 sem ativar DMA. Triangle
+  passa o polling por GET=PUT e envia NV097; 13 raízes, próximo alvo de texto
+  0x1E9B8. Sonda: 66 chamadas/zero recusadas, 257 chaves de métodos. Gate 535
+  testes e 230 nativos debug/release. Perfil serial provisório P16 (ADR-0065).
+
 - Fase 5/PFIFO: 37 controles persistentes e aliases NV_USER PUT/GET do canal DMA
   zero, com W1C de INTR_0, validação de largura/canal e preflight. BUS0 v7/PFFO v1
   preserva o estado; v1–v6 migram sem PFIFO. Não avança GET nem produz EMPTY.

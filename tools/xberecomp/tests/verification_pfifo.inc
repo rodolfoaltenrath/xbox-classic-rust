@@ -18,7 +18,7 @@ mod pfifo_verification {
     fn snapshot_replay_e_bus_v6_conservam_controles_ou_zero_legado(){
         let mut s=loaded();let initial=saved(&s);pending(&mut s);let checkpoint=saved(&s);finish(&mut s);let complete=saved(&s);
         let mut restored=loaded();restored.load(&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();assert!(saved(&restored)==checkpoint);finish(&mut restored);assert!(saved(&restored)==complete);
-        let mut old=initial;let at=old.windows(4).rposition(|v|v==b"PFFO").unwrap();let count=u32::from_le_bytes(old[at+12..at+16].try_into().unwrap()) as usize;old.drain(at..at+16+count*4);
+        let mut old=initial;let at=old.windows(4).rposition(|v|v==b"PFFO").unwrap();let count=u32::from_le_bytes(old[at+12..at+16].try_into().unwrap()) as usize;let mut end=at+16+count*4;if u32::from_le_bytes(old[at+8..at+12].try_into().unwrap())==2{let len=u64::from_le_bytes(old[end..end+8].try_into().unwrap()) as usize;end+=8+len;}old.drain(at..end);
         let at=old.windows(4).position(|v|v==b"BUS0").unwrap();old[at+4..at+8].copy_from_slice(&6u32.to_le_bytes());
         restored.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();assert!(restored.bus.boot_dma_page().reserved());assert_eq!(restored.bus.nv2a_pfifo().profile(),PfifoProfile::LegacyUnmodeled);
         pending(&mut restored);finish(&mut restored);outputs(&restored,[0,0,0]);let migrated=saved(&restored);s.load(&mut SnapshotReader::new(&migrated).unwrap()).unwrap();assert!(saved(&s)==migrated);

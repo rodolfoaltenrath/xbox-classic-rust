@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`3e4b36c`** e alterações locais
-do ADR **0064** (controles PFIFO persistentes e aliases USER).
+Atualizado em **2026-10-23**, com base no commit **`34b9801`** e alterações locais
+do ADR **0065** (consumo real do pushbuffer).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -24,15 +24,15 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P15), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P16), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0064) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0065) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v7/`PFFO` v1/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v8/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -41,9 +41,9 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (526 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (535 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `227 passed` em x86-64 e `211` fora dele —
+   confere o **contador de casos gerados**, hoje `230 passed` em x86-64 e `214` fora dele —
    some os testes novos ali).
 
 ### O que foi feito (resumo por etapa)
@@ -60,14 +60,26 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 | Limpeza pbkit | MmFreeContiguousMemory (171), remoção real de mapeamentos/frames, reuso e preservação dos backings referenciados | 0062 |
 
 Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); triangle **42/75**; **227** casos no Rust gerado em debug/release;
-**526** testes workspace/doctests no gate padrão Linux (519 no baseline + sete).
+compatibilidade); triangle **42/75**; **230** casos no Rust gerado em debug/release;
+**535** testes workspace/doctests no gate padrão Linux (526 no baseline + nove).
 Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
 (target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
 na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
 ### Estado do hello e do segundo sample
+
+**Estado vigente ADR-0065:** o consumidor PFIFO lê PRAMIN/RAM, decodifica pacotes
+limitados por orçamento e preserva bindings/métodos pendentes. BUS0 v8/PFFO v2;
+v7 preserva o perfil RegistersV1 sem execução, v1–v6 mantêm PFIFO sem modelo.
+Triangle com 13 raízes/17997 blocos passa o polling por GET=PUT=0x18C000 em
+25749621 retired/ciclos, 54 chamadas/zero recusadas, com snapshot estável.
+A sonda completa chega a 66 chamadas/zero recusadas, 257 chaves/376 parâmetros
+(249 chaves/366 parâmetros NV097, inclui binding) e para no formatador de texto,
+0x1E9B6 -> 0x1E9B8. Framebuffer habilitado e preto, sem renderização; PGRAPH
+continua sem efeito. Log target/sonda/triangle-20261023-010537.log, MMIO sem modelo
+170. Gate 535 testes/230 nativos debug/release. P15 resolvido para sessão nova;
+P16 declara o consumidor serial. Relatos anteriores abaixo são históricos.
 
 **Atualização ADR-0064:** PFIFO RegistersV1 guarda os 37 controles inventariados;
 USER PUT/GET são aliases do canal DMA zero. BUS0 v7/PFFO v1; v1–v6 preservam PFIFO
@@ -123,14 +135,14 @@ Reproduzir o `triangle`:
 ```bash
 # 1) compilar (no WSL; reaproveita o SDK que build-homebrew.sh já clonou)
 wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-nxdk-sample.sh triangle homebrew2
-# 2) traduzir com as 12 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
+# 2) traduzir com as 13 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
   --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
   --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
-  --entry 0x1B420 --entry 0x1B340 \
-  --out target/homebrew2/proj
-cargo run --release --offline --manifest-path target/homebrew2/proj/Cargo.toml \
-  --target-dir target/homebrew2/tgt -- --fatias 4000
+  --entry 0x1B420 --entry 0x1B340 --entry 0x196CF \
+  --out target/homebrew2/dma-review-20261023
+cargo run --release --offline --manifest-path target/homebrew2/dma-review-20261023/Cargo.toml \
+  --target-dir target/homebrew2/pramin-target -- --fatias 4000
 # Para descobrir raízes de um XBE novo, automaticamente:
 bash scripts/find-translation-roots.sh <xbe> target/<pasta-nova> [raizes...]
 ```
@@ -141,11 +153,11 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-As tarefas 0.0, 1.1 e 1.2 foram concluídas. ADR-0063 contém o inventário;
-ADR-0064 modela os controles e aliases com snapshot. Próxima tarefa 1.3: consumir
-os comandos pela PRAMIN/RAM e avançar GET somente após decodificação real.
-Baseline atual: 170 MMIO sem modelo, 93 chamadas/zero recusadas, 1580 pixels/
-29 linhas. Fonte, limites P15 e migrações estão no ADR-0064.
+Tarefas 0.0/1.1/1.2/1.3 concluídas. Próxima 1.4: comparar snapshot no meio de
+pacote/call com execução contínua. Depois 2.1 inventaria métodos recebidos e 2.2/
+2.3 implementam efeitos gráficos. A raiz do formatador 0x1E9B8 é o próximo destino
+observado, sem alterar a análise automática P5. Não confundir preto habilitado
+com triângulo renderizado. Fontes, perfis e limites estão nos ADRs 0063–0065.
 
 1. **PFIFO/DMA_GET com efeitos reais.** O
    [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;
@@ -1379,7 +1391,7 @@ $generated = Get-ChildItem target/recomp-tests -Directory | Sort-Object LastWrit
 cargo test --offline --release --manifest-path (Join-Path $generated.FullName 'Cargo.toml') --target-dir target/recomp-native-check
 ```
 
-Os 227 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
+Os 230 casos atuais em x86_64 não são um número fixo de aceite: adicionar os casos
 necessários e atualizar o contador esperado do teste gerador ao ampliar a suíte.
 Se alterar memória/unsafe, consultar também os contratos e Miri no guia de memória.
 Mídia comercial é opcional; seu teste T14 fica ignorado na execução normal.
@@ -1400,17 +1412,17 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 
 ## Texto pronto para iniciar com outra LLM
 
-> Continue pela passagem de bastão. Base 3e4b36c + ADR-0064; confira Git,
-> AGENTS.md e PLANO.md, em modo autônomo. Tarefas 0.0/1.1/1.2 concluídas;
-> próxima 1.3: consumidor de pushbuffer real. PFIFO guarda 37 controles e aliases
-> USER canal DMA zero; GET não avança sozinho, EMPTY ainda sem modelo.
-> BUS0 v7/PFFO v1; v1–v6 preservam PFIFO sem modelo. PRAMIN/P14 continua
-> independente e boot D3D tem posse própria. KRNL v13/AOTC v8/AOTS v3 iguais.
-> Triangle: 12 raízes/17984 blocos, framebuffer diagnóstico 1580 pixels/29 linhas,
-> sonda 320 fatias em EIP=0x14D36, 93 chamadas/zero recusadas, MMIO 209 -> 170.
-> PUT/GET saíram da lista sem modelo. Gate 1.99: 526 testes/227 nativos debug e
-> release; Clippy 1.98.1 foi validado na 0.0. Hello 38/69, triangle 42/75 serviços.
-> Não inventar GET/EMPTY; provisórios P1–P15. Commits locais conforme AGENTS.md.
+> Continue pela passagem de bastão. Base 34b9801 + ADR-0065; confira Git,
+> AGENTS.md e PLANO.md em modo autônomo. Próxima tarefa 1.4: snapshot de comandos
+> pendentes; depois PGRAPH. PFIFO consome PRAMIN/RAM, resolve RAMHT e move GET por
+> palavras reais. BUS0 v8/PFFO v2; v7 permanece RegistersV1 sem consumo, v1–v6 sem
+> PFIFO. KRNL v13/AOTC v8/AOTS v3 iguais. Triangle usa 13 raízes/17997 blocos,
+> passa o bootstrap por GET=PUT=0x18C000; sonda completa para no formatador
+> 0x1E9B6 -> 0x1E9B8, 66 chamadas/zero recusadas. Há 249 chaves NV097, sem efeito
+> gráfico; framebuffer habilitado/preto. Gate 535 testes/230 nativos debug/release.
+> P15 resolvido em sessão nova; P16 declara consumidor serial. P13/P14 continuam.
+> Mantenha os snapshots legados; não promova perfis ao carregar. Commits locais
+> conforme AGENTS.md, sem push ou trailers de autoria.
 
 ### Texto anterior — histórico do ADR-0050, não usar como estado vigente
 

@@ -1108,10 +1108,11 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P9 | **x87 só carga e armazenamento**: sem aritmética, sem palavras de controle/estado nem exceções (ADR-0053) | o `triangle` usa `fild`/`fstp`/`fldz`; aritmética ainda não foi alcançada | instruções x87 além das listadas são recusadas na análise, com o nome | implementar a aritmética quando um caminho executado a alcançar, com a precisão de 80 bits já exata na pilha |
 | P10 | **Interrupção com convenções declaradas**: vetor `0x30 + nível`, `KIRQL = 27 − nível`, ISR com IRQL inalterado (ADR-0055) | nenhum alvo lê o número; o perfil só tem PASSIVE/APC/DISPATCH | um título que leia o vetor ou o IRQL dentro do ISR vê valores convencionais | DIRQL no modelo de IRQL |
 | P11 | **Entrega de interrupção só nas fronteiras de `conduzir`**, sem preempção e sem consultar IF (ADR-0055) | o `pbkit` espera por evento e tolera ~1 fatia de latência | código que dependa de interrupção no meio de um bloco ou de `CLI`/`STI` como máscara | modelar IF, `STI` e entrega com preempção |
-| P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; faltam PFIFO e PGRAPH; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
+| P12 | **NV2A parcial:** vblank, NVPLL, PFB_CFG0/CFG1 e PRAMIN com perfis explícitos (ADRs 0055/0057/0058/0060); demais offsets sem modelo | recortes guiados pelo guest, fontes públicas fixadas; perfil PFB distingue 64/128 MiB | readback não implementa geometria elétrica ou tiling; PFIFO tem consumidor parcial P16; falta PGRAPH; vínculo físico PRAMIN/RAM limitado pelo P14; consulta de instância limitada pelo P13; PTIMER só registra escritas | modelo do NV2A (Fase 5), com evidência de cada valor |
 | P13 | **Bootstrap de instância GPU na primeira consulta** (ADR-0059): reserva CMEM dos 128 KiB finais, instância + padding, somente retail 64 MiB | pbkit consulta 0xFFFFFFFF; retorno tem backing real e posse de frames; repetição preserva bytes | boot não reserva previamente; colisão retorna NULL; não simula PFN database, resize ou devkit; não define backing de PRAMIN; MmFreeContiguousMemory recusa o pool provisionado (ADR-0062) | integrar reserva ao boot/firmware e estabelecer posse/backing PRAMIN, teardown e perfis maiores com evidência |
-| P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; ainda sem consumo PFIFO/PGRAPH | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
-| P15 | **Controles PFIFO persistentes sem consumidor DMA** (ADR-0064): 37 controles e aliases USER do canal DMA zero | programação observada no ADR-0063, readback e snapshot coerentes | não executa pushbuffer nem produz EMPTY/IRQ/PGRAPH; PIO/outros canais USER recusam; bits dos controles guardados sem normalização especulativa | consumo real de descritores/comandos, estados de fila e migração explícita do perfil, validados no triangle |
+| P14 | **PRAMIN independente** (ADR-0060): armazenamento de 1 MiB no dispositivo, sem alias RAM/CMEM | perfil público xemu e uso real de RAMHT/contextos pelo pbkit; preserva bytes e snapshot | não representa a relação física com a RAM UMA ou reserva de instância do boot; consumo PFIFO existe, PGRAPH pendente | evidência do vínculo físico PRAMIN/RAM e integração ao boot/reserva, com migração explícita do perfil |
+| P15 | **Resolvido para sessão nova pelo ADR-0065:** controles isolados do ADR-0064 | mantido como perfil legado de snapshot | BUS0 v7/PFFO v1 continua sem consumidor; migração não o ativa | encerrado no perfil CommandsV1, com consumo/filas/migração e sonda de GET=PUT |
+| P16 | **PFIFO serial limitado** (ADR-0065): até 4096 palavras por fronteira CPU, canal DMA zero e memória linear UMA | consumidor real guiado pelo pbkit, com estados explícitos e replay | sem timing GPU, PIO/outros canais, IRQ gráfico ou efeitos PGRAPH; filas EMPTY representam o consumidor serial | integrar PGRAPH, sincronização/backpressure e perfis com evidência, preservando snapshots |
 
 Investigação de evidência e ferramentas em 2026-10-22:
 [ADR-0056](docs/adr/0056-evidencia-nv2a-e-reproducao.md). O PLL lembrado foi
@@ -1200,6 +1201,14 @@ Uma linha por marco concluído. Append-only.
 ---
 
 ### Próxima ação
+
+Entrega vigente: [ADR-0065](docs/adr/0065-consumidor-pushbuffer.md), consumidor
+PFIFO com GET avançado pela leitura/decodificação, BUS0 v8/PFFO v2. Triangle
+passa o bootstrap (GET=PUT=0x18C000), recebe 257 chaves/376 parâmetros, incluindo
+249 chaves NV097, e para em raiz de texto 0x1E9B8; 66 chamadas/zero recusadas.
+13 raízes/17997 blocos; gate 535 testes e 230 nativos debug/release.
+Próxima tarefa 1.4: snapshot no meio do pacote; depois inventário PGRAPH. P15
+resolvido para sessão nova; P16 declara execução serial sem efeitos gráficos.
 
 Entrega mais recente, 2026-10-23: [ADR-0064](docs/adr/0064-controles-pfifo-persistentes.md),
 37 controles PFIFO e aliases USER com BUS0 v7/PFFO v1. Sonda: MMIO sem modelo

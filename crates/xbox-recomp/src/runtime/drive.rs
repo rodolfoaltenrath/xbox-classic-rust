@@ -53,6 +53,12 @@ impl Session {
         for _ in 0..limites.fatias {
             self.deliver_interrupts(&mut run, limites.blocos_por_fatia)?;
             let saida = self.run_slice(&mut run, limites.blocos_por_fatia)?;
+            if matches!(
+                saida,
+                Exit::Budget | Exit::KernelCall { .. } | Exit::Returned
+            ) {
+                self.bus.service_gpu(4096)?;
+            }
             self.publicar_tick_count()?;
             match saida {
                 Exit::Returned => {
