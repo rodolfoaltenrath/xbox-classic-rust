@@ -245,3 +245,51 @@ fn snapshot_depois_da_liberacao_restaura_ausencia_de_mapa_e_reuso_deterministico
     assert_eq!(saved(&restored_bus), saved(&bus));
     assert_eq!(saved(&restored_kernel), saved(&d));
 }
+
+#[test]
+fn scanout_pcrtc_seleciona_buffer_real_e_protege_backing_ativo_no_snapshot() {
+    let (mut bus, mut d, r) = setup();
+    for base in [0x20000, 0x200000] {
+        allocate(&mut bus, &mut d, &r, base, 0x180000);
+    }
+    call(
+        &mut bus,
+        &mut d,
+        &r,
+        3,
+        &[0xFD000000, 0, 0x04010101, 0x12, 2560, 0x20000],
+    )
+    .unwrap();
+    assert_eq!(bus.nv2a_pgraph().scanout(), Some(0x20000));
+    bus.escrever_u32(GuestVirt(0x80200010), 0xFF123456).unwrap();
+    bus.escrever_u32(GuestVirt(0xFD600800), 0x200010).unwrap();
+    let view = d.framebuffer(&bus).unwrap().unwrap();
+    assert_eq!(view.mode().framebuffer(), GuestPhys(0x200010));
+    assert_eq!(&view.row(0).unwrap()[..4], &0xFF123456u32.to_le_bytes());
+    let before = resources(&bus, &d);
+    for base in [0x80020000, 0x80200000] {
+        assert!(matches!(
+            call(&mut bus, &mut d, &r, 171, &[base]),
+            Err(Erro::VarianteNaoImplementada { .. })
+        ));
+        assert_eq!(resources(&bus, &d), before);
+    }
+    let bus_bytes = saved(&bus);
+    let kernel_bytes = saved(&d);
+    let (mut restored, mut kd, _) = setup();
+    restored
+        .load(&mut SnapshotReader::new(&bus_bytes).unwrap())
+        .unwrap();
+    kd.load(&mut SnapshotReader::new(&kernel_bytes).unwrap())
+        .unwrap();
+    kd.restore_memory_context(None, &restored).unwrap();
+    assert_eq!(
+        kd.framebuffer(&restored).unwrap().unwrap().copiar_visivel(),
+        d.framebuffer(&bus).unwrap().unwrap().copiar_visivel()
+    );
+    restored
+        .escrever_u32(GuestVirt(0xFD600800), 0x3FFFFFC)
+        .unwrap();
+    assert!(kd.framebuffer(&restored).is_err());
+    assert!(kd.restore_memory_context(None, &restored).is_err());
+}

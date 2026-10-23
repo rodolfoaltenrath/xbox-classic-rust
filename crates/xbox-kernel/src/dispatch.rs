@@ -342,6 +342,12 @@ impl Dispatcher {
         self.gpu_instance.validate(&self.contiguous, Some(bus))?;
         self.interrupts.validate(bus)?;
         self.video
+            .validate_scanout(bus, &self.contiguous)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "AVST",
+                what,
+            })?;
+        self.video
             .validate_memory(&self.contiguous, &self.eeprom)
             .map_err(|what| SnapshotError::BadValue {
                 section: "AVST",
@@ -493,7 +499,10 @@ impl Dispatcher {
                 bus,
                 &call,
                 self.irql,
-                self.video.mode().map(DisplayMode::framebuffer),
+                [
+                    self.video.mode().map(DisplayMode::framebuffer),
+                    bus.nv2a_pgraph().scanout().map(xbox_mem::GuestPhys),
+                ],
                 self.gpu_instance.allocation_base(),
             ),
             ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {

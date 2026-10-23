@@ -44,6 +44,7 @@ use crate::nv2a_pfifo::Nv2aPfifo;
 use crate::nv2a_pramdac::Nv2aPramdac;
 use crate::nv2a_pramin::Nv2aPramin;
 use crate::regioes::{MapaFisico, Regiao};
+use xbox_gpu::pgraph::{Nv2aPgraph, PMC_PGRAPH_PENDING};
 
 /// O barramento de memória do console.
 #[derive(Debug)]
@@ -59,6 +60,7 @@ pub struct Bus {
     nv2a_pfb: Nv2aPfb,
     nv2a_pramin: Nv2aPramin,
     nv2a_pfifo: Nv2aPfifo,
+    nv2a_pgraph: Nv2aPgraph,
     contexto: Cell<Contexto>,
 }
 
@@ -85,6 +87,7 @@ impl Bus {
             nv2a_pfb: Nv2aPfb::for_ram(tamanho),
             nv2a_pramin: Nv2aPramin::default(),
             nv2a_pfifo: Nv2aPfifo::default(),
+            nv2a_pgraph: Nv2aPgraph::default(),
             contexto: Cell::new(Contexto::default()),
         })
     }
@@ -160,13 +163,32 @@ impl Bus {
         &self.nv2a_pfifo
     }
 
+    /// Backend gráfico e endereço de scanout, sem cópia da RAM.
+    pub const fn nv2a_pgraph(&self) -> &Nv2aPgraph {
+        &self.nv2a_pgraph
+    }
+    /// Efeito HLE do modo de vídeo, preservando ausência do modelo em snapshots antigos.
+    pub fn set_display_start(&mut self, address: u32) -> Result<(), &'static str> {
+        self.nv2a_pgraph
+            .display_start(address, self.arena.len() as u64)
+    }
+    /// Fontes GPU habilitadas agregadas na mesma linha INTA.
+    pub fn gpu_irq_line_asserted(&self) -> bool {
+        self.nv2a_irq.line_asserted()
+            || (self.nv2a_pgraph.irq_pending()
+                && self.nv2a_irq.read(0x140).is_some_and(|v| v & 1 != 0))
+    }
     /// Consome até `words` palavras DMA, sem executar instruções ou avançar Clock.
     pub fn service_gpu(
         &mut self,
         words: u32,
     ) -> Result<crate::nv2a_pfifo::StepReport, crate::nv2a_pfifo::GpuFault> {
-        self.nv2a_pfifo
-            .run(self.arena.bytes(), &self.nv2a_pramin, words)
+        self.nv2a_pfifo.run(
+            &mut self.arena,
+            &self.nv2a_pramin,
+            &mut self.nv2a_pgraph,
+            words,
+        )
     }
 
     /// Idem, para o relógio de vblank travar a pendência.
@@ -231,6 +253,13 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                self.nv2a_pgraph
+                    .validate_access(deslocamento, restante.len(), false)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
                 self.nv2a_pfifo
                     .validate_access(deslocamento, restante.len(), false)
                     .map_err(|o_que| Falta {
@@ -325,6 +354,24 @@ impl Bus {
                 deslocamento,
             } = self.mapa.classificar(pa)
             {
+                if self
+                    .nv2a_pgraph
+                    .validate_access(deslocamento, restante.len(), true)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?
+                {
+                    let value = u32::from_le_bytes(restante.try_into().expect("DWORD validado"));
+                    self.nv2a_pgraph
+                        .validate_value(deslocamento, value, self.arena.len() as u64)
+                        .map_err(|o_que| Falta {
+                            endereco: atual,
+                            acesso: Acesso::Escrita,
+                            motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                        })?;
+                }
                 self.nv2a_pfifo
                     .validate_access(deslocamento, restante.len(), true)
                     .map_err(|o_que| Falta {
@@ -565,7 +612,20 @@ impl Bus {
     }
 
     fn ler_nv2a(&self, offset: u32, len: usize) -> std::result::Result<Option<u32>, &'static str> {
-        if let Some(value) = self.nv2a_pfifo.read(offset, len)? {
+        if offset == 0x100 && len == 4 {
+            let value = self.nv2a_irq.read(offset).expect("PMC_INTR_0");
+            return Ok(Some(
+                value
+                    | if self.nv2a_pgraph.irq_pending() {
+                        PMC_PGRAPH_PENDING
+                    } else {
+                        0
+                    },
+            ));
+        }
+        if let Some(value) = self.nv2a_pgraph.read(offset, len)? {
+            Ok(Some(value))
+        } else if let Some(value) = self.nv2a_pfifo.read(offset, len)? {
             Ok(Some(value))
         } else if self.nv2a_pramin.validate_access(offset, len)? {
             Ok(self.nv2a_pramin.read(offset))
@@ -581,7 +641,15 @@ impl Bus {
     }
 
     fn escrever_nv2a(&mut self, offset: u32, bytes: &[u8]) -> Result<bool, &'static str> {
-        if self.nv2a_pfifo.validate_access(offset, bytes.len(), true)? {
+        if self
+            .nv2a_pgraph
+            .validate_access(offset, bytes.len(), true)?
+        {
+            let value = u32::from_le_bytes(bytes.try_into().expect("DWORD validado"));
+            self.nv2a_pgraph
+                .validate_value(offset, value, self.arena.len() as u64)?;
+            self.nv2a_pgraph.write(offset, value);
+        } else if self.nv2a_pfifo.validate_access(offset, bytes.len(), true)? {
             self.nv2a_pfifo.write(
                 offset,
                 u32::from_le_bytes(bytes.try_into().expect("largura validada")),
@@ -719,7 +787,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 8);
+        out.section("BUS0", 9);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -730,11 +798,12 @@ impl Snapshot for Bus {
         self.nv2a_pramin.save(out);
         self.boot_dma.save(out);
         self.nv2a_pfifo.save(out);
+        self.nv2a_pgraph.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 8)?;
-        if !matches!(versao, 1..=8) {
+        let versao = inp.section("BUS0", 9)?;
+        if !matches!(versao, 1..=9) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -787,6 +856,17 @@ impl Snapshot for Bus {
         } else {
             self.nv2a_pfifo = Nv2aPfifo::legacy();
         }
+        if versao >= 9 {
+            self.nv2a_pgraph.load(inp)?;
+        } else {
+            self.nv2a_pgraph = Nv2aPgraph::legacy();
+        }
+        self.nv2a_pgraph
+            .validate_memory(self.arena.len() as u64)
+            .map_err(|what| SnapshotError::BadValue {
+                section: "PGRF",
+                what,
+            })?;
         Ok(())
     }
 }

@@ -24,7 +24,7 @@ mod boot_dma_verification {
         for frame in 1..old_frames.total(){if old_frames.em_uso(frame){frames.reservar(GuestPhys((frame-1)*4096),1).unwrap();}}
         *s.bus.frames_mut()=frames;
         let mut bytes=saved(&s);let at=bytes.windows(4).position(|v|v==b"BUS0").unwrap();bytes[at+4..at+8].copy_from_slice(&5u32.to_le_bytes());
-        let at=bytes.windows(4).rposition(|v|v==b"PFFO").unwrap();let count=u32::from_le_bytes(bytes[at+12..at+16].try_into().unwrap()) as usize;let mut end=at+16+count*4;if u32::from_le_bytes(bytes[at+8..at+12].try_into().unwrap())==2{let len=u64::from_le_bytes(bytes[end..end+8].try_into().unwrap()) as usize;end+=8+len;}bytes.drain(at..end);
+        let graph=bytes.windows(4).rposition(|v|v==b"PGRF").unwrap();let len=u64::from_le_bytes(bytes[graph+12..graph+20].try_into().unwrap()) as usize;bytes.drain(graph..graph+20+len);let at=bytes.windows(4).rposition(|v|v==b"PFFO").unwrap();let count=u32::from_le_bytes(bytes[at+12..at+16].try_into().unwrap()) as usize;let mut end=at+16+count*4;if u32::from_le_bytes(bytes[at+8..at+12].try_into().unwrap())==2{let len=u64::from_le_bytes(bytes[end..end+8].try_into().unwrap()) as usize;end+=8+len;}bytes.drain(at..end);
         let at=bytes.windows(4).position(|v|v==b"BTPG").unwrap();bytes.drain(at..at+9);bytes
     }
     #[test]

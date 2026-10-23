@@ -1,6 +1,7 @@
 /// Fixtures BUS anteriores a v7 não tinham a seção PFIFO no final.
 /// Só recebe snapshots de Bus produzidos nestes testes, sem payload arbitrário.
 pub(super) fn without_pfifo(bytes: &[u8]) -> &[u8] {
+    let bytes = without_pgraph(bytes);
     let at = bytes.windows(4).rposition(|v| v == b"PFFO").expect("PFFO");
     let count = u32::from_le_bytes(bytes[at + 12..at + 16].try_into().unwrap()) as usize;
     let mut end = at + 16 + count * 4;
@@ -10,5 +11,13 @@ pub(super) fn without_pfifo(bytes: &[u8]) -> &[u8] {
         end += 8 + len;
     }
     assert_eq!(end, bytes.len());
+    &bytes[..at]
+}
+
+/// BUS0 até v8 terminava no PFIFO.
+pub(super) fn without_pgraph(bytes: &[u8]) -> &[u8] {
+    let at = bytes.windows(4).rposition(|v| v == b"PGRF").expect("PGRF");
+    let len = u64::from_le_bytes(bytes[at + 12..at + 20].try_into().unwrap()) as usize;
+    assert_eq!(at + 20 + len, bytes.len());
     &bytes[..at]
 }

@@ -14,6 +14,7 @@ pub(super) fn sources(output: &Path) -> String {
         (0xFD003200, 1),
         (0xFD003250, 1),
         (0xFD003220, 1),
+        (0xFD400720, 1),
         (0xFD800040, 0x20000),
     ] {
         code.extend([0xC7, 0x05]);

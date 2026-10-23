@@ -7,9 +7,9 @@ fn write(b: &mut Bus, off: u32, value: u32) {
 fn read(b: &Bus, off: u32) -> u32 {
     b.ler_u32(GuestVirt(0xFD000000 + off)).unwrap()
 }
-fn setup() -> Bus {
+fn modern() -> Bus {
     let mut b = Bus::com_arena(Arena::com_tamanho(0x10000).unwrap()).unwrap();
-    for (va, pages) in [(0xFD002000, 2), (0xFD710000, 3)] {
+    for (va, pages) in [(0xFD002000, 2), (0xFD400000, 1), (0xFD710000, 3)] {
         b.mapear(GuestVirt(va), GuestPhys(va), pages, Perm::RW)
             .unwrap();
     }
@@ -29,9 +29,20 @@ fn setup() -> Bus {
         (0x3200, 1),
         (0x3250, 1),
         (0x3220, 1),
+        (0x400720, 1),
     ] {
         write(&mut b, off, v);
     }
+    b
+}
+// Os contratos puros do PFIFO continuam verificando o perfil BUS0 v8, em que
+// métodos (inclusive NOP não zero) eram só telemetria. O acoplamento novo e o
+// bloqueio por trap são exercitados separadamente abaixo no perfil moderno.
+fn setup() -> Bus {
+    let mut b = modern();
+    let mut bytes = support::without_pgraph(&saved(&b)).to_vec();
+    bytes[16..20].copy_from_slice(&8u32.to_le_bytes());
+    b.load(&mut SnapshotReader::new(&bytes).unwrap()).unwrap();
     b
 }
 fn data(b: &mut Bus, base: u32, words: &[u32]) {
@@ -308,4 +319,106 @@ fn snapshot_recusa_binding_registro_e_versao_de_comandos_sem_publicar_pfifo() {
             .load(&mut SnapshotReader::new(&bad).unwrap())
             .is_err()
     );
+}
+
+fn clear_trap() -> Bus {
+    let mut b = modern();
+    for base in [0xFD000000, 0xFD600000] {
+        b.mapear(GuestVirt(base), GuestPhys(base), 1, Perm::RW)
+            .unwrap();
+    }
+    for (off, value) in [
+        (0x710038, 7),
+        (0x71003C, 0x8000111D),
+        (0x7111D0, 3),
+        (0x7111D4, 0xFFF),
+        (0x7111D8, 0x2000),
+    ] {
+        write(&mut b, off, value);
+    }
+    let mut words = vec![1 << 18, 13];
+    for (method, v) in [
+        (0x194, 7),
+        (0x200, 4 << 16),
+        (0x204, 3 << 16),
+        (0x208, 0x128),
+        (0x20C, 16),
+        (0x1D90, 0xFF102030),
+        (0x1D98, 3 << 16),
+        (0x1D9C, 2 << 16),
+        (0x100, 0x12345678),
+        (0x1D94, 0xF0),
+    ] {
+        words.extend([(1 << 18) | method, v]);
+    }
+    program(&mut b, &words);
+    b
+}
+fn ack_and_clear(b: &mut Bus) {
+    write(b, 0x7111D8, 0x3000);
+    write(b, 0x400100, 1 << 20);
+    assert!(b.service_gpu(100).unwrap().drained);
+    assert_eq!(b.dma(GuestPhys(0x2000), 48).unwrap(), [0; 48]);
+    assert_eq!(
+        b.dma(GuestPhys(0x3000), 48).unwrap(),
+        [0xFF102030u32.to_le_bytes(); 12].concat()
+    );
+}
+#[test]
+fn pgraph_trap_suspende_dma_ate_ack_e_clear_usa_descritor_reescrito_pelo_guest() {
+    let mut b = clear_trap();
+    let step = b.service_gpu(100).unwrap();
+    assert!(!step.drained);
+    assert_eq!(read(&b, 0x3244), 0x1050);
+    let get = read(&b, 0x3244);
+    assert_eq!(b.service_gpu(100).unwrap().words, 0);
+    assert_eq!(read(&b, 0x3244), get);
+    assert_eq!(read(&b, 0x400708), 0x12345678);
+    assert!(!b.gpu_irq_line_asserted());
+    write(&mut b, 0x400140, 1 << 20);
+    assert_eq!(read(&b, 0x100), 1 << 12);
+    write(&mut b, 0x140, 1);
+    assert!(b.gpu_irq_line_asserted());
+    b.nv2a_irq_mut().raise_vblank();
+    write(&mut b, 0x600140, 1);
+    assert_eq!(read(&b, 0x100), (1 << 12) | (1 << 24));
+    let checkpoint = saved(&b);
+    ack_and_clear(&mut b);
+    assert_eq!(read(&b, 0x100), 1 << 24);
+    write(&mut b, 0x600100, 1);
+    assert!(!b.gpu_irq_line_asserted());
+    let mut r = modern();
+    r.load(&mut SnapshotReader::new(&checkpoint).unwrap())
+        .unwrap();
+    assert_eq!(saved(&r), checkpoint);
+    ack_and_clear(&mut r);
+    write(&mut r, 0x600100, 1);
+    assert_eq!(saved(&r), saved(&b));
+}
+#[test]
+fn bus_v8_preserva_consumo_sem_pgraph_e_scanout_valida_store_antes_de_publicar() {
+    let mut b = clear_trap();
+    let mut old = support::without_pgraph(&saved(&b)).to_vec();
+    old[16..20].copy_from_slice(&8u32.to_le_bytes());
+    b.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();
+    assert_eq!(
+        b.nv2a_pgraph().profile(),
+        xbox_mem::PgraphProfile::LegacyUnmodeled
+    );
+    assert!(b.service_gpu(100).unwrap().drained);
+    assert_eq!(b.dma(GuestPhys(0x2000), 48).unwrap(), [0; 48]);
+    assert!(!b.gpu_irq_line_asserted());
+    let bytes = saved(&b);
+    let mut r = modern();
+    r.load(&mut SnapshotReader::new(&bytes).unwrap()).unwrap();
+    assert_eq!(saved(&r), bytes);
+    let mut m = clear_trap();
+    write(&mut m, 0x600800, 0x3000);
+    let before = m.nv2a_pgraph().clone();
+    for value in [0x3001, 0x10000, u32::MAX] {
+        assert!(m.escrever_u32(GuestVirt(0xFD600800), value).is_err());
+        assert_eq!(m.nv2a_pgraph(), &before);
+    }
+    assert!(m.escrever_u16(GuestVirt(0xFD400720), 1).is_err());
+    assert_eq!(m.nv2a_pgraph(), &before);
 }

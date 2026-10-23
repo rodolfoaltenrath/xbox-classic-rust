@@ -49,7 +49,7 @@ impl ContiguousMemory {
         bus: &mut Bus,
         call: &Call,
         irql: Irql,
-        framebuffer: Option<GuestPhys>,
+        framebuffers: [Option<GuestPhys>; 2],
         instance: Option<GuestPhys>,
     ) -> Resultado {
         let address = call.argument(bus, 0)?;
@@ -78,7 +78,10 @@ impl ContiguousMemory {
         let allocation = self.allocations[index];
         let range = allocation.physical.0..allocation.physical.0 + allocation.size;
         if instance == Some(allocation.physical)
-            || framebuffer.is_some_and(|pa| range.contains(&pa.0))
+            || framebuffers
+                .into_iter()
+                .flatten()
+                .any(|pa| range.contains(&pa.0))
         {
             return Err(Erro::VarianteNaoImplementada {
                 nome: call.export.name,

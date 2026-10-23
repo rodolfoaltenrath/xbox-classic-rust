@@ -108,7 +108,7 @@ impl VideoState {
     }
     pub(in crate::dispatch) fn set_mode(
         &mut self,
-        bus: &Bus,
+        bus: &mut Bus,
         call: &Call,
         eeprom: &EepromState,
         memory: &ContiguousMemory,
@@ -151,6 +151,7 @@ impl VideoState {
             ));
         }
         memory.validate_bus(bus).map_err(Erro::MemoriaContigua)?;
+        bus.set_display_start(physical).map_err(Erro::VideoState)?;
         self.mode = Some(mode);
         Ok(Atendimento { eax: 0 }) // Etapa HLE concluída; não repete o laço de Step.
     }
@@ -167,6 +168,20 @@ impl VideoState {
         }
         Ok(())
     }
+    pub(in crate::dispatch) fn validate_scanout(
+        &self,
+        bus: &Bus,
+        memory: &ContiguousMemory,
+    ) -> Result<(), &'static str> {
+        if let (Some(mut mode), Some(at)) = (self.mode, bus.nv2a_pgraph().scanout()) {
+            mode.framebuffer = GuestPhys(at);
+            if !mode.backed(memory) || u64::from(at) + u64::from(mode.byte_len()) > bus.ram() as u64
+            {
+                return Err("scanout fora de recurso contíguo possuído");
+            }
+        }
+        Ok(())
+    }
     pub(in crate::dispatch) fn framebuffer<'a>(
         &self,
         bus: &'a Bus,
@@ -175,9 +190,14 @@ impl VideoState {
     ) -> Result<Option<FramebufferView<'a>>, Erro> {
         self.validate_memory(memory, eeprom)
             .map_err(Erro::VideoState)?;
-        let Some(mode) = self.mode else {
+        let Some(mut mode) = self.mode else {
             return Ok(None);
         };
+        self.validate_scanout(bus, memory)
+            .map_err(Erro::VideoState)?;
+        if let Some(at) = bus.nv2a_pgraph().scanout() {
+            mode.framebuffer = GuestPhys(at);
+        }
         memory.validate_bus(bus).map_err(Erro::MemoriaContigua)?;
         let bytes = bus.dma(mode.framebuffer, mode.byte_len())?;
         Ok(Some(FramebufferView {

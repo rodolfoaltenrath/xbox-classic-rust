@@ -144,13 +144,22 @@ linhas), sem triângulo.
   IRQ de NOP/descritores e scanout fazem parte do recorte necessário para 2.2;
   efeitos gráficos ainda não implementados, framebuffer preto.
 
-- [ ] 2.2 Configuração de surface e `CLEAR_SURFACE` escrevendo no framebuffer guest.
+- [x] 2.2 Configuração de surface e `CLEAR_SURFACE` escrevendo no framebuffer guest.
   **Aceite:**
   - `GATE OK`;
   - teste unitário: clear de uma surface pequena produz a cor e o retângulo pedidos;
   - sonda triangle: a linha `framebuffer` muda em relação aos 1580 pixels/29 linhas do
     diagnóstico, de acordo com a cor de clear que o triangle envia (citar o valor na
     Evidência).
+
+  Evidência: GATE OK 547 testes (target/gate/20261023-014538.log), 230 casos
+  gerados debug/release; clear_retangulo_inclusivo_preserva_vizinhos_padding_e_mascaras_de_cor
+  e oito testes de limites/trap/replay/migração/scanout. Sonda triangle 320:
+  target/sonda/triangle-20261023-014055.log, 282 chamadas/zero recusadas, framebuffer
+  1542 pixels/32 linhas (diagnóstico 1580/29); primeira cor de clear 0x00000000,
+  1830 clears. Probe target/plan-22-real-clear-probe.log confirma 307200 DWORDs
+  zerados na base 0x33C000 pelo descritor 0x11150 atualizado pelo ISR guest,
+  snapshot/replay integral estável. BUS0 v9/PGRF v1, perfil público P17/ADR-0067.
 
 - [ ] 2.3 Vértices (inline ou arrays, o que o triangle usar) e rasterização em software
   de um triângulo de cor interpolada no framebuffer guest.

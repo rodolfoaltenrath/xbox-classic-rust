@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`7e51aa1`** e inventário local
-do ADR **0066** (métodos NV097 e recorte gráfico).
+Atualizado em **2026-10-23**, com base no commit **`7e51aa1`** e implementação local
+do ADR **0067** (PGRAPH clear, trap/IRQ e scanout).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -24,15 +24,15 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P16), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P17), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0066) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0067) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v8/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -41,7 +41,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (538 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (547 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
    confere o **contador de casos gerados**, hoje `230 passed` em x86-64 e `214` fora dele —
    some os testes novos ali).
@@ -61,7 +61,7 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 
 Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
 compatibilidade); triangle **42/75**; **230** casos no Rust gerado em debug/release;
-**538** testes workspace/doctests no gate padrão Linux (535 no baseline + três).
+**547** testes workspace/doctests no gate padrão Linux.
 Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
 (target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
 A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
@@ -69,7 +69,20 @@ na entrega anterior; não repetidos nesta, pois scripts não mudaram.
 
 ### Estado do hello e do segundo sample
 
-**Atualização vigente ADR-0066:** a raiz decimal do formatador 0x1E9B8 foi incluída;
+**Atualização vigente ADR-0067:** PGRAPH serial executa clear BGRA8/Z24S8 na
+RAM e para em traps genéricos de NOP até o ISR guest atualizar PRAMIN/ACK/FIFO.
+PMC agrega PGRAPH e PCRTC; captura acompanha PCRTC_START e preserva backings.
+BUS0 v9/PGRF v1; v1–v8 migram sem gráficos novos. Perfil público P17 declara
+incerteza física de NOP/NSOURCE; não há reconhecimento host de códigos PB_*.
+Sonda target/sonda/triangle-20261023-014055.log, 320 fatias: 282 chamadas/zero
+recusadas, 241241306 retired, 417 ms, orçamento EIP=0x16C96; 1830 clears,
+primeira cor 0x00000000, framebuffer 1542 pixels/32 linhas de texto, 165 MMIO
+sem modelo. Probe target/plan-22-real-clear-probe.log confirma a superfície
+inteira zerada em 0x33C000 (descritor 0x11150), atualizada pelo ISR real,
+com snapshot/replay estável. Gate 547, 230 casos gerados debug/release.
+Ainda sem triângulos: próxima tarefa 2.3, VP/arrays/raster conforme ADR-0066.
+
+**Atualização anterior ADR-0066:** a raiz decimal do formatador 0x1E9B8 foi incluída;
 são 14 raízes/19391 blocos. Sonda oficial target/sonda/triangle-20261023-012028.log:
 226 chamadas/zero recusadas, orçamento em 0x16D9B, 181280329 instruções e 752 ms;
 274 chaves/42642 parâmetros NV097 e 40 DRAW_ARRAYS de nove vértices. Framebuffer
@@ -161,8 +174,7 @@ ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.
 
 ### O que tem que ser feito agora, em ordem
 
-Fases 0/1 e tarefa 2.1 concluídas. Próxima 2.2: sincronização/descritores por
-IRQ de software, surface/clear e scanout, conforme ADR-0066. Depois 2.3 executa
+Fases 0/1 e tarefas 2.1/2.2 concluídas. Próxima 2.3 executa
 o vertex program observado e rasteriza os arrays, sem reconhecer o título por
 nome/hash. O inventário completo está em docs/compat/triangle-nv097-20261023.csv.
 

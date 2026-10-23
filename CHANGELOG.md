@@ -17,6 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/PGRAPH: traps genéricos de NOP, IRQ compartilhada com PCRTC e pausa
+  por FIFO/ACK; o ISR guest atualiza PRAMIN antes do clear. Surface BGRA8/Z24S8
+  linear, retângulos inclusivos e máscaras escrevem RAM com preflight integral.
+  Captura acompanha PCRTC_START; backing ativo e modo inicial são protegidos.
+  BUS0 v9/PGRF v1 migra v1–v8 sem promover efeitos gráficos. Perfil público P17
+  declara incerteza de NOP/NSOURCE e limites (ADR-0067, tarefa 2.2).
+
 - Fase 5/inventário gráfico: ADR-0066 e CSV das 274 chaves NV097 recebidas pelo
   triangle, com fontes públicas, valores e efeitos planejados. 14 raízes/19391
   blocos permitem o loop: 226 chamadas/zero recusadas e 40 submissões de nove

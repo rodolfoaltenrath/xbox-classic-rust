@@ -12,7 +12,7 @@ mod dma_verification {
     fn drive_consume_jump_real_e_retorna_get_sem_instrucoes_ou_clock_extras(){
         let mut s=loaded();s.state.eflags=0xED7;
         assert_eq!(s.conduzir(Limites{blocos_por_fatia:1000,fatias:4},guest::run,|_|Ok(false)).unwrap(),Desfecho::Retornou);
-        assert_eq!(s.bus.ler_u32(GuestVirt(0x12100)).unwrap(),0x20000);assert_eq!(s.state.eflags,0xED7);assert_eq!(s.state.retired,15);assert_eq!(s.state.clock.cycles(),15);
+        assert_eq!(s.bus.ler_u32(GuestVirt(0x12100)).unwrap(),0x20000);assert_eq!(s.state.eflags,0xED7);assert_eq!(s.state.retired,16);assert_eq!(s.state.clock.cycles(),16);
     }
     #[test]
     fn snapshot_antes_do_consumo_reproduz_jump_e_estado_integral(){

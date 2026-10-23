@@ -71,6 +71,7 @@ pub mod mmu;
 pub mod nv2a_irq;
 pub mod nv2a_pfb;
 pub mod nv2a_pfifo;
+mod nv2a_pgraph;
 pub mod nv2a_pramdac;
 pub mod nv2a_pramin;
 pub mod regioes;
@@ -88,6 +89,7 @@ pub use nv2a_pfifo::{Nv2aPfifo, PfifoProfile};
 pub use nv2a_pramdac::{Nv2aPramdac, PramdacProfile};
 pub use nv2a_pramin::{Nv2aPramin, PraminProfile};
 pub use regioes::{MapaFisico, Regiao};
+pub use xbox_gpu::pgraph::{Nv2aPgraph, PgraphProfile};
 
 /// Fase do roadmap em que este subsistema é implementado.
 pub const ROADMAP_PHASE: &str = "Fase 2";

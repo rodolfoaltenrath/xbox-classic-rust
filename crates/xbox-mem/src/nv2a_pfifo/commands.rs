@@ -1,6 +1,7 @@
 //! Pusher síncrono limitado por palavras; memória vem das visões únicas do Bus.
 use super::{DMA_GET, DMA_PUT, Nv2aPfifo};
-use crate::Nv2aPramin;
+use crate::{Arena, Nv2aPramin, nv2a_pgraph::GpuMemory};
+use xbox_gpu::pgraph::Nv2aPgraph;
 use xbox_gpu::pushbuffer::{Header, decode};
 
 pub(super) const MAX_METHOD_RECORDS: usize = 4096;
@@ -81,8 +82,9 @@ impl Nv2aPfifo {
     }
     pub(crate) fn run(
         &mut self,
-        ram: &[u8],
+        arena: &mut Arena,
         pramin: &Nv2aPramin,
+        graph: &mut Nv2aPgraph,
         budget: u32,
     ) -> Result<StepReport, GpuFault> {
         if !self.enabled() {
@@ -92,11 +94,14 @@ impl Nv2aPfifo {
             return Err(self.fault("consumidor suporta apenas canal DMA zero"));
         }
         let mut report = StepReport::default();
-        while report.words < budget && self.value(DMA_GET) != self.value(DMA_PUT) {
+        let mut memory = GpuMemory { arena, pramin };
+        while report.words < budget && self.value(DMA_GET) != self.value(DMA_PUT) && graph.ready() {
             if self.value(DMA_PUT) & 3 != 0 || self.value(DMA_GET) & 3 != 0 {
                 return Err(self.fault("GET/PUT desalinhados"));
             }
-            let word = self.fetch(ram, pramin).map_err(|d| self.fault(d))?;
+            let word = self
+                .fetch(memory.arena.bytes(), pramin)
+                .map_err(|d| self.fault(d))?;
             let next = self
                 .value(DMA_GET)
                 .checked_add(4)
@@ -106,7 +111,7 @@ impl Nv2aPfifo {
                 return Err(self.fault("DMA_STATE contém campos sem modelo"));
             }
             if (state >> 18) & 0x7FF != 0 {
-                self.parameter(pramin, word, state)
+                self.parameter(pramin, word, state, graph, &mut memory)
                     .map_err(|d| self.fault(d))?;
                 self.set(DMA_GET, next);
             } else {
@@ -191,6 +196,8 @@ impl Nv2aPfifo {
         pramin: &Nv2aPramin,
         word: u32,
         state: u32,
+        graph: &mut Nv2aPgraph,
+        memory: &mut GpuMemory<'_>,
     ) -> Result<(), &'static str> {
         let method = (state & 0x1FFC) as u16;
         let sub = ((state >> 13) & 7) as u8;
@@ -214,6 +221,8 @@ impl Nv2aPfifo {
         if count > 1 && next_method > 0x1FFC {
             return Err("pacote ultrapassa espaço de métodos");
         }
+        self.preflight_observe(binding.class, sub, method)?;
+        graph.execute(binding.class, sub, method, word, resolved, memory)?;
         self.observe(binding.class, sub, method, word, resolved)?;
         if method == 0 {
             self.commands.as_mut().expect("perfil").bindings[sub as usize] = Some(binding);
@@ -261,6 +270,16 @@ impl Nv2aPfifo {
             instance,
             class,
         })
+    }
+    fn preflight_observe(&self, class: u32, sub: u8, method: u16) -> Result<(), &'static str> {
+        let records = &self.commands.as_ref().expect("perfil").methods;
+        match records.binary_search_by_key(&(class, sub, method), |r| r.key()) {
+            Ok(i) if records[i].count == u64::MAX => Err("contador de métodos esgotado"),
+            Err(_) if records.len() >= MAX_METHOD_RECORDS => {
+                Err("limite de métodos distintos atingido")
+            }
+            _ => Ok(()),
+        }
     }
     fn observe(
         &mut self,

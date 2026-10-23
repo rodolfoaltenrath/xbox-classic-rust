@@ -88,7 +88,7 @@ impl Interrupts {
 
     /// A rotina de serviço da primeira interrupção conectada à GPU, se a linha está ligada.
     pub(super) fn pending(&self, bus: &Bus) -> Option<GuestCall> {
-        if !bus.nv2a_irq().line_asserted() {
+        if !bus.gpu_irq_line_asserted() {
             return None;
         }
         let interrupt = *self
