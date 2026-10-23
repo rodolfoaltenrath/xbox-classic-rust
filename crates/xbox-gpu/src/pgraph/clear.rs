@@ -10,14 +10,20 @@ struct Job {
     value: u32,
     mask: u32,
 }
-fn descriptor(mem: &impl Memory, instance: u32) -> Result<(u32, u32), &'static str> {
+pub(super) fn descriptor(
+    mem: &impl Memory,
+    instance: u32,
+    write: bool,
+) -> Result<(u32, u32), &'static str> {
     if instance & 15 != 0 || instance >= 0x100000 {
         return Err("instância de surface inválida");
     }
     let flags = mem.read_instance(instance)?;
     let limit = mem.read_instance(instance + 4)?;
     let frame = mem.read_instance(instance + 8)?;
-    if !matches!(flags & 0xFFF, 3 | 0x3D) || !matches!((flags >> 16) & 3, 0 | 2) {
+    if !(flags & 0xFFF == 0x3D || flags & 0xFFF == if write { 3 } else { 2 })
+        || !matches!((flags >> 16) & 3, 0 | 2)
+    {
         return Err("surface exige DMA de escrita linear UMA");
     }
     let base = (frame & 0xFFFFF000) | (flags >> 20);
@@ -68,7 +74,7 @@ fn job(
     {
         return Err("pitch/offset de surface inválido");
     }
-    let (base, limit) = descriptor(mem, instance)?;
+    let (base, limit) = descriptor(mem, instance, true)?;
     let start = u64::from(offset) + u64::from(y0) * u64::from(pitch) + u64::from(x0) * 4;
     let end = u64::from(offset) + u64::from(y1) * u64::from(pitch) + u64::from(x1) * 4 + 4;
     if end > u64::from(limit) + 1
@@ -155,4 +161,27 @@ pub(super) fn apply(
         }
     }
     Ok(pixels)
+}
+
+/// Valida toda a surface linear antes de buscar ou alterar um pixel do raster.
+pub(super) fn target(
+    surface: Surface,
+    depth: bool,
+    mem: &impl Memory,
+) -> Result<(u32, u32, u32, u32), &'static str> {
+    let w = surface.horizontal >> 16;
+    let h = surface.vertical >> 16;
+    if surface.format & 0xFFFF != 0x128
+        || surface.horizontal & 0xFFFF != 0
+        || surface.vertical & 0xFFFF != 0
+        || w == 0
+        || h == 0
+        || w > 4096
+        || h > 4096
+        || u64::from(w) * u64::from(h) > 4 * 1024 * 1024
+    {
+        return Err("raster exige surface BGRA8/Z24S8 linear limitada, origem zero");
+    }
+    let j = job(surface, mem, depth, 0xF3, [0, w - 1, 0, h - 1])?;
+    Ok((j.base, j.pitch, w, h))
 }

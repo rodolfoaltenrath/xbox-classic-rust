@@ -165,7 +165,7 @@ fn overflow_dos_contadores_recusa_clear_antes_de_alterar_ram() {
     let before = m.data.clone();
     for pixel_counter in [false, true] {
         let mut bytes = original.clone();
-        let end = bytes.len();
+        let end = bytes.windows(4).rposition(|v| v == b"PRND").unwrap();
         bytes[end - 17..end - 9]
             .copy_from_slice(&(if pixel_counter { 1u64 } else { u64::MAX }).to_le_bytes());
         if pixel_counter {

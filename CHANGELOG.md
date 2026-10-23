@@ -17,6 +17,17 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 5/raster: arrays F32 por descritores reais, vertex program interpretado
+  por opcodes/mux/swizzle/máscaras e listas TRIANGLES escrevendo cor/depth na RAM.
+  Culling, depth LESS/LEQUAL/ALWAYS, máscaras e clip inclusivo no perfil software;
+  combiner diffuse passthrough com recusa explícita de configurações fora do
+  recorte. Golden PPM 4×4 calculada analiticamente, replay de upload/BEGIN e
+  migração PGRF v1 -> v2/PRND v1 sem promover raster em sessões antigas.
+  Precisão e limites provisórios P18 (ADR-0068, tarefa 2.3). Gate 556 testes,
+  230 nativos debug/release; sonda 305922 pixels/479 linhas, regiões R/G/B e
+  dez draws/30 triângulos, 282 chamadas/zero recusadas. Quadro real inspecionado
+  e snapshot/replay estável; passagem de bastão reescrita.
+
 - Fase 5/PGRAPH: traps genéricos de NOP, IRQ compartilhada com PCRTC e pausa
   por FIFO/ACK; o ISR guest atualiza PRAMIN antes do clear. Surface BGRA8/Z24S8
   linear, retângulos inclusivos e máscaras escrevem RAM com preflight integral.

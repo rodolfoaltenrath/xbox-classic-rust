@@ -161,7 +161,7 @@ linhas), sem triângulo.
   zerados na base 0x33C000 pelo descritor 0x11150 atualizado pelo ISR guest,
   snapshot/replay integral estável. BUS0 v9/PGRF v1, perfil público P17/ADR-0067.
 
-- [ ] 2.3 Vértices (inline ou arrays, o que o triangle usar) e rasterização em software
+- [x] 2.3 Vértices (inline ou arrays, o que o triangle usar) e rasterização em software
   de um triângulo de cor interpolada no framebuffer guest.
   **Aceite:**
   - `GATE OK`;
@@ -170,6 +170,17 @@ linhas), sem triângulo.
   - sonda triangle: pixels coloridos acima do valor do clear e presença das três
     cores dos vértices (anotar contagem e cores na Evidência);
   - CONTINUIDADE_ALPHA.md "Passagem de bastão" reescrita com o novo estado.
+
+  Evidência: GATE OK 556 testes (target/gate/20261023-020429.log), 230 casos
+  gerados debug/release. Golden arrays_vertex_program em tests/reference/triangle-4x4.ppm
+  (seis pixels calculados analiticamente), mais oito testes de VP/configuração,
+  erro atômico, limites, snapshot/replay, corrupção e migração ClearV1.
+  Sonda triangle 320 target/sonda/triangle-20261023-020000.log: 282 chamadas/zero
+  recusadas, 305922 pixels/479 linhas (clear+texto 1542/32), clear 0x00000000;
+  regiões R=4977/G=4998/B=4977 (canal >=192, outros <=32), dez draws/30 triângulos.
+  Probe target/plan-23-real-raster-probe.log: scanout 0x210000, captura PPM/PNG e
+  replay integral byte a byte. PGRF v2/PRND v1 preserva perfis legados;
+  ADR-0068/P18, passagem de bastão reescrita.
 
 ## Fase 3 — Backlog (só depois das fases 0 a 2)
 

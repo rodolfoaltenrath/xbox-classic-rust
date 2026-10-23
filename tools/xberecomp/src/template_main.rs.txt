@@ -30,6 +30,8 @@ fn ler_fatias() -> Result<u32, Box<dyn std::error::Error>> {
 fn relatar_mmio(session: &xbox_recomp::runtime::Session) {
     let clears = session.bus.nv2a_pgraph().stats();
     eprintln!("GPU clear: chamadas={} pixels={} primeira_cor={:?}", clears.calls, clears.pixels, clears.first_color);
+    let draws = session.bus.nv2a_pgraph().draw_stats();
+    eprintln!("GPU raster: chamadas={} triângulos={} fragmentos={}", draws.calls, draws.triangles, draws.pixels);
     for r in session.bus.nv2a_pfifo().methods() {
         eprintln!("GPU método classe=0x{:04X} método=0x{:04X} subcanal={} contagem={} primeiro=0x{:08X} último=0x{:08X} efeito gráfico={}",r.class,r.method,r.subchannel,r.count,r.first,r.last,if session.bus.nv2a_pgraph().models(r.class,r.method) { "modelado (perfil parcial)" } else { "não modelado" });
     }
@@ -49,6 +51,7 @@ fn relatar_framebuffer(session: &xbox_recomp::runtime::Session) {
         return;
     };
     let mut coloridos = 0u64;
+    let mut cores_vertices = [0u64; 3];
     let mut linhas_com_pixel = 0u32;
     let (mut min_x, mut max_x, mut min_y, mut max_y) = (u32::MAX, 0u32, u32::MAX, 0u32);
     let mut y = 0;
@@ -56,6 +59,9 @@ fn relatar_framebuffer(session: &xbox_recomp::runtime::Session) {
         let mut linha_tem = false;
         for (x, px) in linha.chunks_exact(4).enumerate() {
             // B,G,R,A. Preto opaco ou transparente é fundo; qualquer canal de cor é tinta.
+            for (lane, channel) in [2usize, 1, 0].into_iter().enumerate() {
+                if px[channel] >= 192 && (0..3).all(|i| i == channel || px[i] <= 32) { cores_vertices[lane] += 1; }
+            }
             if px[0] != 0 || px[1] != 0 || px[2] != 0 {
                 coloridos += 1;
                 linha_tem = true;
@@ -76,6 +82,7 @@ fn relatar_framebuffer(session: &xbox_recomp::runtime::Session) {
         coloridos,
         linhas_com_pixel
     );
+    eprintln!("  regiões de cor dos vértices (canal >=192, outros <=32): R={} G={} B={}", cores_vertices[0], cores_vertices[1], cores_vertices[2]);
     if coloridos > 0 {
         eprintln!("  região desenhada: x {min_x}..={max_x}, y {min_y}..={max_y}");
         desenhar_ascii(&view, min_x, max_x, min_y, max_y);

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`7e51aa1`** e implementação local
-do ADR **0067** (PGRAPH clear, trap/IRQ e scanout).
+Atualizado em **2026-10-23**, com base no commit **`7d63053`** e implementação local
+do ADR **0068** (vertex program e raster software).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -15,24 +15,29 @@ instruções locais: o código pode ter evoluído depois desta referência.
 
 ## Passagem de bastão — estado em 2026-10-23
 
-*Escrito para uma LLM (ou pessoa) que assume o projeto sem o histórico da conversa.* Esta
-seção é o ponto de partida; o resto do arquivo são registros datados por ADR. Antes de
-tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
+O projeto Obsidian recompila XBE/x86 estaticamente para Rust nativo. A sessão
+reúne CPU guest, Clock determinístico, RAM/MMU/dispositivos e kernel HLE.
+O estado abaixo substitui os relatos anteriores desta passagem; os capítulos
+datados mais adiante e os ADRs preservam a investigação histórica.
+
+Antes de trabalhar: `git status`, `git log --oneline -15`, `AGENTS.md` e
+`PLANO.md`. O plano está **autônomo** por ordem do mantenedor; seguir o primeiro
+item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 ### Regras do projeto que mudam o que você faz
 
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P17), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P18), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0067) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0068) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v8, `AOTS` v3...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -41,228 +46,138 @@ tudo: `git log --oneline -15`, `git status`, e rode o gate abaixo.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (547 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (556 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
    confere o **contador de casos gerados**, hoje `230 passed` em x86-64 e `214` fora dele —
    some os testes novos ali).
 
-### O que foi feito (resumo por etapa)
+### Estado executável vigente
 
-| Etapa | Entrega | ADR |
-|---|---|---|
-| Base | arquitetura (kernel HLE, GPU por pushbuffer, backends de CPU), endereços, arena, sandbox de arquivos, loader de XBE/XISO, MMU, bus, telemetria de MMIO | 0001–0012, 0020 |
-| AOT | recompilação estática: XBE → análise x86 (iced-x86) → IR → Rust gerado → binário nativo; flags, shifts, MUL/DIV, strings REP, controle indireto, relógio em ciclos, `Session { state, bus, kernel }` | 0013–0019, 0021, 0024–0031 |
-| Kernel mínimo | dados exportados, dispatcher, mutants, seções críticas, EEPROM, SHA-1, PCI, tempo de sistema, IRQL, memória virtual, thread filha, links/D:, vídeo (modo, framebuffer, filtros), memória contígua | 0022–0023, 0032–0050 |
-| Hello executa | janela MMIO do NV2A, `KeDelayExecutionThread` avançando o relógio, `main` do hello roda | 0051 |
-| Janela | framebuffer apresentado em janela Win32 (`--janela`), só Windows | 0052 |
-| 2026-10-22 | laço de execução em `Session::conduzir` + `--fatias N`; `KeTickCount`; **SSE escalar, x87 de carga/armazenamento, BT/BTS/BTR/BTC, WBINVD**; alinhamento 0 em `MmAllocateContiguousMemoryEx`; **eventos do kernel**; **interrupções, ISR, DPC e vblank** | 0053, 0054, 0055 |
-| Fase 5 inicial | evidência pública e scripts; NVPLL programável; CFG0/CFG1 com perfil Cromwell 64/128 MiB; consulta de instância GPU com reserva física retail 64 MiB (P13), KRNL v13/GINS v1; PRAMIN persistente independente (P14), BUS0 v6/BTPG v1: página D3D reservada antes dos frames XBE | 0056–0061 |
-| Limpeza pbkit | MmFreeContiguousMemory (171), remoção real de mapeamentos/frames, reuso e preservação dos backings referenciados | 0062 |
+**Triangle produz triângulos de cor interpolada e texto na RAM guest.**
+PGRAPH SoftwareV1 (ADR-0068) busca arrays F32 por DMA, executa o vertex program
+MOV/MUL/ADD/MAD/RCP e rasteriza as listas submetidas; não reconhece título ou
+shader por nome/hash. O ISR guest trata os traps de NOP e atualiza PRAMIN antes
+de clear/draw. PCRTC_START escolhe o buffer capturado. O host lê os bytes reais.
 
-Números hoje: **38 de 69** serviços do hello implementados (não é percentual de
-compatibilidade); triangle **42/75**; **230** casos no Rust gerado em debug/release;
-**547** testes workspace/doctests no gate padrão Linux.
-Gate adicional da tarefa 0.0: Rust/Cargo 1.99.0, GATE OK 519 testes
-(target/gate/20261023-001813.log); Clippy all-targets compatível com 1.98.1.
-A apresentação Windows não foi revalidada aqui. Os sete testes Python passaram
-na entrega anterior; não repetidos nesta, pois scripts não mudaram.
+Sonda oficial de referência `target/sonda/triangle-20261023-020000.log`, 320 fatias:
 
-### Estado do hello e do segundo sample
+| Medida | Resultado |
+|---|---|
+| Parada | orçamento em EIP=0x16C96, sem serviço faltante |
+| Kernel | 282 atendidas, zero recusadas; cobertura triangle 42/75 |
+| CPU/tempo sintético | 241241306 instruções, 305861656 ciclos, 417 ms guest |
+| Clear | primeira cor 0x00000000; 1830 chamadas/6159326 pixels-alvo |
+| Draw | 10 pacotes, 30 triângulos submetidos, 4608000 fragmentos aprovados |
+| Framebuffer | habilitado, **305922 pixels coloridos/479 linhas** (clear+texto era 1542/32) |
+| Regiões de cor | R=4977, G=4998, B=4977; canal >=192 e outros <=32 |
+| MMIO sem modelo | 165 endereços distintos |
+| Tradução | 14 raízes explícitas, 19391 blocos |
 
-**Atualização vigente ADR-0067:** PGRAPH serial executa clear BGRA8/Z24S8 na
-RAM e para em traps genéricos de NOP até o ISR guest atualizar PRAMIN/ACK/FIFO.
-PMC agrega PGRAPH e PCRTC; captura acompanha PCRTC_START e preserva backings.
-BUS0 v9/PGRF v1; v1–v8 migram sem gráficos novos. Perfil público P17 declara
-incerteza física de NOP/NSOURCE; não há reconhecimento host de códigos PB_*.
-Sonda target/sonda/triangle-20261023-014055.log, 320 fatias: 282 chamadas/zero
-recusadas, 241241306 retired, 417 ms, orçamento EIP=0x16C96; 1830 clears,
-primeira cor 0x00000000, framebuffer 1542 pixels/32 linhas de texto, 165 MMIO
-sem modelo. Probe target/plan-22-real-clear-probe.log confirma a superfície
-inteira zerada em 0x33C000 (descritor 0x11150), atualizada pelo ISR real,
-com snapshot/replay estável. Gate 547, 230 casos gerados debug/release.
-Ainda sem triângulos: próxima tarefa 2.3, VP/arrays/raster conforme ADR-0066.
+Gate `target/gate/20261023-020429.log`: **556 testes** Linux/workspace/doctests,
+230 casos gerados debug/release. Golden RGB analítica 4×4 em
+`crates/xbox-gpu/tests/reference/triangle-4x4.ppm`; testes de limites, máscaras,
+clip, culling/depth, uploads incompletos, overflow, corrupção e replay.
+Probe `target/plan-23-real-raster-probe.log`: scanout 0x210000, captura em
+`target/pfifo-evidence/triangle-software.ppm`/`.png`, snapshot integral e mais
+20 fatias byte a byte idênticos após restauração. Imagem inspecionada: triângulo
+RGB, fundo interpolado e texto Triangle Demo/Frames.
+O perfil software tem precisão/recortes declarados em P18; não é validação
+física nem compatibilidade gráfica geral. P17 conserva a incerteza pública de
+ativação do NOP de software/NSOURCE. Textura, blend, outros formatos/opcodes e
+estados fora do recorte recusam; outros métodos seguem na telemetria.
 
-**Atualização anterior ADR-0066:** a raiz decimal do formatador 0x1E9B8 foi incluída;
-são 14 raízes/19391 blocos. Sonda oficial target/sonda/triangle-20261023-012028.log:
-226 chamadas/zero recusadas, orçamento em 0x16D9B, 181280329 instruções e 752 ms;
-274 chaves/42642 parâmetros NV097 e 40 DRAW_ARRAYS de nove vértices. Framebuffer
-habilitado/preto, sem PGRAPH aplicado. O ADR-0066 e seu CSV definem o recorte:
-IRQ de NOP/descritores, surface/clear/scanout em 2.2; vertex program/arrays/raster
-em 2.3. Não escrever clears usando descritores antigos antes do handler guest.
+**Hello** mantém o caminho anterior: 1208 pixels/48 linhas, 47 chamadas, zero
+recusadas e orçamento do main (38/69 serviços). Log histórico target/boot-hello.log;
+não reexecutado a cada mudança de PGRAPH. Win32/`--janela` não foi revalidado
+nesta máquina Linux; apresentação Linux continua P6. Sete testes Python de
+ferramentas passaram na entrega anterior, não repetidos quando scripts não mudam.
+Não existe evidência para prometer jogos comerciais por estes números.
 
-**Estado vigente ADR-0065:** o consumidor PFIFO lê PRAMIN/RAM, decodifica pacotes
-limitados por orçamento e preserva bindings/métodos pendentes. BUS0 v8/PFFO v2;
-v7 preserva o perfil RegistersV1 sem execução, v1–v6 mantêm PFIFO sem modelo.
-Triangle com 13 raízes/17997 blocos passa o polling por GET=PUT=0x18C000 em
-25749621 retired/ciclos, 54 chamadas/zero recusadas, com snapshot estável.
-A sonda completa chega a 66 chamadas/zero recusadas, 257 chaves/376 parâmetros
-(249 chaves/366 parâmetros NV097, inclui binding) e para no formatador de texto,
-0x1E9B6 -> 0x1E9B8. Framebuffer habilitado e preto, sem renderização; PGRAPH
-continua sem efeito. Log target/sonda/triangle-20261023-010537.log, MMIO sem modelo
-170. Gate 535 testes/230 nativos debug/release. P15 resolvido para sessão nova;
-P16 declara o consumidor serial. Relatos anteriores abaixo são históricos.
+### Estado e migrações que precisam ser preservados
 
-**Atualização ADR-0064:** PFIFO RegistersV1 guarda os 37 controles inventariados;
-USER PUT/GET são aliases do canal DMA zero. BUS0 v7/PFFO v1; v1–v6 preservam PFIFO
-sem modelo por migração. Não há consumo DMA nem EMPTY inferido. A sonda nova
-(target/sonda/triangle-20261023-003811.log) mantém 93 chamadas/zero recusadas e a
-tela diagnóstica, mas reduz MMIO sem modelo de 209 a 170; PUT/GET saem da lista.
-Gate: 526 testes, 227 nativos debug/release. P15 declara o perfil temporário.
-O relato dos ADRs 0061/0062 abaixo preserva números das sondas anteriores.
+- **BUS0 v9/PGRF v2/PRND v1/PFFO v2**: programa, constantes e máscaras de upload,
+  cursores, BEGIN, registers, contadores, surface, trap/IRQ/FIFO e scanout no snapshot.
+  PGRF v1 migra para ClearV1, sem raster; BUS0 v1–v8 continua sem PGRAPH novo.
+  BUS0 v7 preserva RegistersV1 sem consumo; v1–v6 preserva PFIFO sem modelo.
+  Nunca promover esses perfis por restaurar/regravar uma sessão.
+- **PRAM v1/P14**: 1 MiB independente; ainda não há alias físico com RAM/CMEM.
+  **GINS v1/KRNL v13/P13**: consulta retail 64 MiB reserva os 128 KiB finais,
+  retorna 0x83FF0000/padding 0x10000. Não implementar resize/teardown por suposição.
+- **BTPG v1**: PA zero reservado antes da imagem, alias 0x80000000 RW; headers
+  XBE passam a PA 0x1000/RO. BUS0 v1–v5 mantém layout antigo, sem reserva nova.
+- **MmFreeContiguousMemory (171)** devolve frames e remove mapeamentos reais;
+  preserva página boot, pool GPU, backing do modo de vídeo e scanout ativo.
+  Não liberar recursos referenciados nem silenciar inconsistência de posse.
+- Vblank e PGRAPH compartilham PMC/INTA. Entrega ainda sofre P10/P11: DIRQL e
+  IF/STI/preempção são próximos itens do plano, sem afirmar máscara CPU completa.
+- CPU com SSE/x87 tem recortes P8/P9; há uma filha cooperativa e continuação do
+  pai, ainda sem escalonador geral (P3). KeTickCount só publica nas fronteiras (P7).
 
-- **Hello (`target/homebrew/hello.xbe`)**: executa o `main`, desenha "Hello nxdk!" e mostra
-  numa janela (1208 pixels idênticos à RAM). Comando completo e nove raízes na tabela de
-  contratos mais abaixo. Revalidado em release/headless no Linux após a reserva:
-  1208 pixels/48 linhas, 47 chamadas e orçamento de main esgotado normalmente
-  (target/boot-hello.log). Win32 não foi revalidado aqui. A primeira compilação leva minutos.
-- **`triangle` (segundo sample, pbkit)**: foi compilado com o mesmo SDK e é o guia dos
-  próximos bloqueios. Estado: traduz com 12 raízes (17984 blocos, incluindo ISR/DPC), passa pela inicialização de vídeo, cria o
-  evento de vblank e **instala o ISR e o DPC**. Em sessão nova, lê NVPLL=0x00011C01
-  (perfil PublicReferenceV1), escreve parâmetros PTIMER e passa da verificação
-  **PFB_CFG0** (FirmwareMemoryV1: 0x03070003 na arena de 64 MiB). A consulta
-  **MmClaimGpuInstanceMemory (168)** agora reserva 128 KiB reais no topo da RAM,
-  retorna 0x83FF0000 e escreve padding=0x10000 (ADR-0059/P13). Passa a tocar
-  PRAMIN em 0xFD71386C (EIP=0x183AA); agora preserva tabelas/contextos no perfil
-  IndependentV1, 1 MiB, ainda sem vínculo físico com RAM (ADR-0060/P14).
-  O ADR-0061 reserva PA zero antes da imagem, VA=0x80000000/RW sem execução;
-  headers ficam em PA=0x1000/RO. A sonda moderna passou da escrita e WBINVD,
-  chegou ao polling de DMA_GET (0xFD800044, sem modelo) e conferiu snapshot integral.
-  Valor bootstrap=0x18C001, pb_Head=0x8018C000; EIP=0x18F9D, retired/ciclos=24827445,
-  54 chamadas. A execução com as dez raízes antigas passa a parar em 0x1B420,
-  o ISR registrado pelo pbkit. Foram acrescentadas as raízes ISR=0x1B420 e
-  DPC=0x1B340; a tradução atual usa 12 raízes/17984 blocos e executou ISR/DPC
-  (12 ocorrências). DMA_GET segue zero por 12402025 leituras; pb_init/pb_kill
-  expiram as esperas. O ADR-0062 atende MmFreeContiguousMemory (171): libera
-  PA=0x189000/0x18A000/0x18B000 (4 KiB cada) e PA=0x18C000 (0x82000 bytes),
-  total de 133 frames. Permanecem framebuffer PA=0x5D000/0x12C000 bytes,
-  pool GPU e boot. A sonda controlada para após a limpeza com 87 chamadas,
-  zero recusadas, EIP=0x1506B e 174079287 retired/ciclos; snapshot integral e
-  mais 2 M de blocos reproduzem o mesmo estado. Continua no laço de esvaziamento
-  PFIFO em pb_kill/pb_fifo_handler: CACHE1_STATUS=0 em 0xFD003214, bit EMPTY
-  ausente, primeira leitura PC=0x14D36. Não concluir artificialmente a espera.
-  Sonda padrão limitada a 320 fatias: 93 chamadas, zero recusadas, 252079732
-  retired/ciclos, EIP=0x14D36, 209 endereços MMIO sem modelo. O framebuffer
-  continua diagnóstico (1580 pixels/29 linhas), sem triângulo. Logs:
-  target/free-triangle-probe.log e target/sonda/triangle-20261023-001300.log.
-  BUS0 v1–v5 migram sem reserva D3D e preservam o layout físico; a sonda v5
-  reproduz a falta VA=0x80000000/EIP=0x18F19, headers em PA zero, 24826623 retired.
-  BUS0 v1–v4 migram sem modelo PRAMIN; sessão nova adota o perfil. BUS0 v1–v3
-  preservam PFB sem modelo: o replay v3 continua rejeitando PFB e falhando em
-  pb_start chamado por pb_kill, VA=0x40/PC=0x16EA2. v1/v2 também preservam PLL
-  sem modelo. Iniciar sessão nova para adotar ambos os perfis (ADR-0058).
+### Reprodução e artefatos
 
-Reproduzir o `triangle`:
+SDK nxdk fixado em `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local
+`/home/altenrath/.cache/obsidian/nxdk-14d5ee9`. Xemu de referência
+`03b988c9d76553b33ed712ba00822ffdf49f0e7d`; fatos/consumidores nos ADRs 0063–0068.
+Hashes do triangle raw XBE e PE:
+
+- XBE: `f6288954b7f3bc38a367a5833012fc6ba8929d0d358ee1a68f0800ce89aeaf93`.
+- PE: `ff6a52bd23573a3d110369676ad25643c133f171a9e09cf50b042b3f91681543`.
 
 ```bash
-# 1) compilar (no WSL; reaproveita o SDK que build-homebrew.sh já clonou)
-wsl -d FedoraLinux-44 -- bash /mnt/c/Users/Altenrath/emulador-xbox/scripts/build-nxdk-sample.sh triangle homebrew2
-# 2) traduzir com as 14 raízes conhecidas (incluindo ISR/DPC), compilar e rodar (Git Bash, raiz do repo)
+bash scripts/build-nxdk-sample.sh triangle homebrew2
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
   --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
   --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
   --entry 0x1B420 --entry 0x1B340 --entry 0x196CF --entry 0x1E9B8 \
   --out target/homebrew2/pgraph-review-20261023
-cargo run --release --offline --manifest-path target/homebrew2/pgraph-review-20261023/Cargo.toml \
-  --target-dir target/homebrew2/pramin-target -- --fatias 4000
-# Para descobrir raízes de um XBE novo, automaticamente:
-bash scripts/find-translation-roots.sh <xbe> target/<pasta-nova> [raizes...]
+bash scripts/sonda.sh triangle 320
+bash scripts/gate.sh
 ```
 
-(O Git Bash reescreve caminhos que começam com `/mnt/...`; chame o `wsl` pelo PowerShell
-ou use o script dentro do WSL.) `llvm-objdump` existe no WSL para desmontar o `.exe`
-(`llvm-objdump -d -M intel --start-address=... triangle.exe`); `awk` não existe lá.
+Em outra máquina usar diretório novo para a tradução e ajustar `scripts/sonda.sh`.
+O projeto local separa `generated` numa lib para sondas pequenas; a primeira
+compilação release dos 19391 blocos leva cerca de seis minutos. O limite de
+execução não inclui essa compilação. `target/` é ignorado: logs/probes não
+substituem a referência PPM e os testes versionados.
 
-### O que tem que ser feito agora, em ordem
+Ferramentas nxdk não são instaladas no sistema: llvm-objdump está em
+`/home/altenrath/.cache/obsidian/toolchain/usr/bin`, com LD_LIBRARY_PATH apontando
+para `../lib64`. Cargo Fedora 1.99.0 é o default, sem rustup; o gate avisa que
+rust-toolchain.toml fixa 1.98.1, mas passa. Toolchain fixado adicional em
+`/home/altenrath/.cache/obsidian/rust-1.98.1/bin` (compatibilidade Clippy verificada
+na tarefa 0.0).
 
-Fases 0/1 e tarefas 2.1/2.2 concluídas. Próxima 2.3 executa
-o vertex program observado e rasteriza os arrays, sem reconhecer o título por
-nome/hash. O inventário completo está em docs/compat/triangle-nv097-20261023.csv.
+### Próximo trabalho e cuidados
 
-1. **PFIFO/DMA_GET com efeitos reais.** O
-   [ADR-0061](docs/adr/0061-pagina-boot-dma.md) reserva a página D3D antes do XBE;
-   o triangle já passa a escrita/WBINVD e chega ao polling NV_USER DMA_GET.
-   Usar a PRAMIN como fonte dos descritores, implementar o canal/contexto e o
-   processamento do pushbuffer com limites e snapshot. Não adiantar GET/PUT
-   artificialmente para satisfazer o polling. Com 12 raízes ISR/DPC funcionam;
-   DMA não avança e o timeout leva a pb_kill. O ADR-0062 libera os buffers CMEM
-   comuns, preservando boot e backings referenciados; isso não resolve a causa
-   do timeout. Preservar P13/P14 e a posse do boot.
-2. **PGRAPH, depois dos contratos PFIFO.** Métodos NV097 mínimos para limpar a
-   tela e desenhar o triângulo. Cada recorte exige consumidor real, fonte, ADR e teste.
-   PTIMER continua sem modelo apesar das escritas. Preservar os perfis legados:
-   BUS0 v1–v5 não recebem a reserva de boot por migração; sessão nova usa o layout novo.
-3. **Itens menores já mapeados** (cada um com condição de saída no ROADMAP §16.1):
-   escalonador de threads (P3); análise automática de jump tables (P5); apresentação em
-   Linux (P6, Fases 8/10); `KeTickCount` em tempo real (P7); MXCSR dinâmico e aritmética
-   x87 (P8/P9); DIRQL/IF/`STI` como máscara real (P10/P11); gamma e filtros na imagem
-   apresentada (P1/P2).
-4. **Para chegar a um jogo comercial** (longe): subir o limite de 65 536 instruções
-   alcançáveis da análise (`Discovery` em `analysis.rs`), áudio (APU), USB/controle,
-   armazenamento/XISO ligado à VFS, e muito mais do kernel. Não há percentual medido
-   de conclusão ou base para estimar prazo pela contagem de serviços/testes.
+Fases 0, 1 e 2 do PLANO entregam consumo real, clear e triângulos. Seguir Fase 3
+na ordem: **P5 análise de jump/pointer tables**, P3 escalonador, P7 tick ligado
+ao Clock, P10/P11 DIRQL/IF/STI. Cada tarefa exige ADR, gate, evidência e commit.
+Não substituir raízes por uma lista fixa de endereços do sample no analisador:
+é necessário provar limite, imutabilidade e destino das tabelas.
 
-### Revisão das ferramentas de passagem de bastão (ADR-0056)
+Não rodar duas integrações nativas debug simultâneas: ambas usam
+`target/recomp-native-check`. A integração release usa target separado.
+Fixtures de snapshot antigo removem subseções novas **no intervalo**, sem
+truncar dados posteriores da Session. `without_pgraph/without_pfifo` fazem isso
+nos testes do Bus; os `.inc` gerados têm fixtures próprias. Falta de memória
+dentro de `conduzir` ganha contexto MemoryAt; guest::run direto retorna Memory.
+Nada de acesso host via ponteiros guest, threads host para simular CPU ou
+sucesso genérico para variantes pendentes.
 
-`find-translation-roots.sh` exige diretório novo, mantém `attempt-NN/` e logs de
-cada execução, mais `roots.txt` e `final-project.txt`. Não apaga projetos. Propaga
-falhas e distingue timeout/limite de um retorno normal. Funciona com executável
-com/sem `.exe`; o entry point já é incluído pelo analisador. Sete testes no WSL:
-`python3 scripts/tests/test_translation_roots.py`. Continua sendo busca por
-execução, sem resolver automaticamente jump tables na análise (P5).
+### Mapa rápido
 
-`build-nxdk-sample.sh` confere SDK/submódulos fixados e limpos, mantém build sem
-rede e grava `build-<sample>-manifest.txt` e `SHA256SUMS-<sample>`. O XBE permanece
-raw. Os scripts foram revisados depois da passagem de bastão original; a
-validação e os logs da revisão constam no ADR-0056.
-O script final de raízes rodou no Git Bash com as dez raízes do triangle,
-compilou 17883 blocos em release e preservou a tentativa. Retornou status 1 na
-falta conhecida em VA=0x40/PC=0x16EA2, sem acrescentar raiz falsa ou anunciar
-sucesso. O build revisado do sample também rodou no WSL. Gate: 486 testes
-workspace/doctests, 206 casos gerados e sete testes Python separados; fmt/Clippy
-limpos. A compilação inicial do triangle leva vários minutos além do timeout,
-que se aplica só à execução do guest.
-
-### Armadilhas que já custaram tempo
-
-- **Debug vs release:** o binário gerado em debug leva ~38 s até o primeiro `Sleep`
-  (21× mais lento). CPU a 100% ali é trabalho, não travamento.
-- **Cada serviço de kernel consome uma fatia** no `conduzir`. "47 chamadas atendidas" ao
-  esgotar o orçamento era o limite de 64 fatias, não um laço; use `--fatias`.
-- **Testes de migração de snapshot** constroem o snapshot antigo *cortando* o atual numa
-  tag e rebaixando versões (`KRNL`, `AOTS`). Ao acrescentar uma seção no fim, o corte pode
-  precisar de ajuste; veja `verification_contiguous.inc`, `verification_links.inc`,
-  `verification_video.inc` e `crates/xbox-kernel/tests/events.rs`. Em Session, TCXT vem
-  depois do kernel: a migração KRNL v12 remove GINS no próprio intervalo, sem truncar
-  o restante da Session (verification_gpu_instance.inc).
-- **Falta dentro de `conduzir`:** `run_slice` converte `Error::Memory` em
-  `Error::MemoryAt { pc, fault }`. Sondas devem conferir a variante enriquecida;
-  `guest::run` direto continua devolvendo `Memory`.
-- **`cargo test` para no primeiro crate que falha**; use `--no-fail-fast` para ver todos.
-- **Git Bash e `sed`:** o delimitador `#` quebra com texto que contém `#`; use `|` ou o
-  editor de arquivos. Arquivos do repositório estão em LF no disco e CRLF no Git (aviso
-  esperado).
-- **Clippy pedante:** `too_many_lines` (100), `cast_possible_wrap`, `float_cmp`,
-  `unused_self`. `dispatch()` tem `#[allow(clippy::too_many_lines)]` justificado por ser a
-  tabela plana de ordinais.
-
-### Mapa rápido do código
-
-| Onde | O que há |
+| Onde | Responsabilidade |
 |---|---|
-| `crates/xbox-recomp/src/analysis.rs`, `ir.rs`, `emit.rs`, `emit/{sse,x87}.rs` | decodificação (iced-x86) → IR → Rust gerado |
-| `crates/xbox-recomp/src/runtime.rs`, `runtime/{drive,interrupts,sse,x87,threads}.rs` | `State` (CPU), `Session`, `conduzir`, entrega de interrupções, semântica de SSE/x87 |
-| `crates/xbox-kernel/src/dispatch.rs`, `dispatch/*.rs` | dispatcher por ordinal e cada serviço (`events`, `interrupts`, `mutants`, `video`, `contiguous`...) |
-| `crates/xbox-kernel/src/dispatch/gpu_instance.rs` | consulta retail 64 MiB com reserva CMEM (P13), GINS v1 |
-| `crates/xbox-kernel/src/loader/{data,mmio,startup}.rs` | imagem, dados exportados, janela MMIO, `KeTickCount` |
-| `crates/xbox-mem/src/{bus,mmu,nv2a_irq,dispositivos}.rs` | bus, MMU, os 4 registradores de vblank, telemetria de MMIO |
-| `crates/xbox-mem/src/nv2a_pramdac.rs` | perfil NVPLL e coeficiente autoritativo, frequência derivada, NPLL v1 |
-| `crates/xbox-mem/src/nv2a_pfb.rs` | CFG0/CFG1 com perfil de firmware 64/128 MiB, readback e PFBM v1 |
-| `crates/xbox-mem/src/boot_dma.rs` | reserva física da página D3D, único alias RW, BTPG v1 e validação de posse |
-| `crates/xbox-mem/src/nv2a_pramin.rs` | PRAMIN de 1 MiB, perfil independente P14, acesso DWORD e PRAM v1 |
-| `crates/xbox-platform/src/{display,windows}.rs` | `Apresentador` e a janela Win32 |
-| `tools/xberecomp/` | CLI `translate`; `template_main.rs.txt` é o `main` gerado; `tests/support/*.rs` + `tests/verification_*.inc` são os testes que rodam Rust gerado com x86 escrito à mão |
-| `scripts/` | `build-homebrew.sh` (hello), `build-nxdk-sample.sh`, `find-translation-roots.sh` |
-| `docs/adr/`, `ROADMAP.md`, `CHANGELOG.md` | decisões, plano (com §16.1 de provisórios) e histórico |
+| xbox-recomp analysis.rs/analysis/targets.rs | descoberta conservadora de CFG/destinos |
+| xbox-recomp runtime.rs/runtime/*.rs | CPU, Session, Clock, execução/threads/IRQ |
+| xbox-kernel dispatch.rs/dispatch/*.rs | serviços HLE, CMEM, vídeo/scanout, IRQ, threads |
+| xbox-mem bus.rs/nv2a_pfifo/*.rs | RAM/MMU, DMA, pacotes, RAMHT e bindings |
+| xbox-gpu pgraph.rs/pgraph/{clear,render,persistence}.rs | traps, clear, programa/arrays/raster e snapshots |
+| xbox-gpu tests/reference/ | golden calculada independentemente |
+| xbox-mem nv2a_pgraph.rs | adaptador DMA exclusivo RAM/PRAMIN do backend |
+| xbox-platform | contrato de apresentação e backend Win32 |
+| tools/xberecomp | CLI, template e testes de Rust gerado |
+| scripts/ | gate, sonda e ferramentas de build/descoberta de raízes |
 
 ## Objetivo do software e do primeiro alpha
 

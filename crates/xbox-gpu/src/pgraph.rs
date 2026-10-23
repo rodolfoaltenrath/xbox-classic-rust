@@ -1,6 +1,8 @@
 //! PGRAPH serial: traps de software e surfaces lineares (ADRs 0066/0067).
 mod clear;
 mod persistence;
+mod render;
+pub use render::DrawStats;
 
 pub const PGRAPH_ERROR: u32 = 1 << 20;
 pub const PMC_PGRAPH_PENDING: u32 = 1 << 12;
@@ -17,6 +19,7 @@ pub trait Memory {
 pub enum PgraphProfile {
     LegacyUnmodeled,
     ClearV1,
+    SoftwareV1,
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ClearStats {
@@ -55,20 +58,27 @@ struct State {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nv2aPgraph {
     state: Option<State>,
+    render: Option<render::Render>,
 }
 impl Default for Nv2aPgraph {
     fn default() -> Self {
         Self {
             state: Some(State::default()),
+            render: Some(render::Render::default()),
         }
     }
 }
 impl Nv2aPgraph {
     pub const fn legacy() -> Self {
-        Self { state: None }
+        Self {
+            state: None,
+            render: None,
+        }
     }
     pub const fn profile(&self) -> PgraphProfile {
-        if self.state.is_some() {
+        if self.render.is_some() {
+            PgraphProfile::SoftwareV1
+        } else if self.state.is_some() {
             PgraphProfile::ClearV1
         } else {
             PgraphProfile::LegacyUnmodeled
@@ -76,6 +86,11 @@ impl Nv2aPgraph {
     }
     pub fn scanout(&self) -> Option<u32> {
         self.state.as_ref().and_then(|s| s.scanout)
+    }
+    pub fn draw_stats(&self) -> DrawStats {
+        self.render
+            .as_ref()
+            .map_or(DrawStats::default(), |r| r.stats)
     }
     pub fn stats(&self) -> ClearStats {
         self.state
@@ -103,25 +118,26 @@ impl Nv2aPgraph {
     pub fn models(&self, class: u32, method: u16) -> bool {
         self.state.is_some()
             && class == 0x97
-            && matches!(
-                method,
-                0x100
-                    | 0x110
-                    | 0x180
-                    | 0x194
-                    | 0x198
-                    | 0x200
-                    | 0x204
-                    | 0x208
-                    | 0x20C
-                    | 0x210
-                    | 0x214
-                    | 0x1D8C
-                    | 0x1D90
-                    | 0x1D94
-                    | 0x1D98
-                    | 0x1D9C
-            )
+            && ((self.render.is_some() && render::Render::models(method))
+                || matches!(
+                    method,
+                    0x100
+                        | 0x110
+                        | 0x180
+                        | 0x194
+                        | 0x198
+                        | 0x200
+                        | 0x204
+                        | 0x208
+                        | 0x20C
+                        | 0x210
+                        | 0x214
+                        | 0x1D8C
+                        | 0x1D90
+                        | 0x1D94
+                        | 0x1D98
+                        | 0x1D9C
+                ))
     }
     /// `resolved` já passou pela RAMHT; o trap não interpreta códigos da biblioteca guest.
     pub fn execute(
@@ -138,6 +154,9 @@ impl Nv2aPgraph {
         };
         if class != 0x97 {
             return Ok(());
+        }
+        if let Some(render) = &mut self.render {
+            render.execute(method, raw, resolved, memory, s.surface)?;
         }
         match method {
             0x100 if raw != 0 => {

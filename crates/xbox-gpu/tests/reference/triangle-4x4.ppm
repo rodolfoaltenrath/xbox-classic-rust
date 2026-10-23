@@ -1,0 +1,8 @@
+P3
+# Referencia analitica: RGB, pixel center, arestas top/left; README.md.
+4 4
+255
+191 32 32   128 96 32   64 159 32   0 0 0
+128 32 96   64 96 96    0 0 0       0 0 0
+64 32 159   0 0 0       0 0 0       0 0 0
+0 0 0       0 0 0       0 0 0       0 0 0

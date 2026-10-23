@@ -8,8 +8,12 @@ fn bad(what: &'static str) -> SnapshotError {
 }
 impl Nv2aPgraph {
     pub fn save(&self, out: &mut SnapshotWriter) {
-        out.section("PGRF", 1);
-        out.u32(u32::from(self.state.is_some()));
+        out.section("PGRF", 2);
+        out.u32(if self.render.is_some() {
+            2
+        } else {
+            u32::from(self.state.is_some())
+        });
         let mut data = SnapshotWriter::new();
         if let Some(s) = &self.state {
             for value in [
@@ -50,22 +54,27 @@ impl Nv2aPgraph {
             if let Some(v) = s.stats.first_color {
                 data.u32(v);
             }
+            if let Some(render) = &self.render {
+                render.save(&mut data);
+            }
             out.bytes(&data.finish());
         } else {
             out.bytes(&[]);
         }
     }
     pub fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        if inp.section("PGRF", 1)? != 1 {
+        let version = inp.section("PGRF", 2)?;
+        if !matches!(version, 1 | 2) {
             return Err(bad("versão PGRAPH desconhecida"));
         }
         let profile = inp.u32()?;
         let bytes = inp.bytes()?;
         if profile == 0 && bytes.is_empty() {
             self.state = None;
+            self.render = None;
             return Ok(());
         }
-        if profile != 1 || bytes.len() > 4096 {
+        if !matches!(profile, 1 | 2) || (version == 1 && profile != 1) || bytes.len() > 16384 {
             return Err(bad("perfil/payload PGRAPH inválido"));
         }
         let mut r = SnapshotReader::new(bytes)?;
@@ -110,11 +119,17 @@ impl Nv2aPgraph {
                 return Err(bad("instância de surface inválida"));
             }
         }
+        let render = if profile == 2 {
+            Some(super::render::Render::load(&mut r)?)
+        } else {
+            None
+        };
         if r.remaining() != 0
             || (stats.calls == 0 && (stats.pixels != 0 || stats.first_color.is_some()))
         {
             return Err(bad("estatísticas/payload PGRAPH inconsistentes"));
         }
+        self.render = render;
         self.state = Some(State {
             pending,
             enabled,
