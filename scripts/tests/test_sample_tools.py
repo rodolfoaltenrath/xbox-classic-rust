@@ -29,7 +29,7 @@ if a[0] == 'run':
     if mode == 'translate-fail': sys.exit(21)
     out = pathlib.Path(a[a.index('--out') + 1]); (out / 'src').mkdir(parents=True)
     shutil.copyfile(a[a.index('translate') + 1], out / 'src/image.xbe')
-    for name in ['Cargo.toml', 'src/generated.rs', 'src/main.rs']: (out / name).write_text('fixture')
+    for name in ['Cargo.toml', 'src/generated.rs', 'src/main.rs', 'src/lib.rs']: (out / name).write_text('fixture')
     (out / 'args.txt').write_text('\n'.join(a))
 elif a[0] == 'build':
     if mode == 'build-fail': sys.exit(22)
@@ -71,6 +71,8 @@ class SampleToolsTest(unittest.TestCase):
             outputs.append(project)
             self.assertEqual((project / 'src/image.xbe').read_bytes(), b'input-xbe')
             self.assertTrue((project / 'input.sha256').is_file())
+            self.assertTrue((project / 'sources.sha256').is_file())
+            self.assertIn('tracked_tree=', (project / 'toolchain.txt').read_text())
             self.assertNotIn('--entry', (project / 'args.txt').read_text())
         self.assertNotEqual(*outputs)
         self.assertTrue(all(p.exists() for p in outputs))

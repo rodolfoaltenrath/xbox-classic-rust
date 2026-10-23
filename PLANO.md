@@ -265,7 +265,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   preservado por SO (Windows580/Linux576), logs exclusivos e métricas obrigatórias.
   Commit intermediário 1029bb0; ADR/CHANGELOG/passagem de bastão atualizados.
 
-- [~] 4.2 Validar apresentação e encerramento do alpha real. Corrigir problemas
+- [x] 4.2 Validar apresentação e encerramento do alpha real. Corrigir problemas
   observados no template/laço de apresentação mantendo CPU/Clock guest isolados
   da temporização do host e a posse exclusiva da arena.
   **Aceite:**
@@ -281,7 +281,16 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
     limites de P2/P6/P18 e não declarar fidelidade analógica ou compatibilidade geral;
   - ADR novo, CHANGELOG, ROADMAP §16.1 e passagem de bastão atualizados.
 
-- [ ] 4.3 Entregar um comando de uso do alpha. Preparar/traduzir/compilar os
+  Evidência: GATE OK: 580 testes (target/gate/20261023-154903-qFHAXziu.log),
+  257 casos gerados debug/release com -D warnings; parser/arquivo real/HLT+INT3
+  com captura indisponível. verify-window.ps1 compara RGB do DC com guest.bgra:
+  zero diferenças em ambos, hello 302/12 e triangle 305922/479 (R4977/G4998/B4977).
+  Relatórios em target/visual-{hello,triangle}-{verified,during}/: fechamento
+  durante=191,1977/173,9636 ms, status0/host sem janela congelada; após orçamento
+  =95,7878/52,2096 ms. Sondas headless repetem CPU/pixels da 4.1, sem recusas;
+  snapshots/replay passam. ADR-0074 documenta os comandos, hashes e limites.
+
+- [~] 4.3 Entregar um comando de uso do alpha. Preparar/traduzir/compilar os
   samples locais e abrir a janela com opções claras, sem exigir editar caminhos
   do outro PC ou reconstruir manualmente comandos de target.
   **Aceite:**

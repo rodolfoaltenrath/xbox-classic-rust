@@ -128,8 +128,61 @@ fn rust_emitido_compila_executa_e_restaura_a_continuacao() {
             .arg(&target),
     );
     assert!(run.contains("EAX=62, instruções=37"), "{run}");
-    check_stopped_main(cli, &output, &cargo, &target);
-    check_thread_main(cli, &output, &cargo, &target);
+    check_generated_mains(cli, &output, &cargo, &target);
+}
+
+fn check_generated_mains(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    check_stopped_main(cli, output, cargo, target);
+    check_thread_main(cli, output, cargo, target);
+    check_frame_export(cli, output, cargo, target);
+}
+
+fn check_frame_export(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    let project = output.join("frame-export");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/kernel_display.xbe"))
+            .arg("--out")
+            .arg(&project),
+    );
+    let frame = project.join("frame with spaces.bgra");
+    check(
+        Command::new(cargo)
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(project.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target)
+            .arg("--")
+            .arg("--quadro")
+            .arg(&frame),
+    );
+    let bytes = std::fs::read(&frame).unwrap();
+    assert_eq!(bytes.len(), 640 * 480 * 4);
+    assert_eq!(&bytes[..4], &[0xCC, 0x33, 0, 0xFF]);
+    assert_eq!(&bytes[2560..2564], &[0, 0x55, 0xAA, 0xFF]);
+    let duplicate = Command::new(cargo)
+        .args(["run", "--offline", "--manifest-path"])
+        .arg(project.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(target)
+        .arg("--")
+        .arg("--quadro")
+        .arg(&frame)
+        .output()
+        .unwrap();
+    assert!(!duplicate.status.success());
+    assert_eq!(std::fs::read(&frame).unwrap(), bytes);
+    let invalid = Command::new(cargo)
+        .args(["run", "--offline", "--manifest-path"])
+        .arg(project.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(target)
+        .args(["--", "--fatias", "1", "--typo"])
+        .output()
+        .unwrap();
+    assert!(!invalid.status.success());
+    assert!(!String::from_utf8_lossy(&invalid.stdout).contains("Execução nativa concluída"));
 }
 
 fn check_thread_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
@@ -175,6 +228,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
             .arg(halted_project.join("Cargo.toml"))
             .arg("--target-dir")
             .arg(target)
+            .arg("--")
+            .arg("--quadro")
+            .arg(halted_project.join("no-frame.bgra"))
             .output()
             .unwrap();
         assert!(!halted.status.success());
@@ -192,9 +248,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "253 passed"
+        "257 passed"
     } else {
-        "237 passed"
+        "241 passed"
     }
 }
 

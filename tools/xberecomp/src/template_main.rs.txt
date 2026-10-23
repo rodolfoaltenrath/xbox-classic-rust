@@ -1,4 +1,4 @@
-mod generated;
+use obsidian_native as generated;
 
 use xbox_recomp::runtime::{Desfecho, Limites};
 
@@ -7,20 +7,36 @@ use xbox_recomp::runtime::{Desfecho, Limites};
 const BLOCOS_POR_FATIA: u64 = 1_000_000;
 const FATIAS_PADRAO: u32 = 64;
 
-/// Lê `--fatias N` da linha de comando. Valor ausente ou inválido é erro, não padrão
-/// silencioso: um orçamento diferente do pedido mudaria o resultado sem avisar.
-fn ler_fatias() -> Result<u32, Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
+#[derive(Debug, PartialEq, Eq)]
+struct Opcoes {
+    fatias: u32,
+    janela: bool,
+    quadro: Option<std::path::PathBuf>,
+}
+
+/// Valida toda a linha de comando antes de executar o guest.
+fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> {
+    let mut args = args.into_iter();
+    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None };
+    let mut fatias_definidas = false;
     while let Some(arg) = args.next() {
-        if arg == "--fatias" {
-            let valor = args.next().ok_or("--fatias exige um número")?;
-            return match valor.parse::<u32>() {
-                Ok(n) if n > 0 => Ok(n),
-                _ => Err(format!("--fatias inválido: {valor:?}").into()),
-            };
+        match arg.as_str() {
+            "--fatias" if !fatias_definidas => {
+                let valor = args.next().ok_or("--fatias exige um número")?;
+                opcoes.fatias = valor.parse::<u32>().ok().filter(|&n| n > 0)
+                    .ok_or_else(|| format!("--fatias inválido: {valor:?}"))?;
+                fatias_definidas = true;
+            }
+            "--janela" if !opcoes.janela => opcoes.janela = true,
+            "--quadro" if opcoes.quadro.is_none() => {
+                let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
+                    .ok_or("--quadro exige caminho para BGRA bruto")?;
+                opcoes.quadro = Some(valor.into());
+            }
+            _ => return Err(format!("argumento desconhecido ou repetido: {arg}")),
         }
     }
-    Ok(FATIAS_PADRAO)
+    Ok(opcoes)
 }
 
 /// Imprime em stderr o que o guest tocou em MMIO sem modelo, em qualquer saída.
@@ -172,23 +188,40 @@ fn apresentar(
     Ok(false)
 }
 
+fn exportar_quadro(session: &xbox_recomp::runtime::Session, caminho: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    let quadro = capturar_quadro(session).ok_or("framebuffer indisponível para --quadro")?;
+    let mut arquivo = std::fs::OpenOptions::new().write(true).create_new(true).open(caminho)?;
+    arquivo.write_all(quadro.bytes())?;
+    eprintln!("Quadro BGRA: {}x{}, {} bytes -> {}", quadro.largura(), quadro.altura(), quadro.bytes().len(), caminho.display());
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let abrir_janela = std::env::args().skip(1).any(|a| a == "--janela");
+    let opcoes = ler_opcoes(std::env::args().skip(1))?;
     let mut session = xbox_recomp::runtime::Session::load(include_bytes!("image.xbe"))?;
     let mut janela: Option<Box<dyn xbox_platform::display::Apresentador>> = None;
 
     let limites = Limites {
         blocos_por_fatia: BLOCOS_POR_FATIA,
-        fatias: ler_fatias()?,
+        fatias: opcoes.fatias,
     };
-    let resultado = executar(&mut session, &mut janela, abrir_janela, limites);
+    let resultado = executar(&mut session, &mut janela, opcoes.janela, limites);
     eprintln!("Kernel: {} chamadas atendidas, {} recusadas; instruções={}, EIP=0x{:08X}",session.kernel.atendidas(),session.kernel.recusadas(),session.state.retired,session.state.eip);
     relatar_mmio(&session);
     relatar_framebuffer(&session);
+    if let Some(caminho) = opcoes.quadro {
+        if let Err(erro) = exportar_quadro(&session, &caminho) {
+            eprintln!("Falha ao exportar quadro: {erro}");
+            // Uma falha de captura não pode esconder HLT, falta de memória ou
+            // serviço recusado. Quando o guest teve sucesso, a captura decide o erro.
+            if resultado.is_ok() { return Err(erro); }
+        }
+    }
 
     // Com janela, o orçamento do `main` gerado acaba em segundos e a imagem sumiria antes
     // de alguém vê-la. Mantém a janela viva, repintando, até o usuário fechar.
-    if abrir_janela && janela.is_some() {
+    if opcoes.janela && janela.is_some() && !matches!(&resultado, Ok(Desfecho::ParadoPeloHost)) {
         eprintln!("\nExecução encerrada; janela mantida aberta. Feche-a para sair.");
         loop {
             if apresentar(&session, &mut janela, true)? {
@@ -197,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
     }
-    resultado
+    resultado.map(|_| ())
 }
 
 fn executar(
@@ -205,7 +238,7 @@ fn executar(
     janela: &mut Option<Box<dyn xbox_platform::display::Apresentador>>,
     abrir_janela: bool,
     limites: Limites,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Desfecho, Box<dyn std::error::Error>> {
     // `main` devolve `Box<dyn Error>` e o Rust imprime esse retorno com `Debug`. Passar
     // pelo texto mantém o diagnóstico legível, em vez do `Debug` derivado da variante.
     let desfecho = session.conduzir(
@@ -228,5 +261,5 @@ fn executar(
             eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
         }
     }
-    Ok(())
+    Ok(desfecho)
 }

@@ -17,6 +17,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Alpha visual Windows: captura BGRA opcional sem sobrescrita, validação completa
+  de argumentos e biblioteca AOT separada da CLI. WM_CLOSE durante execução
+  encerra sem voltar ao modo de janela congelada. Captura Win32 compara todo RGB:
+  zero diferenças para hello/triangle, encerramento durante run em 191/174 ms.
+  Gate 580/257 gerados debug/release; procedimentos, hashes e limites no ADR-0074.
+
 - Fase 4/alpha visual: preparo dos samples em projetos novos com o emissor atual,
   hashes e logs preservados; sonda configurável por entrada/projeto/cache, com
   build separado e erros propagados. Seis testes de orquestração cobrem caminhos

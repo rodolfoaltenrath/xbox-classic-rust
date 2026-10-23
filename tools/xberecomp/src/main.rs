@@ -123,6 +123,12 @@ fn write_project(output: &Path, bytes: &[u8], source: &str) -> Result<(), Box<dy
     )?;
     std::fs::write(output.join("src/image.xbe"), bytes)?;
     std::fs::write(output.join("src/generated.rs"), source)?;
+    // Separar a biblioteca AOT evita recompilar seus milhares de blocos ao mudar
+    // somente a CLI/apresentação. O código guest e sua ABI permanecem iguais.
+    std::fs::write(
+        output.join("src/lib.rs"),
+        "mod generated;\npub use generated::run;\n",
+    )?;
     std::fs::write(
         output.join("src/main.rs"),
         include_str!("template_main.rs.txt"),

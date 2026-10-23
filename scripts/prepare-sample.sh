@@ -21,6 +21,10 @@ if cargo run --offline -q -p xberecomp -- translate "$xbe" --out "$projeto" >"$l
     status=$?; echo "TRADUÇÃO FALHOU: $log" >&2; tail -20 "$log" >&2; exit "$status"
 fi
 sha256sum "$xbe" >"$projeto/input.sha256"
-{ rustc --version; cargo --version; git rev-parse HEAD; } >"$projeto/toolchain.txt"
+{
+    rustc --version; cargo --version; git rev-parse HEAD
+    if git diff --quiet && git diff --cached --quiet; then echo 'tracked_tree=clean'; else echo 'tracked_tree=dirty'; fi
+} >"$projeto/toolchain.txt"
+sha256sum "$projeto/src/generated.rs" "$projeto/src/main.rs" "$projeto/src/lib.rs" >"$projeto/sources.sha256"
 echo "Projeto traduzido: $projeto (log: $log)" >&2
 printf '%s\n' "$projeto"

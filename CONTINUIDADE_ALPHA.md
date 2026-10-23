@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`17cbc1d`** e implementação local
-do ADR **0073** (reprodução dos samples no Windows; PLANO 4.1 concluído).
+Atualizado em **2026-10-23**, com base no commit **`319dbea`** e implementação local
+do ADR **0074** (alpha visual Win32; PLANO 4.1/4.2 concluídos).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0073) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0074) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (576 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (580 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `253 passed` em x86-64 e `237` fora dele —
+   confere o **contador de casos gerados**, hoje `257 passed` em x86-64 e `241` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -90,11 +90,19 @@ física nem compatibilidade gráfica geral. P17 conserva a incerteza pública de
 ativação do NOP de software/NSOURCE. Textura, blend, outros formatos/opcodes e
 estados fora do recorte recusam; outros métodos seguem na telemetria.
 
-**Hello** mantém o caminho anterior: 1208 pixels/48 linhas, 47 chamadas, zero
-recusadas e orçamento do main (38/69 serviços). Log histórico target/boot-hello.log;
-não reexecutado a cada mudança de PGRAPH. Win32/`--janela` não foi revalidado
-nesta máquina Linux; apresentação Linux continua P6. Sete testes Python de
-ferramentas passaram na entrega anterior, não repetidos quando scripts não mudam.
+**Win32 revalidado no PLANO 4.2 (ADR-0074):** hello e triangle apresentados em
+cliente 640×480, captura do DC com zero diferenças RGB em relação ao BGRA guest.
+Hello/64: 45 chamadas/zero recusadas, 302 pixels/12 linhas (uma linha de texto).
+Triangle/320: mantém 278/zero, 305922/479 e R4977/G4998/B4977. WM_CLOSE durante
+execução encerrou por host/status0 em 191,1977 ms (hello) e 173,9636 ms (triangle),
+sem entrar no modo congelado. Após orçamento, fechou em 95,7878/52,2096 ms.
+Resultados e imagens: target/visual-{hello,triangle}-{verified,during}/.
+Sondas headless no código final preservam CPU/pixels do ADR-0073. Gate Windows
+580 e 257 gerados debug/release, snapshots/replay passando, formatos mantidos.
+Hello histórico 1208/48/47 chamadas usava outro ponto de execução; não é a
+medição atual de 64 fatias. Cobertura segue 38/69 hello e 42/75 triangle.
+Apresentação Linux continua P6. Dez testes Python atuais de ferramentas passaram
+no WSL; os sete testes anteriores de busca de raízes não foram repetidos.
 Não existe evidência para prometer jogos comerciais por estes números.
 
 ### Estado e migrações que precisam ser preservados
@@ -155,7 +163,11 @@ triângulos, 305922 pixels/479 linhas, R=4977/G=4998/B=4977 e 165 MMIO sem model
 Log target/sonda/triangle-20261023-151407-XlZPyXo0.log. Contagens coincidem com
 a referência Linux apesar dos hashes de entrada distintos; isso não prova
 identidade binária. Builds iniciais separados da execução: hello 13m58,
-triangle 22m03. Apresentação/encerramento ainda são o aceite da tarefa 4.2.
+triangle 22m03. Apresentação/encerramento foram aceitos na tarefa 4.2/ADR-0074:
+verify-window.ps1 exige pasta nova, captura RGB real e fechamento em até 5 s.
+Main novo aceita --quadro (BGRA bruto, arquivo novo) e conserva o desfecho de
+host para não voltar à espera de janela congelada. A biblioteca AOT fica em
+src/lib.rs, separada do main; alterações só na CLI não recompilam os blocos.
 Hashes completos e ferramentas no ADR-0073.
 
 SDK nxdk fixado em `14d5ee97e73347c973f1f57b68b79ec08c9e77f2`, cache local

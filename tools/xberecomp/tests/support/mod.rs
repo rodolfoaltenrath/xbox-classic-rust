@@ -81,6 +81,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     carry_images(output);
     main.push_str(include_str!("../verification_more.inc"));
     main.push_str(include_str!("../verification_carry.inc"));
+    main.push_str(include_str!("../verification_options.inc"));
     main.push_str(&hardware_sources(output));
     main.push_str(&shifts::sources(output));
     main.push_str(&rotations::sources(output));
