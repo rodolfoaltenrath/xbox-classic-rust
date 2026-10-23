@@ -1,6 +1,9 @@
-//! Inferência local: não assume valores entre blocos, calls ou memória gravável.
+//! Constantes locais, tabelas com limites provados e candidatos de callbacks.
+//! Nenhum passe substitui cargas de RAM gravável por constantes na execução.
 
 use super::{Binary, Insn, Operand, Operation, Width};
+mod escapes;
+mod tables;
 use std::collections::{BTreeMap, BTreeSet};
 use xbox_formats::{Xbe, xbe::SectionFlags};
 
@@ -35,6 +38,8 @@ pub(super) fn discover(xbe: &Xbe<'_>, blocks: &BTreeMap<u32, Vec<Insn>>) -> BTre
             }
         }
     }
+    targets.extend(tables::discover(xbe, blocks));
+    targets.extend(escapes::discover(xbe, blocks));
     targets
 }
 

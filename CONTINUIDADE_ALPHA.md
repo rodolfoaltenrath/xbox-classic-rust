@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`7d63053`** e implementação local
-do ADR **0068** (vertex program e raster software).
+Atualizado em **2026-10-23**, com base no commit **`aa079c5`** e implementação local
+do ADR **0069** (descoberta de tabelas e callbacks sem raízes manuais).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P18), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0068) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0069) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (556 testes no Linux nesta revisão; o teste
+   `cargo test --workspace --offline --no-fail-fast` (566 testes no Linux nesta revisão; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `230 passed` em x86-64 e `214` fora dele —
+   confere o **contador de casos gerados**, hoje `233 passed` em x86-64 e `217` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -59,7 +59,7 @@ MOV/MUL/ADD/MAD/RCP e rasteriza as listas submetidas; não reconhece título ou
 shader por nome/hash. O ISR guest trata os traps de NOP e atualiza PRAMIN antes
 de clear/draw. PCRTC_START escolhe o buffer capturado. O host lê os bytes reais.
 
-Sonda oficial de referência `target/sonda/triangle-20261023-020000.log`, 320 fatias:
+Sonda oficial de referência `target/sonda/triangle-20261023-023144.log`, 320 fatias:
 
 | Medida | Resultado |
 |---|---|
@@ -71,14 +71,14 @@ Sonda oficial de referência `target/sonda/triangle-20261023-020000.log`, 320 fa
 | Framebuffer | habilitado, **305922 pixels coloridos/479 linhas** (clear+texto era 1542/32) |
 | Regiões de cor | R=4977, G=4998, B=4977; canal >=192 e outros <=32 |
 | MMIO sem modelo | 165 endereços distintos |
-| Tradução | 14 raízes explícitas, 19391 blocos |
+| Tradução | sem --entry manual, 19707 blocos; contém os 14 endereços anteriores |
 
-Gate `target/gate/20261023-020429.log`: **556 testes** Linux/workspace/doctests,
-230 casos gerados debug/release. Golden RGB analítica 4×4 em
+Gate `target/gate/20261023-023145.log`: **566 testes** Linux/workspace/doctests,
+233 casos gerados debug/release. Golden RGB analítica 4×4 em
 `crates/xbox-gpu/tests/reference/triangle-4x4.ppm`; testes de limites, máscaras,
 clip, culling/depth, uploads incompletos, overflow, corrupção e replay.
-Probe `target/plan-23-real-raster-probe.log`: scanout 0x210000, captura em
-`target/pfifo-evidence/triangle-software.ppm`/`.png`, snapshot integral e mais
+Probe `target/plan-31-real-probe.log`: scanout 0x210000, captura em
+`target/pfifo-evidence/triangle-auto-software.ppm`/`.png`, snapshot integral e mais
 20 fatias byte a byte idênticos após restauração. Imagem inspecionada: triângulo
 RGB, fundo interpolado e texto Triangle Demo/Frames.
 O perfil software tem precisão/recortes declarados em P18; não é validação
@@ -126,17 +126,14 @@ Hashes do triangle raw XBE e PE:
 ```bash
 bash scripts/build-nxdk-sample.sh triangle homebrew2
 cargo run --offline -p xberecomp -- translate target/homebrew2/triangle-raw.xbe \
-  --entry 0x22700 --entry 0x22C10 --entry 0x1E110 --entry 0x2A0E0 --entry 0x2A389 \
-  --entry 0x1D7B0 --entry 0x22AC0 --entry 0x22790 --entry 0x14670 --entry 0x1EA44 \
-  --entry 0x1B420 --entry 0x1B340 --entry 0x196CF --entry 0x1E9B8 \
-  --out target/homebrew2/pgraph-review-20261023
+  --out target/homebrew2/auto-tables-review-20261023
 bash scripts/sonda.sh triangle 320
 bash scripts/gate.sh
 ```
 
 Em outra máquina usar diretório novo para a tradução e ajustar `scripts/sonda.sh`.
 O projeto local separa `generated` numa lib para sondas pequenas; a primeira
-compilação release dos 19391 blocos leva cerca de seis minutos. O limite de
+compilação release dos 19707 blocos leva cerca de seis minutos. O limite de
 execução não inclui essa compilação. `target/` é ignorado: logs/probes não
 substituem a referência PPM e os testes versionados.
 
@@ -150,10 +147,11 @@ na tarefa 0.0).
 ### Próximo trabalho e cuidados
 
 Fases 0, 1 e 2 do PLANO entregam consumo real, clear e triângulos. Seguir Fase 3
-na ordem: **P5 análise de jump/pointer tables**, P3 escalonador, P7 tick ligado
+na ordem: **P3 escalonador**, P7 tick ligado
 ao Clock, P10/P11 DIRQL/IF/STI. Cada tarefa exige ADR, gate, evidência e commit.
-Não substituir raízes por uma lista fixa de endereços do sample no analisador:
-é necessário provar limite, imutabilidade e destino das tabelas.
+P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
+callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda
+podem exigir --entry. Não adicionar listas de endereços de títulos ao analisador.
 
 Não rodar duas integrações nativas debug simultâneas: ambas usam
 `target/recomp-native-check`. A integração release usa target separado.
@@ -1349,7 +1347,7 @@ o resumo do alpha, o roadmap e a evidência de validação correspondente.
 > Continue pela passagem de bastão. Base 7e51aa1 + ADR-0066; confira Git,
 > AGENTS.md/PLANO.md em modo autônomo. Fases 0/1 e 2.1 concluídas. Próxima 2.2:
 > IRQ de software, descritores/surface/clear/scanout; depois vertex program/raster.
-> Triangle com 14 raízes/19391 blocos executa o loop: 226 chamadas/zero recusadas,
+> Triangle com 14 raízes/19707 blocos executa o loop: 226 chamadas/zero recusadas,
 > 40 DRAW_ARRAYS de nove vértices, 274 chaves NV097; imagem preta, sem efeitos GPU.
 > Sonda target/sonda/triangle-20261023-012028.log. Métodos/fontes no ADR-0066/CSV.
 > NOP não zero é usado pelo guest para atualizar descritores via seu handler;

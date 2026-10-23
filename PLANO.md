@@ -187,7 +187,16 @@ linhas), sem triângulo.
 Cada item termina quando a **condição de saída** escrita para ele no ROADMAP §16.1 for
 atendida, com `GATE OK`, ADR e CHANGELOG.
 
-- [ ] 3.1 P5: análise automática de jump tables (substitui raízes manuais do triangle).
+- [x] 3.1 P5: análise automática de jump tables (substitui raízes manuais do triangle).
+  Evidência: GATE OK 566 testes (target/gate/20261023-023145.log), 233 casos
+  gerados debug/release. Dez testes de guardas, aliases, tabelas/loops e callbacks;
+  três nativos executam cases/default, replay e mutação real da RAM.
+  Tradução sem --entry em target/plan-31-translate-final.log: 19707 blocos,
+  incluindo os 14 endereços antes manuais. Sonda target/sonda/triangle-20261023-023144.log:
+  282 chamadas/zero recusadas, 305922 pixels/479 linhas, mesmas cores/CPU da
+  tradução manual; probe target/plan-31-real-probe.log confirma quadro idêntico
+  e snapshot/replay integral. ADR-0069, P5 encerrado para o alvo.
+
 - [ ] 3.2 P3: escalonador de threads.
 - [ ] 3.3 P7: `KeTickCount` em tempo real.
 - [ ] 3.4 P10/P11: DIRQL/IF/`STI` como máscara real.

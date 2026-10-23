@@ -24,6 +24,7 @@ mod indirect;
 mod interlocked;
 mod interrupt;
 mod irql;
+mod jump_tables;
 mod kernel;
 mod links;
 mod msr;
@@ -84,6 +85,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&muldiv::sources(output));
     main.push_str(&strings::sources(output));
     main.push_str(&indirect::sources(output));
+    main.push_str(&jump_tables::sources(output));
     main.push_str(&kernel::sources(output));
     main.push_str(&links::sources(output));
     main.push_str(&interlocked::sources(output));

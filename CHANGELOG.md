@@ -17,6 +17,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 3-AOT/P5: descoberta de tabelas readonly com limites CMP/SUB/JA, índices
+  preservados por aliases de pilha, loops de inicializadores com guarda e passo
+  explícitos e candidatos de callbacks escapados. Runtime mantém cargas reais
+  e UnknownTarget; não há lista de endereços do sample no analisador. Triangle
+  traduz sem --entry manual: 19707 blocos, incluindo as 14 raízes anteriores.
+  Dez testes de análise e três casos nativos novos (ADR-0069). Gate 566 testes/
+  233 nativos debug/release; execução automática conserva 282 chamadas/zero
+  recusadas e quadro idêntico de 305922 pixels, com snapshot/replay estável.
+
 - Fase 5/raster: arrays F32 por descritores reais, vertex program interpretado
   por opcodes/mux/swizzle/máscaras e listas TRIANGLES escrevendo cor/depth na RAM.
   Culling, depth LESS/LEQUAL/ALWAYS, máscaras e clip inclusivo no perfil software;
