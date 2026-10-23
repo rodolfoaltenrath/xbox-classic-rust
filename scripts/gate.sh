@@ -23,6 +23,12 @@ falhou() {
     exit 1
 }
 
+fixado="$(sed -nE 's/^channel *= *"([^"]+)".*/\1/p' rust-toolchain.toml)"
+ativo="$(rustc --version | cut -d' ' -f2)"
+if [ "$fixado" != "$ativo" ]; then
+    echo "aviso: rustc $ativo ativo, rust-toolchain.toml fixa $fixado (sem rustup?)" | tee -a "$log"
+fi
+
 echo "== cargo fmt" | tee -a "$log"
 cargo fmt --all --check >>"$log" 2>&1 || falhou "cargo fmt --all --check"
 

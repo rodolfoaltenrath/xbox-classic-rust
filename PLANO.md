@@ -26,6 +26,15 @@ linhas), sem triângulo.
 
 ## Fase 0 — Liberar memória contígua (ordinal 171)
 
+- [ ] 0.0 Gate verde no toolchain desta máquina. O `cargo` do Fedora (1.99, sem rustup)
+  ignora o `rust-toolchain.toml` (1.98.1), e o clippy 1.99 traz o lint
+  `assert_is_empty`, que falha em 13 pontos (`xdvdfs.rs:516` e testes do
+  xbox-kernel: boot_dma, contiguous, gpu_instance, threads, virtual_memory).
+  Corrigir com `assert_eq!`/`assert_ne!` de forma que compile nos dois toolchains,
+  sem `#[allow]`.
+  **Aceite:** `GATE OK` com cargo 1.99; nenhum `#[allow(clippy::assert_is_empty)]`
+  novo no código.
+
 - [~] 0.1 Implementar `MmFreeContiguousMemory` liberando a alocação real no
   `contiguous`, recusando endereço desconhecido, o framebuffer e a instância GPU
   (trabalho já em andamento na árvore: `dispatch/contiguous.rs`, `tests/free_contiguous.rs`).
