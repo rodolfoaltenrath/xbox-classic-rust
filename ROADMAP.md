@@ -1235,22 +1235,24 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-26 | Alpha / vídeo | Gamma-fade e callbacks MOVSS (ADRs 0081–0082, PLANO 6.3) | — | 13255 blocos sem --entry, 161 chamadas/zero recusadas e gamma não identidade; readback Win32 sem diferenças e distinto da RAM; pausa/save/restore/replay integral, 595 testes/266 gerados debug e release/21 ferramentas; hello/triangle preservados, fases 0–6 concluídas |
 | 2026-10-26 | Kernel / I/O | Arquivo imutável e leitura síncrona (ADR-0083, PLANO 7.1) | — | NtCreateFile/NtReadFile/NtQueryInformationFile e close, KRNL v14/CDFS v1, 11 testes novos e gate 606/266; integração à sessão e produtor real pendentes |
 | 2026-10-26 | Alpha / I/O | Mídia original na sessão AOT (ADR-0084, PLANO 7.2) | — | Session publica default.xbe original; SAVE confere identidade da mídia; Rust emitido abre/lê/consulta/fecha e reproduz handle aberto; kernels legados continuam sem mídia |
+| 2026-10-26 | Alpha / I/O | Quarto homebrew file-read e replay (ADR-0085, PLANO 7.3) | — | 12982 blocos sem --entry; 493 chamadas/zero recusas e checksum real 102400/9C261314; Win32 coincide com 1810 pixels/39 linhas; handle/cursor/mídia e estado integral reproduzíveis; gate 607/269 gerados debug+release/26 Python+3 PowerShell; sondas anteriores preservadas, fases 0–7 do PLANO concluídas |
 
 
 ---
 
 ### Próxima ação
 
-PLANO fases **0–6 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows,
-sessões contínuas e gamma do DAC com terceiro homebrew (ADRs 0069–0082).
+PLANO fases **0–7 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows,
+sessões contínuas, gamma do DAC e leitura do próprio executável por arquivo
+guest, com quarto homebrew (ADRs 0069–0085).
 `bash scripts/run-alpha.sh triangle --continuo` mantém a mesma sessão até X;
 Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
-Gate Windows 595, 266 casos gerados debug/release e 21 testes de ferramentas.
+Gate Windows 607, 269 casos gerados debug/release, 26 Python e 3 PowerShell de ferramentas.
 Hello/triangle preservam CPU/pixels e zero recusas; gamma-fade mostra rampa
 não identidade com janela igual ao DAC e distinta da RAM. Restore integral e
 fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
-de bastão. Fase 7 em andamento: arquivo original de mídia, I/O síncrona,
-persistência dos handles e homebrew file-read próprio.
+de bastão. Fase 7 concluída: arquivo original de mídia, I/O síncrona,
+persistência dos handles e homebrew file-read próprio. Sem tarefa aberta no PLANO.
 Linux gráfico, controles guest/áudio, filtros e compatibilidade comercial
 permanecem pendentes.
 Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.

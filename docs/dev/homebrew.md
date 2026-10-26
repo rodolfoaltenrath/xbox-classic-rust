@@ -8,6 +8,7 @@ com build-homebrew.sh, no WSL:
 
 ```bash
 bash scripts/build-nxdk-sample.sh gamma-fade homebrew-gamma
+bash scripts/build-nxdk-sample.sh file-read homebrew-file-read
 ```
 
 Depois, no Git Bash/Windows:
@@ -15,6 +16,8 @@ Depois, no Git Bash/Windows:
 ```bash
 bash scripts/run-alpha.sh gamma-fade --continuo
 bash scripts/sonda.sh gamma-fade 128
+bash scripts/run-alpha.sh file-read --continuo
+bash scripts/sonda.sh file-read 512
 ```
 
 O SDK fica fora do Git; o script exige a revisão/submódulos fixados e árvore
@@ -22,6 +25,15 @@ limpa, sem baixar dependências. XBE/PE/manifests/log/hashes ficam em target.
 Metadados podem diferir entre builds; conservar o XBE exato usado por estados.
 O launcher grava guest.bgra bruto e display.bgra após DAC; os fades são
 calculados pelo próprio sample recompilado, sem reconhecimento de título.
+
+File-read tem fontes próprias em homebrew/file-read, copiadas para um build
+isolado em target pelo mesmo script. Usa os wrappers de arquivo do nxdk,
+exige XBEH e calcula tamanho/FNV de default.xbe até EOF. O kernel entrega os
+bytes imutáveis da entrada, não RAM modificada ou arquivos do computador.
+O diagnóstico FILE READ OK deve coincidir com o XBE daquele build; depois
+há um handle aberto entre leituras/esperas para validar snapshots. P22 limita
+o perfil a esse arquivo somente leitura, sem ISO/escrita/async. Fontes próprias
+ficam no Git, SDK/PE/XBE/logs/estados continuam ignorados (ADR-0085).
 
 Estado vigente do [ADR-0065](../adr/0065-consumidor-pushbuffer.md): PFIFO consome
 comandos por PRAMIN/RAM e o triangle passa o polling por GET=PUT. BUS0 v8/PFFO v2;

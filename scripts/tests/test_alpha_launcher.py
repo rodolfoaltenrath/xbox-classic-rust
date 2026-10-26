@@ -70,6 +70,20 @@ if os.environ.get('TEST_ARGS_FILE'):
         self.assertEqual(args[args.index('--fatias')+1],'128')
         self.assertTrue(list((self.state / 'cache').glob('gamma-fade-*.project')))
 
+    def test_file_read_has_independent_cache_and_preserves_bound_input(self):
+        first = self.run_alpha()
+        self.assertEqual(first.returncode,1,first.stderr)
+        captured = self.root / 'file-read-args.json'
+        second = self.run_alpha(sample='file-read', TEST_ARGS_FILE=str(captured))
+        self.assertEqual(second.returncode,1,second.stderr)
+        runs = self.runs()
+        self.assertTrue(runs[1].name.startswith('file-read-'))
+        args = json.loads(captured.read_text())
+        self.assertEqual(args[args.index('--fatias')+1], '512')
+        self.assertNotEqual((runs[0]/'project.txt').read_text(),(runs[1]/'project.txt').read_text())
+        project=Path((runs[1]/'project.txt').read_text().strip())
+        self.assertEqual((project/'src/image.xbe').read_bytes(),self.xbe.read_bytes())
+
     def test_cache_reuses_only_identical_input_and_keeps_preparation_and_logs(self):
         for _ in range(2):
             result = self.run_alpha()

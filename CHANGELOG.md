@@ -10,12 +10,21 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Corrigido
 
+- Verificação de sessão só considera linhas completas de stderr; evita capturar
+  EIP parcial e relatar divergência falsa após F9. Três regressões PowerShell
+  exercitam a função real com logs escritos em partes (ADR-0085).
+
 - Build/testes: treze asserções de coleções ajustadas para o lint assert_is_empty
   do Clippy 1.99, preservando as verificações e compatibilidade com 1.98.1.
   Gate Fedora/Rust 1.99: 519 testes; Clippy all-targets também passa no toolchain
   fixado. Plano retomado em modo autônomo (tarefa 0.0).
 
 ### Adicionado
+
+- Quarto alvo file-read, com fonte guest própria, build isolado no nxdk fixado
+  e integração ao preparo/sonda/launcher. Calcula comprimento/FNV-1a32 do XBE
+  lido por APIs públicas e mantém arquivo aberto para testar snapshots
+  (ADR-0085, PLANO 7.3). O núcleo continua Rust; o C é o consumidor guest.
 
 - Sessões novas montam o XBE original como arquivo de mídia; snapshots mantêm
   seus próprios bytes/handles/posições e SAVE recusa mídia divergente mesmo

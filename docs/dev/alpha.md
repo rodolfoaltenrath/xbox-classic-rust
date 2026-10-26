@@ -2,7 +2,7 @@
 
 ## Uso vigente — 2026-10-26
 
-O bloco visual Windows reproduz hello/triangle e gamma-fade, apresenta seus
+O bloco visual Windows reproduz hello/triangle, gamma-fade e file-read, apresenta seus
 frames reais e encerra pelo X. Fase 5: execução contínua, pausa e estados
 completos. Fase 6: DAC RGB8 e fades calculados pelo guest. Leia CONTINUIDADE_ALPHA.md para o estado técnico
 completo; os relatos por ADR mais abaixo são históricos.
@@ -17,7 +17,7 @@ baixa jogos/SDK nem usa BIOS. Sem entrada, ele informa o caminho ausente.
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
 bash scripts/run-alpha.sh gamma-fade --continuo
-bash scripts/run-alpha.sh gamma-fade --continuo
+bash scripts/run-alpha.sh file-read --continuo
 ```
 
 PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
@@ -54,6 +54,16 @@ de 128 fatias; 64 terminava antes do fade. Para gerar a entrada no WSL:
 estar preparado na revisão fixada; fontes e artefatos continuam fora do Git.
 Na sonda/128, a rampa tem 255 entradas não identidade, 161 chamadas atendidas
 e zero recusadas. Não foi necessário implementar serviço de kernel novo.
+
+File-read é fonte própria em homebrew/file-read. Depois de preparar o mesmo
+SDK, no WSL: `bash scripts/build-nxdk-sample.sh file-read homebrew-file-read`.
+O build copia as fontes para target e não deixa objetos no Git. Entrada padrão:
+target/homebrew-file-read/file-read-raw.xbe; orçamento padrão de 512 fatias.
+No Git Bash: `bash scripts/sonda.sh file-read 512`. A tela deve mostrar
+FILE READ OK, comprimento e FNV-1a32 calculados do XBE exato. Um relatório
+sem recusas com framebuffer preto não basta: 128 fatias terminavam durante
+o checksum. Após validar tudo, o guest mantém um arquivo aberto e continua
+lendo entre esperas; F5/F9 preservam sua posição (ADR-0085).
 
 Verificação Win32 do executável já compilado, com pasta de saída nova:
 
@@ -104,8 +114,12 @@ por progresso do sample; o prazo de fechamento continua sendo cinco segundos.
 
 Testes de ferramentas (Linux/WSL): `python3 scripts/test-tools.py`. O helper
 copia os mesmos scripts/testes para um Git fixture temporário em /tmp, confere
-bytes e registra SHA-256 antes de executar os 19 casos. Evita git diff repetido
+bytes e registra SHA-256 antes de executar os 26 casos. Evita git diff repetido
 pelo mount NTFS do WSL; não altera timeouts nem o índice do repositório real.
+No Windows, `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+scripts/tests/test-session-log.ps1` confere três casos de logs parciais na
+função real de polling. A verificação só aceita linhas completas para não
+comparar um endereço/contador antes de seus últimos dígitos serem escritos.
 
 As mensagens separam **preparo → build → execução**. O preparo sempre traduz
 para uma pasta nova, sem --entry, gera Cargo.lock offline e registra hashes e
@@ -171,9 +185,10 @@ em target/phase5-tools-20261026.log: 19/TOOLS OK. Formatos e comandos nos ADRs
 [0077](../adr/0077-execucao-continua-e-comandos-host.md) e
 [0078](../adr/0078-alpha-continuo-reproduzivel.md).
 
-Limites: dois homebrews, kernel parcial (38/69 hello, 42/75 triangle), raster
+Limites: quatro homebrews, kernel parcial (41/69 hello, 45/75 triangle), raster
 software NV097 limitado; sem texturas/blend/renderer geral, áudio ou controles.
-Gamma/filtros continuam pendentes (P2); Linux gráfico é P6; precisão e recortes
+Gamma RGB8 digital está implementada; filtros analógicos continuam pendentes
+(P2/P21). Linux gráfico é P6; precisão e recortes
 do raster permanecem P18. Jogos comerciais não foram habilitados por este marco.
 
 ## Histórico das entregas anteriores

@@ -6,7 +6,9 @@ camada de compatibilidade Xbox. O objetivo é uma experiência de mini console,
 navegável por controle, com Windows/Linux e futuramente Linux direto em KMS/DRM.
 
 **O alpha executa homebrews do nxdk em janela Win32.** Hello e triangle apresentam
-texto/triângulos; gamma-fade exercita a rampa de cores do DAC. Há kernel HLE,
+texto/triângulos; gamma-fade exercita a rampa de cores do DAC. O teste próprio
+file-read abre e lê o XBE original como arquivo guest e calcula seu checksum.
+Há kernel HLE,
 duas threads cooperativas, interrupções e rasterização
 software parcial. **Jogos comerciais ainda não executam**; áudio, controles, Linux
 gráfico e compatibilidade geral continuam pendentes. O projeto não inclui jogos,
@@ -16,7 +18,8 @@ BIOS ou bibliotecas proprietárias.
 
 Pré-requisitos: Git com Git Bash, Rust 1.98.1 fixado, linker funcional e os XBEs
 homebrew locais (`target/homebrew/hello.xbe`, `target/homebrew2/triangle-raw.xbe`
-ou `target/homebrew-gamma/gamma-fade-raw.xbe`).
+ou `target/homebrew-gamma/gamma-fade-raw.xbe`; teste próprio em
+`target/homebrew-file-read/file-read-raw.xbe`).
 Para compilar os samples com o SDK público fixado, consulte
 [o guia do homebrew](docs/dev/homebrew.md). Entradas e SDK ficam fora do Git.
 
@@ -26,6 +29,7 @@ No **Git Bash**, na raiz do repositório:
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
 bash scripts/run-alpha.sh gamma-fade --continuo
+bash scripts/run-alpha.sh file-read --continuo
 ```
 
 No PowerShell, use o Bash do Git (o `bash.exe` do WSL não oferece a janela Win32):
@@ -76,9 +80,14 @@ cargo run -p obsidian -- check-memory caminho/do/jogo.iso
 
 O estado vigente está no [guia do alpha](docs/dev/alpha.md) e na
 [passagem de bastão](CONTINUIDADE_ALPHA.md). Cobertura com variantes limitadas:
-**38/69 serviços do hello e 42/75 do triangle**. Ambos traduzem sem raízes manuais.
+**41/69 serviços do hello e 45/75 do triangle**. Ambos traduzem sem raízes manuais.
 O triangle passa por PFIFO/PRAMIN, ISR/DPC, vertex program e rasterização software.
-Gamma-fade importa 71 funções, das quais 38 possuem variantes implementadas.
+Gamma-fade importa 71 funções, das quais 41 possuem variantes implementadas;
+file-read importa 69, com 41 variantes implementadas. Inventário estático não
+significa que todas essas funções foram chamadas nem compatibilidade geral.
+Leitura de arquivos é um perfil somente leitura do próprio default.xbe,
+com handles/posições/mídia preservados nos snapshots; não monta arquivos do
+computador nem oferece filesystem ou ISO completos.
 Snapshots preservam CPU/RAM/kernel/GPU/scheduler com migrações explícitas.
 O perfil público de gamma e os filtros/limites restantes da GPU continuam
 declarados no ROADMAP §16.1; a janela não simula o sinal analógico do console.

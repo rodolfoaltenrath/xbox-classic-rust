@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Compila OUTRO sample do nxdk já clonado por scripts/build-homebrew.sh (mesmo SDK fixado,
+# Compila sample do SDK ou fonte própria em homebrew/, com nxdk preparado
+# por scripts/build-homebrew.sh (mesmo SDK fixado,
 # sem rede) e copia o .xbe e o .exe para target/<destino>/. Uso, no WSL:
 #   bash scripts/build-nxdk-sample.sh triangle homebrew2
 # O XBE sai como <amostra>-raw.xbe (sem a normalização de metadados que o hello recebe).
@@ -12,7 +13,9 @@ destination=${2:-homebrew2}
    ! "$destination" =~ (^|/)\.\.?(/|$) ]] || { echo "destino deve ser relativo a target/, sem . ou .." >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 sdk=${NXDK_BUILD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/obsidian/nxdk-14d5ee9}
-[[ -d "$sdk/samples/$sample" ]] || { echo "amostra inexistente: $sdk/samples/$sample" >&2; exit 2; }
+source_dir="$sdk/samples/$sample"
+if [ -d "$root/homebrew/$sample" ]; then source_dir="$root/homebrew/$sample"; fi
+[[ -d "$source_dir" ]] || { echo "amostra inexistente: $source_dir" >&2; exit 2; }
 [[ $(git -C "$sdk" rev-parse HEAD) == "$revision" ]] || { echo "SDK deve estar em $revision" >&2; exit 1; }
 git -C "$sdk" diff --quiet
 git -C "$sdk" diff --cached --quiet
@@ -27,14 +30,21 @@ for module in "${modules[@]}"; do
 done
 output="$root/target/$destination"
 mkdir -p -- "$output"
+# Fontes próprias são copiadas para um build isolado; SDK e fontes Git ficam intactos.
+if [ "$source_dir" = "$root/homebrew/$sample" ]; then
+    stage=$(mktemp -d "$output/source-XXXXXXXX")
+    cp -- "$source_dir/Makefile" "$source_dir/main.c" "$stage/"
+    source_dir="$stage"
+fi
 export LC_ALL=C TZ=UTC SOURCE_DATE_EPOCH=1704067200 NXDK_DIR="$sdk" PATH="$sdk/bin:$PATH"
 {
     printf 'nxdk=%s\nsample=%s\nSOURCE_DATE_EPOCH=%s\n' "$revision" "$sample" "$SOURCE_DATE_EPOCH"
     git -C "$sdk" submodule status -- "${modules[@]}"
+    sha256sum "$source_dir/Makefile" "$source_dir/main.c"
 } > "$output/build-$sample-manifest.txt"
-make -B -C "$sdk/samples/$sample" -j"${BUILD_JOBS:-4}" GEN_XISO= LDFLAGS=-timestamp:0 \
+make -B -C "$source_dir" -j"${BUILD_JOBS:-4}" GEN_XISO= LDFLAGS=-timestamp:0 \
     "CFLAGS=-ffile-prefix-map=$sdk=/nxdk" "CXXFLAGS=-ffile-prefix-map=$sdk=/nxdk" > "$output/build-$sample.log" 2>&1
-cp -- "$sdk/samples/$sample/bin/default.xbe" "$output/$sample-raw.xbe"
-cp -- "$sdk/samples/$sample/main.exe" "$output/$sample.exe"
+cp -- "$source_dir/bin/default.xbe" "$output/$sample-raw.xbe"
+cp -- "$source_dir/main.exe" "$output/$sample.exe"
 (cd -- "$output" && sha256sum "$sample.exe" "$sample-raw.xbe" > "SHA256SUMS-$sample")
 printf 'Artefatos: %s/%s-raw.xbe e %s.exe\n' "$output" "$sample" "$sample"

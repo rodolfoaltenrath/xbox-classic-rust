@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-26**, com base no commit **`0438a9c`** e implementação local
-dos ADRs **0081–0084** (Fase 6 concluída; Fase 7 de I/O em andamento).
+Atualizado em **2026-10-26**, com base no commit **`9176bc0`** e implementação local
+dos ADRs **0083–0085** (Fases 0–7 do PLANO concluídas).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0084) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0085) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -163,7 +163,7 @@ Duas continuações do mesmo checkpoint e outra em release mantêm snapshot
 SHA e650acbc3d3764b800bb31717083ed49bd6dfb7cb82a102f3e15fdd61f611f55 e
 imagem idênticos (visual-gamma-restored-release/, zero diferenças RGB).
 
-Gate vigente: **595 testes**, 266 casos gerados debug/release, 21 ferramentas;
+Referência da Fase 6: **595 testes**, 266 casos gerados debug/release, 21 ferramentas;
 logs target/gate/20261026-111413-Waq1DjEq.log e
 target/gamma-phase6/{native-release-final,tools-final-source}.log.
 Hello/64 mantém 45/zero e 302 pixels/12 linhas, agora zero MMIO sem modelo;
@@ -177,6 +177,39 @@ target/alpha/runs/gamma-fade-SMskuCZc: 30820 chamadas/zero recusadas,
 estado final 68287494 bytes, host/status0 e close 804,7775 ms. Build reutilizado
 em 0,18 s. Inputs/SDK/estados continuam fora do Git; hashes e comandos no ADR-0081.
 
+**Quarto alvo e arquivo guest (PLANO 7 concluído, ADR-0085):** fonte própria
+homebrew/file-read compila em estágio isolado com o mesmo nxdk fixado.
+12982 blocos sem --entry. A janela mostra FILE READ OK, bytes=102400 e
+fnv=9C261314, conferidos no XBE SHA 72580ecc...6eb5e. Sonda/512: 493 atendidas,
+zero recusadas, 1810 pixels/39 linhas e zero MMIO sem modelo. Win32 coincide
+com BGRA, zero diferenças; close 82,5002 ms. Não basta zero recusas: 128 fatias
+terminavam durante checksum, sem texto. O padrão deste alvo é 512.
+
+Snapshot integral pausado/restaurado idêntico: 19046504 -> 19077364 instruções
+antes de F9; restore inválido conserva a sessão e outro processo continua.
+Close com save pausado/executando 770,2522/621,276 ms. Mídia exata e handle 48,
+posição 38912, preservados; duas continuações/8 fatias chegam a 43008 e mantêm
+estado SHA 94e05311c560cbab22a8a4dd5bc85c3d7e105521a9014c0b7d3072dc62f10c31
+e imagens idênticos. Artefatos: target/file-read-phase7/{visual-final,
+session-verified,replay-g.*,replay-h.*,media-verified.json}.
+Launcher real contínuo/carregar: public/runs/file-read-TPl4J4VX, host/status0,
+final salvo e close 767,5781 ms. Valores de tempo guest são sintéticos.
+
+Gate final: target/gate/20261026-131313-X96CyqRI.log, **607 testes**, **269
+gerados debug/release**, **26 Python + 3 PowerShell** de ferramentas. Wait-Log
+agora usa linhas completas para não aceitar EIP parcial enquanto stderr é
+escrito. O teste PowerShell extrai a função real pela AST; comparações de
+CPU/Clock e hashes integrais continuam ativas. Inventário vigente: hello 41/69,
+triangle 45/75, gamma-fade 41/71 e file-read 41/69, com variantes limitadas.
+Não é contagem de serviços efetivamente chamados nem percentual de compatibilidade.
+
+Sondas finais preservam hello 45/0/302 pixels/12 linhas, triangle 278/0/305922/479
+e R4977/G4998/B4977/9 draws/27 triângulos, gamma 161/0/299222/480/gamma 255.
+Logs em target/sonda: hello-20261026-130638-grgtSC01.log,
+triangle-20261026-131338-HRtFMUsM.log e gamma-fade-20261026-131338-oZR5OYsA.log.
+Limites P22: um arquivo readonly, até 32 MiB/256 handles/leitura de 1 MiB; não é VFS,
+ISO, escrita ou I/O assíncrona completos. Núcleo Rust, C somente no guest de teste.
+
 ### Estado e migrações que precisam ser preservados
 
 **I/O do executável (PLANO 7.1–7.2, ADRs 0083–0084):** Session::load publica
@@ -188,7 +221,7 @@ SAVE recusa mídia diferente do XBE original mesmo com CRC válido. P22 declara
 limites de tamanho/variantes/metadados; não é filesystem ou ISO completos.
 Gate target/gate/20261026-123910-iFilAuiI.log: **607 testes**, **269 gerados**;
 testes emitidos conferem ABI, leitura apesar de headers RAM modificados e replay
-integral com arquivo aberto. Quarto produtor próprio e fluxo público são 7.3.
+integral com arquivo aberto. O produtor e o fluxo público foram validados em 7.3.
 
 - **KRNL v14/CDFS v1 (ADR-0083, PLANO 7.1)**: três serviços de arquivo e
   NtClose usam mídia imutável/handles guest e cursor serializado. Perfil P22,
@@ -261,6 +294,7 @@ integral com arquivo aberto. Quarto produtor próprio e fluxo público são 7.3.
 ```bash
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
+bash scripts/run-alpha.sh file-read --continuo
 # Execução contínua e comandos de sessão do host:
 bash scripts/run-alpha.sh triangle --continuo
 # Retomar arquivo de outra rodada (mesmo XBE):
@@ -357,9 +391,9 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases **0–6 estão concluídas**. A Fase 7 acrescenta leitura síncrona do
-executável original. Seguir o PLANO: 7.1 kernel/handles/migração, 7.2 montagem
-na sessão e Rust gerado, 7.3 homebrew próprio file-read/launcher/sondas.
+As fases **0–7 do PLANO estão concluídas**. A Fase 7 entregou leitura síncrona
+do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
+e homebrew próprio file-read/launcher/sondas. Não há tarefa aberta nesse plano.
 O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.
 Não reabrir tarefas históricas. Continuam os provisórios
 P1/P2/P4/P6/P8/P9/P12–P22 e as fases maiores do ROADMAP.

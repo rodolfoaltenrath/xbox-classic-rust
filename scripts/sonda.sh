@@ -2,7 +2,7 @@
 # Executa um sample já traduzido em release e resume o resultado em linhas fixas,
 # para que critérios de aceite possam ser conferidos sem ler o log inteiro.
 #
-# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade> [fatias]
+# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade|file-read> [fatias]
 #
 # Sem SONDA_PROJETO, prepare-sample.sh retraduz o XBE com o emissor atual.
 # SONDA_XBE seleciona outra entrada; SONDA_PROJETO reutiliza um projeto explícito.
@@ -32,8 +32,11 @@ triangle)
 gamma-fade)
     fatias="${2:-128}"
     ;;
+file-read)
+    fatias="${2:-512}"
+    ;;
 *)
-    echo "uso: $0 <hello|triangle|gamma-fade> [fatias]" >&2
+    echo "uso: $0 <hello|triangle|gamma-fade|file-read> [fatias]" >&2
     exit 2
     ;;
 esac

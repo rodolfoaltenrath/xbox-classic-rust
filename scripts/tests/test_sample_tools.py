@@ -129,6 +129,12 @@ class SampleToolsTest(unittest.TestCase):
         self.assertIn('gamma: DAC gamma:', result.stdout)
         self.assertIn('entradas_nao_identidade=Some(255)', result.stdout)
 
+    def test_file_read_uses_same_fresh_preparation_and_probe_without_entry_overrides(self):
+        result = self.run_tool(args=('file-read',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('== RESUMO (file-read, --fatias 512', result.stdout)
+        self.assertIn('recusadas: 0', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

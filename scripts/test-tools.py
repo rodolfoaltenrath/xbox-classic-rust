@@ -37,7 +37,7 @@ def main():
         print(f'Tool scripts SHA-256: {digest.hexdigest()}', flush=True)
         result = subprocess.run([sys.executable, '-m', 'unittest',
                                  'test_alpha_launcher', 'test_sample_tools',
-                                 'test_gate', '-v'], cwd=copied / 'tests')
+                                 'test_gate', 'test_guest_builder', '-v'], cwd=copied / 'tests')
         if result.returncode:
             return result.returncode
         print('TOOLS OK', flush=True)

@@ -18,7 +18,7 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 7**, acrescentada em 2026-10-26 ao pedido de prosseguimento.
+Bloco vigente: **Fase 7 concluída**, acrescentada em 2026-10-26 ao pedido de prosseguimento.
 As fases 0–6 preservam as entregas concluídas e suas evidências. Meta: o guest
 abrir e ler os bytes originais de D:\default.xbe por I/O síncrona, com handles,
 EOF e posições reproduzíveis. Validar com um homebrew próprio compilado pelo
@@ -494,7 +494,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   KRNL v13 continua sem mídia. SAVE recusa mídia divergente com CRC válido.
   ADR-0084; comparações integrais legadas preservadas com ausência explícita.
 
-- [~] 7.3 Homebrew file-read e fluxo público. Fonte de teste própria no Git,
+- [x] 7.3 Homebrew file-read e fluxo público. Fonte de teste própria no Git,
   build isolado com SDK fixado, preparo/sonda/launcher para o quarto alvo.
   Exercitar CreateFileA/ReadFile/GetFileSizeEx/CloseHandle e exibir resultado
   calculado dos bytes lidos, com erro observável para qualquer divergência.
@@ -506,3 +506,21 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   Sondas hello/triangle/gamma-fade preservam zero recusas e referências de
   pixels/rampa. README, ADR, CHANGELOG, ROADMAP e passagem de bastão contêm
   comandos, evidências e limites; commit por tarefa e nenhum push.
+
+  Evidência: `GATE OK: 607 testes`, target/gate/20261026-131313-X96CyqRI.log;
+  269 gerados debug/release com -D warnings, 26 ferramentas/TOOLS OK e três
+  regressões PowerShell/SESSION LOG OK. Produtor nxdk: 12982 blocos sem --entry,
+  XBE SHA 72580ecc...6eb5e, bytes=102400/fnv=9C261314 conferidos na captura real.
+  Sonda file-read/512: 493/zero recusas, 1810 pixels/39 linhas, zero MMIO;
+  file-read-20261026-130946-K5t5oU7W.log. Win32 visual-final: zero diferenças
+  RGB, close 82,5002 ms. Session-verified: pausa/F9 com arquivo inteiro idêntico,
+  falha de restore preservada, outro processo continua; close 770,2522/621,276 ms.
+  CDFS tem mídia exata e handle 48/posição 38912; replay-g/h chega a 43008 e mantém
+  snapshot SHA 94e05311...f10c31 e imagens idênticos. Pastas em target/file-read-phase7.
+  Launcher contínuo/carregar: file-read-TPl4J4VX, host/status0, final salvo,
+  close 767,5781 ms. Hello/64 mantém 45/0/302 pixels; triangle/320 mantém 278/0,
+  305922/479/R4977/G4998/B4977/9 draws/27 triângulos; gamma/128 mantém 161/0,
+  299222/480/gamma 255. Logs hello-20261026-130638-grgtSC01,
+  triangle-20261026-131338-HRtFMUsM e gamma-fade-20261026-131338-oZR5OYsA.
+  ADR-0085 registra fontes/hashes/recortes e corrida corrigida no polling de logs.
+  Fases 0–7 concluídas; três commits locais, sem push.
