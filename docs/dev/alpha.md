@@ -1,9 +1,10 @@
 # Primeiro alpha: homebrew real
 
-## Uso vigente — 2026-10-23
+## Uso vigente — 2026-10-26
 
-O bloco visual Windows do PLANO 4.1–4.3 reproduz hello/triangle, apresenta seus
-frames reais e encerra pelo X. Leia CONTINUIDADE_ALPHA.md para o estado técnico
+O bloco visual Windows reproduz hello/triangle, apresenta seus frames reais e
+encerra pelo X. A Fase 5 acrescenta execução contínua, pausa e arquivos de
+estado completos. Leia CONTINUIDADE_ALPHA.md para o estado técnico
 completo; os relatos por ADR mais abaixo são históricos.
 
 Requisitos: Rust fixado 1.98.1, linker compatível, Cargo/dependências disponíveis
@@ -19,6 +20,53 @@ bash scripts/run-alpha.sh triangle
 
 PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
 Usar o Bash do Git, não o atalho do WSL para a execução visual Windows.
+
+```powershell
+& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle --continuo
+& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle --continuo --carregar "C:/meus estados/final.obsstate"
+```
+
+No modo contínuo, Espaço pausa/retoma (título PAUSADO); F5 salva uma geração nova
+em `states/checkpoint-NNNNNN.obsstate`; F9 volta à última geração desta execução,
+conservando pausa e gerações anteriores. Enquanto pausado CPU, Clock, RAM,
+kernel e GPU não avançam; somente a janela é processada. Atalhos são do host,
+sem USB/XID/controle Xbox. Falha ao ler/gravar por atalho é relatada em stderr.log
+e preserva a sessão ativa; F9 antes de F5 é uma recusa informativa.
+
+O modo contínuo exige janela; `--fatias` define o trecho repetido, não um limite
+total. Apenas orçamento autoriza continuar. HLT, INT3, serviço recusado, memória
+e demais falhas continuam encerrando o guest com diagnóstico. Sem pacing por
+relógio real: não é promessa de FPS ou velocidade igual ao console.
+`final.obsstate` é salvo ao fechar uma rodada contínua; `--salvar "novo caminho"`
+seleciona outro destino (também disponível em modo finito). Diretório de destino
+explícito deve existir. Nunca sobrescreve estado ou o arquivo carregado.
+
+SAVE v1 contém o XBE exato e o snapshot integral com CRC32, limitado a 256 MiB;
+arquivos correntes têm dezenas de MiB, sem compressão. XBE divergente, corrupção,
+versão futura e truncamento recusam antes de trocar a sessão. CRC não autentica
+arquivo malicioso; não carregar estados desconhecidos. Publicação requer hard
+links (NTFS/ext4); sem promessa de durabilidade do diretório sob falta de energia.
+Pausa/janela/teclas não são serializadas. Formatos internos e migrações legadas
+permanecem; imagem igual não promete replay entre revisões diferentes do modelo.
+Estados incluem código/dados guest: target e a extensão .obsstate são ignorados
+pelo Git. Arquivos temporários .obsidian-state-*.part também são ignorados.
+
+Para testar o executável gerado já compilado, com diretório de evidência novo:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-session.ps1 -Executable target/sample-build/triangle/release/obsidian-native.exe -Sample triangle -OutputDirectory target/session-triangle -TimeoutSeconds 300
+```
+
+O teste excede o orçamento antigo, compara SHA-256 de estados completos durante
+pausa e após F9, provoca leitura inválida, retoma em outro processo e mede
+WM_CLOSE em execução e pausa. Compilação é separada dos deadlines de execução.
+Rode a validação visual depois do gate. TimeoutSeconds controla só a espera
+por progresso do sample; o prazo de fechamento continua sendo cinco segundos.
+
+Testes de ferramentas (Linux/WSL): `python3 scripts/test-tools.py`. O helper
+copia os mesmos scripts/testes para um Git fixture temporário em /tmp, confere
+bytes e registra SHA-256 antes de executar os 19 casos. Evita git diff repetido
+pelo mount NTFS do WSL; não altera timeouts nem o índice do repositório real.
 
 As mensagens separam **preparo → build → execução**. O preparo sempre traduz
 para uma pasta nova, sem --entry, gera Cargo.lock offline e registra hashes e
@@ -64,11 +112,25 @@ no [ADR-0074](../adr/0074-alpha-visual-e-encerramento.md).
 
 Aceite visual: zero diferenças RGB em 640×480, hello 302 pixels/12 linhas e
 triangle 305922/479, R4977/G4998/B4977. Fechamento durante run ficou abaixo de
-200 ms em ambos. Gate Windows 580 testes, 257 casos gerados debug/release;
+200 ms em ambos sem exportação de estado. Gate Windows 586 testes, 261 casos gerados debug/release;
 snapshots/replay preservados. Fontes, métricas e comandos nos ADRs
 [0073](../adr/0073-reproducao-samples-windows.md),
 [0074](../adr/0074-alpha-visual-e-encerramento.md) e
 [0075](../adr/0075-comando-alpha-e-cache.md).
+
+Prova de sessão contínua: hello (23/10) e triangle (26/10) excederam o orçamento,
+pausaram sem alterar o arquivo completo e restauraram bytes idênticos depois
+de avançar. Arquivo inválido preservou a sessão; outro processo retomou o estado.
+WM_CLOSE com save final: hello 594/723 ms (pausado/executando), triangle
+2083/2421 ms, todos abaixo de 5 s. Resultados em target/session-hello-phase5/
+e target/session-triangle-phase5-isolated-20261026/. O tempo inclui serialização
+e gravação final de ~68 MB; é diferente da medição visual sem save acima.
+Sondas de 26/10 mantiveram 45/0/302 pixels e 278/0/305922, respectivamente.
+Gate target/gate/20261026-101417-ic6bJkvN.log: 586/261; testes de ferramentas
+em target/phase5-tools-20261026.log: 19/TOOLS OK. Formatos e comandos nos ADRs
+[0076](../adr/0076-arquivos-de-estado-vinculados.md),
+[0077](../adr/0077-execucao-continua-e-comandos-host.md) e
+[0078](../adr/0078-alpha-continuo-reproduzivel.md).
 
 Limites: dois homebrews, kernel parcial (38/69 hello, 42/75 triangle), raster
 software NV097 limitado; sem texturas/blend/renderer geral, áudio ou controles.

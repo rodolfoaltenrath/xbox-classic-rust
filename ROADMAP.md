@@ -1113,6 +1113,10 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P19 | **Scheduler TwoThreadV1** (ADR-0070): inicial + uma filha, Passive/IF/shadow, quantum sintético 4096 e reavaliação de waits após HLE | Delay bloqueia e outra Ready executa sem salto de Clock; contexto completo e replay | sem múltiplas filhas/prioridades/APC/timeout absoluto; no perfil MaskedV1 há uma única chamada NtWait pendente e a segunda recusa; contenção de critical section recusa; não representa o dispatcher NT geral | casos guest reais exigindo extensão de threads/filas/prioridades/waits, com perfil e migração testados |
 | P20 | **IRQ MaskedV1/HLE** (ADR-0072): IF/shadow e DIRQL efetivos entre instruções, mas ISR/DPC atômicos e somente linha GPU conectada | pbkit executa seus callbacks reais, com replay e preempção dentro de bloco | sem IRQ aninhada nos callbacks, PIC/APIC geral, NMI, IDT/IRET de kernel guest ou retomada de HLT; KfRaise/KfLower continuam recusados | consumidor real exigindo esses caminhos, evidência e frames/interrupções persistentes com migração/replay |
 
+O alpha contínuo (ADRs 0076–0078) só muda a política do host: pausa não avança
+CPU/Clock, SAVE v1 envolve os snapshots existentes e os atalhos não são USB/XID.
+Não encerra P1/P2/P4/P6/P8/P9/P12–P20 nem altera o recorte de hardware.
+
 P10/P11 encerrados para sessões novas em 2026-10-23 pelo ADR-0072:
 IRQL 0–31, ISR no nível registrado (GPU=24), máscara IF e shadow de STI,
 vblank/linha preemptando dentro de blocos com retomada exata. AOTC v1–v9
@@ -1223,22 +1227,23 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-23 | 4 / alpha visual | Comando de uso e cache do alpha (ADR-0075, PLANO 4.3) | — | run-alpha.sh hello/triangle abre Win32; identidade de imagem/lock/fontes atual, logs/artefatos preservados; caminhos com espaços; gate 580/257 e 16 testes de ferramentas; fases 0–4 concluídas |
 | 2026-10-23 | Alpha / estados | Arquivos completos ligados ao XBE (ADR-0076, PLANO 5.1) | — | SAVE v1, CRC32, teto 256 MiB, sessão candidata e publicação sem sobrescrita; --salvar/--carregar no main; formatos internos preservados |
 | 2026-10-23 | Alpha / execução | Modo contínuo e pausa/save/restore host (ADR-0077, PLANO 5.2) | — | Mesmo guest entre trechos; só orçamento permite continuar; pausa sem Clock/CPU; F5 gera estado e F9 restaura candidato; teclado Win32 não é input Xbox |
+| 2026-10-26 | Alpha / execução | Iniciador contínuo e retomada integral (ADR-0078, PLANO 5.3) | — | Hello/triangle pausam sem avanço e restauram arquivo integral idêntico; retomada em outro processo; close com save final até 2422 ms; gate 586/261 e 19 ferramentas; sondas preservadas, fases 0–5 concluídas |
 
 
 ---
 
 ### Próxima ação
 
-PLANO fases 0–4 concluído: análise/scheduler/tick/IRQ e alpha visual Windows
-(ADRs 0069–0075). `bash scripts/run-alpha.sh hello` ou `triangle` prepara,
-reaproveita build equivalente e abre janela. RGB idêntico ao framebuffer e
-fechamento durante run verificados. Gate Windows 580, 257 casos gerados
-debug/release e 16 testes de ferramentas. Limites em §16.1 e passagem de bastão.
-Novo escopo autorizado: PLANO Fase 5, alpha contínua e retomável. SAVE v1 e
---salvar/--carregar (ADR-0076) precedem comandos de pausa/estado no host e
-validação do iniciador. Linux gráfico, controles guest/áudio, filtros e
-compatibilidade comercial permanecem fora deste aceite. Não repetir os bloqueios
-históricos abaixo como se fossem o estado vigente.
+PLANO fases **0–5 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows
+e sessões contínuas com pausa/save/restore (ADRs 0069–0078).
+`bash scripts/run-alpha.sh triangle --continuo` mantém a mesma sessão até X;
+Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
+Gate Windows 586, 261 casos gerados debug/release e 19 testes de ferramentas.
+As duas sondas preservam CPU/pixels e zero recusas; restore integral e
+fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
+de bastão. Novo bloco exige escopo do mantenedor. Linux gráfico, controles
+guest/áudio, filtros e compatibilidade comercial permanecem pendentes.
+Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.
 
 #### Histórico das ações anteriores
 

@@ -40,6 +40,20 @@ o status 1 de orçamento é preservado e explicado. Fechar durante a execução 
 parada pelo host/status 0. Logs de cada rodada e BGRA ficam em `target/alpha/runs/`.
 Opções, caminhos com espaços e verificação visual em [alpha](docs/dev/alpha.md).
 
+Para continuar até fechar, com pausa e estados completos:
+
+```powershell
+& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle --continuo
+```
+
+**Espaço** pausa/retoma; **F5** salva uma geração nova; **F9** volta à última
+geração salva nesta execução. O título indica a pausa. Os estados ficam na
+pasta `states/` da rodada e `final.obsstate` é salvo ao encerrar. Para retomar
+em outra execução, acrescente `--carregar "caminho/final.obsstate"` ao comando.
+Esses atalhos controlam a sessão do programa; controles Xbox ainda estão pendentes.
+Estados contêm memória completa e o XBE, ficam ignorados pelo Git e não
+sobrescrevem estados anteriores.
+
 ## Requisitos e build
 
 Use o toolchain fixado em `rust-toolchain.toml` (Rust 1.98.1) e um ambiente de link

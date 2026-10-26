@@ -3,7 +3,10 @@ param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [Parameter(Mandatory=$true)][string]$RunDirectory,
     [ValidateRange(1,999999999)][int]$Slices,
-    [switch]$Headless
+    [switch]$Headless,
+    [switch]$Continuous,
+    [string]$LoadState,
+    [string]$SaveState
 )
 $ErrorActionPreference = 'Stop'
 $exe = (Resolve-Path -LiteralPath $Executable).Path
@@ -13,6 +16,17 @@ foreach ($name in @('stdout.log','stderr.log','pid.txt','guest.bgra')) {
 }
 $frame = Join-Path $folder 'guest.bgra'
 $arguments = '--fatias {0} --quadro "{1}"' -f $Slices,$frame
+if ($Continuous -and $Headless) { throw 'Continuous mode requires a window' }
+if ($Continuous) { $arguments += ' --continuo --estados "{0}"' -f (Join-Path $folder 'states') }
+if ($LoadState) {
+    $loadPath = (Resolve-Path -LiteralPath $LoadState).Path
+    $arguments += ' --carregar "{0}"' -f $loadPath
+}
+if ($SaveState) {
+    $savePath = [IO.Path]::GetFullPath($SaveState)
+    if (Test-Path -LiteralPath $savePath) { throw "Save state already exists: $savePath" }
+    $arguments += ' --salvar "{0}"' -f $savePath
+}
 $style = 'Hidden'
 if (-not $Headless) { $arguments += ' --janela'; $style = 'Normal' }
 # A visible interactive application needs Normal startup (ADR-0074).

@@ -17,6 +17,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Iniciador do alpha com --continuo/--carregar/--salvar, gerações F5 por rodada
+  e estado final automático no modo contínuo. verify-session.ps1 verifica
+  sessão integral em pausa, avanço, restore, falha recuperável e outro processo;
+  test-tools.py executa scripts idênticos em fixture Linux isolada (19 casos,
+  sem alterar timeouts). Estados/temporários ignorados pelo Git (ADR-0078, PLANO 5.3).
+  Gate final 586/261 gerados; hello/triangle com restore integral idêntico e
+  retomada em outro processo, zero recusas e RGB da janela sem diferenças.
+  Close com save final abaixo de 5 s; Fase 5 concluída em 2026-10-26.
+
 - Modo --continuo no main recompilado, pausa por Espaço, save state por F5
   e restauração por F9. Host pausado não avança guest; erros diferentes de
   orçamento continuam falhas. Gerações sem sobrescrita e restore transacional,

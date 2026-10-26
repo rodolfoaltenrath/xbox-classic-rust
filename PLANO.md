@@ -352,7 +352,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   `controle_continuo_pausa_codigo_nativo_e_retoma_sem_perder_clock` conclui demo
   real com EAX=62/37 instruções após pausa sem mudança de snapshot. ADR-0077.
 
-- [ ] 5.3 Integrar o iniciador e validar o fluxo real. Encaminhar modo contínuo,
+- [x] 5.3 Integrar o iniciador e validar o fluxo real. Encaminhar modo contínuo,
   restauração e saída de estado pelo comando do alpha, mantendo execução finita
   padrão e logs separados. Automatizar os atalhos contra uma janela real e
   documentar os comandos.
@@ -363,3 +363,24 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   pausa; fechamento durante execução e pausa em até 5 s. Testes de launcher
   passam; README, docs/dev/alpha.md, ADR, CHANGELOG, ROADMAP e passagem de bastão
   registram evidências e limitações. Commit por tarefa e nenhum push.
+
+  Evidência: `GATE OK: 586 testes`, target/gate/20261026-101417-ic6bJkvN.log;
+  261 casos gerados debug e release (release: target/phase5-native-release-final.log).
+  `TOOLS OK`, 19 casos (9 launcher, 6 preparo/sonda, 4 gate),
+  target/phase5-tools-20261026.log. Sondas de 26/10:
+  hello-20261026-101636-4TGqAGqT.log = 45/0, 302 pixels/12 linhas;
+  triangle-20261026-101800-pq23VpMD.log = 278/0, 305922/479,
+  R4977/G4998/B4977, nove draws/27 triângulos. Hello validado em
+  target/session-hello-phase5/ (23/10): pause/restore/erro recuperável e outro
+  processo; WM_CLOSE pausado/executando 593,7587/722,6875 ms. Triangle em
+  target/session-triangle-phase5-isolated-20261026/: mesmos quatro cenários,
+  snapshot integral idêntico antes/depois, 508359498 -> 785161898 instruções
+  antes de restaurar; close 2082,6871/2421,4008 ms. Progresso usou o parâmetro
+  existente TimeoutSeconds=300, sem alterar o prazo de close de 5 s; tentativa
+  concorrente com build atingiu 120 s e não foi usada como aceite.
+  Readback RGB: zero diferenças em ambos, pastas session-hello-frame-phase5/
+  e session-triangle-frame-phase5-20261026/. Comando público com
+  --continuo --carregar validado: hello-LAfc6doM (alpha-live-smoke-hello) e
+  triangle-LqNrxSMj (alpha/runs), status 0, final.obsstate preservado; Cargo
+  reutilizado em 0,42/1,46 s. ADR-0078, README, alpha, CHANGELOG, ROADMAP e
+  passagem de bastão atualizados. Fases 0–5 concluídas.

@@ -9,6 +9,8 @@ __pycache__/
 *.iso
 *.xiso
 *.bin
+*.obsstate
+.obsidian-state-*.part
 eeprom.bin
 /saves/
 /shadercache/

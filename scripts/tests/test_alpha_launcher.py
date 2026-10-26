@@ -28,8 +28,12 @@ class AlphaLauncherTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         binary = self.root / 'bin'
         binary.mkdir()
+        guest = fixtures.GUEST.replace('import os, sys', '''import os, sys, json
+if os.environ.get('TEST_ARGS_FILE'):
+    pathlib_args = __import__('pathlib').Path(os.environ['TEST_ARGS_FILE'])
+    pathlib_args.write_text(json.dumps(sys.argv[1:]))''')
         for name, body in {
-            'cargo': fixtures.CARGO.replace('exe.write_text(GUEST)', f'exe.write_text({fixtures.GUEST!r})'),
+            'cargo': fixtures.CARGO.replace('exe.write_text(GUEST)', f'exe.write_text({guest!r})'),
             'powershell.exe': POWERSHELL,
             'rustc': '#!/bin/sh\necho rustc-fixture\n',
             'uname': '#!/bin/sh\necho "${TEST_OS:-Linux}"\n',
@@ -102,6 +106,51 @@ class AlphaLauncherTest(unittest.TestCase):
         self.assertNotIn('-Headless', args)
         self.assertEqual(args[args.index('-RunDirectory') + 1], str(self.runs()[-1]))
         self.assertIn('build with spaces', args[args.index('-Executable') + 1])
+
+    def test_continuous_windows_session_gets_new_generation_directory_and_final_state(self):
+        saved = self.root / 'previous state.obsstate'
+        saved.write_bytes(b'state fixture')
+        result = self.run_alpha('--continuo', '--carregar', str(saved), headless=False,
+                                TEST_OS='MINGW64_NT', TEST_EXE='1')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        folder = self.runs()[-1]
+        args = json.loads((folder / 'powershell-args.json').read_text())
+        self.assertIn('-Continuous', args)
+        self.assertEqual(args[args.index('-LoadState') + 1], str(saved))
+        self.assertEqual(args[args.index('-SaveState') + 1], str(folder / 'final.obsstate'))
+        self.assertIn('Espaço pausa', result.stdout)
+        self.assertEqual(saved.read_bytes(), b'state fixture')
+
+    def test_explicit_state_paths_and_invalid_combinations_are_checked_before_build(self):
+        saved = self.root / 'previous.obsstate'
+        saved.write_bytes(b'original')
+        for args in [('--continuo',), ('--carregar', str(self.root / 'missing')),
+                     ('--salvar', str(saved)), ('--salvar', str(self.root / 'missing/a')),
+                     ('--salvar', '--carregar'), ('--carregar',),
+                     ('--carregar', str(saved), '--carregar', str(saved))]:
+            with self.subTest(args=args):
+                self.assertEqual(self.run_alpha(*args).returncode, 2)
+        self.assertFalse(self.state.exists())
+        output = self.root / 'new state.obsstate'
+        result = self.run_alpha('--salvar', str(output), '--carregar', str(saved),
+                                TEST_OS='MINGW64_NT', TEST_EXE='1')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        args = json.loads((self.runs()[-1] / 'powershell-args.json').read_text())
+        self.assertEqual(args[args.index('-SaveState') + 1], str(output))
+        self.assertEqual(args[args.index('-LoadState') + 1], str(saved))
+
+    def test_headless_state_paths_reach_native_arguments_without_splitting(self):
+        saved = self.root / 'previous state.obsstate'
+        saved.write_bytes(b'original')
+        output = self.root / 'new state.obsstate'
+        recorded = self.root / 'native-arguments.json'
+        result = self.run_alpha('--salvar', str(output), '--carregar', str(saved),
+                                TEST_ARGS_FILE=str(recorded))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        args = json.loads(recorded.read_text())
+        self.assertEqual(args[args.index('--salvar') + 1], str(output))
+        self.assertEqual(args[args.index('--carregar') + 1], str(saved))
+        self.assertNotIn('--continuo', args)
 
     def test_invalid_options_missing_input_and_unavailable_window_stop_before_build(self):
         for args in [('--fatias', '0'), ('--fatias', '4294967296'), ('--fatias',),

@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-23**, com base no commit **`d7c07a4`** e implementação local
-do ADR **0077** (modo contínuo e comandos host; PLANO Fase 5 em execução).
+Atualizado em **2026-10-26**, com base no commit **`1361f4a`** e implementação local
+do ADR **0078** (iniciador e validação do alpha contínuo; PLANO Fase 5 concluída).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -13,7 +13,7 @@ instruções locais: o código pode ter evoluído depois desta referência.
 > reproduza com os comandos da passagem de bastão.
 
 
-## Passagem de bastão — estado em 2026-10-23
+## Passagem de bastão — estado em 2026-10-26
 
 O projeto Obsidian recompila XBE/x86 estaticamente para Rust nativo. A sessão
 reúne CPU guest, Clock determinístico, RAM/MMU/dispositivos e kernel HLE.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0077) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0078) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -106,6 +106,35 @@ passaram no WSL (6 launcher, 6 preparo/sonda, 4 gate); os sete testes anteriores
 de busca de raízes não foram repetidos.
 Não existe evidência para prometer jogos comerciais por estes números.
 
+**Alpha contínua e retomável (PLANO 5, ADRs 0076–0078):** --continuo repete
+trechos na mesma sessão; Espaço pausa/retoma, F5 salva geração nova e F9
+restaura a última geração desta execução. --carregar retoma em outro processo;
+o launcher grava final.obsstate ao fechar. Pausa/restore/falha de leitura foram
+verificados comparando SHA-256 do arquivo completo, incluindo CPU/RAM/kernel/
+GPU/threads. Estado não avançou durante pausa, nem se alterou em restore inválido.
+
+| Prova de sessão | Hello (2026-10-23) | Triangle (2026-10-26) |
+|---|---|---|
+| Instruções no estado salvo | 38035963 | 508359498 |
+| Instruções após retomar | 73335751 | 785161898 |
+| Restaurar/regravar | arquivo inteiro idêntico | arquivo inteiro idêntico |
+| WM_CLOSE pausado / executando, com save final | 593,7587 / 722,6875 ms | 2082,6871 / 2421,4008 ms |
+| Kernel recusado | 0 | 0 |
+
+Artefatos: target/session-hello-phase5/ e
+target/session-triangle-phase5-isolated-20261026/. Gerações .obsstate têm
+aproximadamente 68 MB e são ignoradas pelo Git. Em ambos, outro processo
+carregou os mesmos CPU/Clock e continuou. A tentativa interrompida do triangle
+em 23/10 não foi usada como aceite; em 26/10, executar depois do gate com
+-TimeoutSeconds 300 para progresso. WM_CLOSE continua limitado a cinco segundos.
+Gate atual 586/261 gerados debug e 19 ferramentas; release 261 validado em 23/10.
+Sondas de 26/10 preservam 45/0/302 pixels no hello e 278/0/305922 no triangle.
+Readback Win32 também preserva zero diferenças RGB: pastas
+session-hello-frame-phase5/ e session-triangle-frame-phase5-20261026/.
+Comando público --continuo --carregar abre ambos e salva final.obsstate ao X:
+hello-LAfc6doM (target/alpha-live-smoke-hello/runs) e triangle-LqNrxSMj
+(target/alpha/runs), status zero. Cache Cargo 0,42/1,46 s, respectivamente.
+
 ### Estado e migrações que precisam ser preservados
 
 - **Controle host (ADR-0077)**: --continuo exige --janela; Espaço pausa,
@@ -163,6 +192,10 @@ Não existe evidência para prometer jogos comerciais por estes números.
 ```bash
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
+# Execução contínua e comandos de sessão do host:
+bash scripts/run-alpha.sh triangle --continuo
+# Retomar arquivo de outra rodada (mesmo XBE):
+bash scripts/run-alpha.sh triangle --continuo --carregar "target/alpha/runs/rodada/final.obsstate"
 # Linux ou diagnóstico sem janela:
 bash scripts/run-alpha.sh triangle --sem-janela
 ```
@@ -178,6 +211,22 @@ ALPHA_STATE_DIR/ALPHA_BUILD_DIR mudam essas raízes, relativos ao repo ou absolu
 Logs separados de build e execução, guest.bgra e proveniência ficam na rodada.
 Guest BGRA não é snapshot. X durante run retorna 0/host; após orçamento, a
 janela mantém a imagem até X e retorna 1/orçamento. Não silenciar outros erros.
+
+Fase 5/ADR-0078: --continuo mantém a mesma Session entre trechos finitos;
+Espaço pausa/retoma, F5 grava em states/, F9 restaura última geração desta
+execução. Título PAUSADO; nenhum avanço guest durante pausa. --carregar inicia
+outro processo num estado selecionado, --salvar define destino novo. Em modo
+contínuo final.obsstate é automático na rodada se nenhum destino foi dado.
+*.obsstate/.obsidian-state-*.part ignorados; arquivos contêm XBE/RAM, ~68 MB
+sem compressão. CRC32 é integridade acidental, não autenticação. Sem pacing
+real, sem USB/XID, sem troca de revisões garantida por identidade do XBE.
+Teste: scripts/verify-session.ps1 -Executable <exe> -Sample hello|triangle
+-OutputDirectory <pasta nova>. Python/WSL: python3 scripts/test-tools.py.
+O helper compara os bytes copiados a um Git fixture Linux, sem mudar asserções
+ou o limite de 20 s; evita timeouts de git diff no mount Windows sob builds.
+Gate final target/gate/20261026-101417-ic6bJkvN.log: 586 testes/261 gerados debug;
+261 gerados release em target/phase5-native-release-final.log; 19 ferramentas
+em target/phase5-tools-20261026.log (TOOLS OK). Novas sessões mantêm os formatos internos.
 
 Tarefa 4.3: comandos padrão abriram hello/triangle sem caminhos do outro PC,
 usando runs hello-XfFakWTu/triangle-mM890OSS; Cargo 0,20/0,23 s e os mesmos
@@ -239,10 +288,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases 0–4 estão concluídas. O mantenedor autorizou a **Fase 5**: alpha
-contínua e retomável, com pausa e estados completos. 5.1 instala o contêiner
-SAVE e --salvar/--carregar; 5.2 adiciona comandos host e laço contínuo; 5.3
-integra o launcher e valida hello/triangle reais. Seguir PLANO em ordem.
+As fases **0–5 estão concluídas**: arquivos SAVE ligados ao XBE, pausa,
+execução contínua, gerações e retomada em outro processo, com launcher e
+evidências dos dois homebrews. Não há tarefa aberta no PLANO; novo bloco
+depende de escopo do mantenedor. Não reabrir tarefas históricas concluídas.
 Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
@@ -264,6 +313,7 @@ sucesso genérico para variantes pendentes.
 |---|---|
 | xbox-recomp analysis.rs/analysis/targets.rs | descoberta conservadora de CFG/destinos |
 | xbox-recomp runtime.rs/runtime/*.rs | CPU, Session, Clock, execução/threads/IRQ |
+| xbox-recomp checkpoint.rs/control.rs | SAVE v1 ligado ao XBE, restauração candidata, pausa e gerações host |
 | xbox-kernel dispatch.rs/dispatch/*.rs | serviços HLE, CMEM, vídeo/scanout, IRQ, threads |
 | xbox-mem bus.rs/nv2a_pfifo/*.rs | RAM/MMU, DMA, pacotes, RAMHT e bindings |
 | xbox-gpu pgraph.rs/pgraph/{clear,render,persistence}.rs | traps, clear, programa/arrays/raster e snapshots |
@@ -274,6 +324,7 @@ sucesso genérico para variantes pendentes.
 | scripts/ | gate, sonda e ferramentas de build/descoberta de raízes |
 | scripts/run-alpha.sh, start-alpha.ps1 | preparo/cache/build/lançamento do alpha e logs por rodada |
 | scripts/verify-window.ps1 | captura RGB real versus BGRA e teste WM_CLOSE com deadlines |
+| scripts/verify-session.ps1, test-tools.py | prova Win32 de pausa/save/restore/reabertura e testes de ferramentas em Git fixture Linux |
 
 ## Objetivo do software e do primeiro alpha
 
