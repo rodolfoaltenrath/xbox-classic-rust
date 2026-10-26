@@ -32,6 +32,7 @@ pub enum Error {
 /// Serializa CPU, RAM, dispositivos, kernel e threads. `image` deve ser o XBE
 /// original da sessão, nunca a RAM que o título pode ter modificado.
 pub fn encode(session: &Session, image: &[u8]) -> Result<Vec<u8>, Error> {
+    validate_media(session, image)?;
     let mut state = SnapshotWriter::new();
     session.save(&mut state);
     let state = state.finish();
@@ -75,10 +76,24 @@ pub fn decode(file: &[u8], image: &[u8]) -> Result<Session, Error> {
     let mut restored = Session::load(image)?;
     let mut reader = SnapshotReader::new(state)?;
     restored.load(&mut reader)?;
+    validate_media(&restored, image)?;
     if reader.remaining() != 0 {
         return Err(Error::Invalid("bytes excedentes no snapshot da sessão"));
     }
     Ok(restored)
+}
+
+fn validate_media(session: &Session, image: &[u8]) -> Result<(), Error> {
+    if session
+        .kernel
+        .executable_media()
+        .is_some_and(|media| media != image)
+    {
+        return Err(Error::Invalid(
+            "mídia de executável diverge do XBE do estado",
+        ));
+    }
+    Ok(())
 }
 
 /// Leitura limitada inclusive se o arquivo crescer depois de aberto.
@@ -159,6 +174,41 @@ fn crc32(bytes: &[u8]) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn midia_divergente_recusa_mesmo_com_container_xbe_e_crc_validos() {
+        use super::*;
+        let image = xbox_formats::fixtures::xbe_com_codigo(&[0xC3]).unwrap();
+        let mut session = Session::load(&image).unwrap();
+        let mut other = image.clone();
+        other[0x2020] ^= 1;
+        let xbe = xbox_formats::Xbe::parse(&image).unwrap();
+        session.kernel = xbox_kernel::dispatch::Dispatcher::for_image(
+            xbe.header.base_address,
+            xbe.header.size_of_image,
+        )
+        .unwrap();
+        session.kernel.mount_executable_media(&other).unwrap();
+        assert!(matches!(
+            encode(&session, &image),
+            Err(Error::Invalid(
+                "mídia de executável diverge do XBE do estado"
+            ))
+        ));
+        let mut writer = SnapshotWriter::new();
+        session.save(&mut writer);
+        let snapshot = writer.finish();
+        let mut file = SnapshotWriter::new();
+        file.section("SAVE", 1);
+        file.bytes(&image);
+        file.bytes(&snapshot);
+        file.u32(crc32(&snapshot));
+        assert!(matches!(
+            decode(&file.finish(), &image),
+            Err(Error::Invalid(
+                "mídia de executável diverge do XBE do estado"
+            ))
+        ));
+    }
     use super::*;
 
     #[test]

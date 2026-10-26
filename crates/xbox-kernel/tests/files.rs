@@ -197,6 +197,7 @@ fn variantes_assincronas_escrita_traversal_e_saidas_sobrepostas_recusam() {
     for text in [
         b"\\Device\\CdRom0\\..\\default.xbe".as_slice(),
         b"D:/default.xbe",
+        b"\\Device\\Harddisk0\\Partition1\\default.xbe",
         b"D:\\bad\0name",
     ] {
         path(&mut b, text, 0, 0x40);

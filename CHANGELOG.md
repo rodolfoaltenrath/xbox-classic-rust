@@ -17,9 +17,13 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Sessões novas montam o XBE original como arquivo de mídia; snapshots mantêm
+  seus próprios bytes/handles/posições e SAVE recusa mídia divergente mesmo
+  com CRC válido. Rust emitido valida leitura e replay reais (ADR-0084).
+
 - Kernel: arquivo de executável imutável, NtCreateFile/NtReadFile/
   NtQueryInformationFile síncronos e fechamento de handles; KRNL v14/CDFS v1
-  com migração legada sem mídia. Integração à sessão pendente (ADR-0083).
+  com migração legada sem mídia. Integração à sessão no ADR-0084 (ADR-0083).
 
 - Gamma-fade do nxdk integrado ao preparo/sonda/launcher, com capturas bruta e
   apresentada, verificação Win32 e estados contínuos (ADR-0081). Descoberta de

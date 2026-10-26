@@ -182,6 +182,23 @@ fn name(bus: &Bus, at: u32) -> Option<Vec<u8>> {
     bus.ler_bytes(GuestVirt(pointer), &mut bytes).ok()?;
     Some(bytes)
 }
+fn validate_open_args(bus: &Bus, call: &Call, args: &[u32]) -> Result<(), Erro> {
+    if args[1] & !0x80100081 != 0
+        || args[1] & 0x80000000 == 0 && args[1] & 0x81 != 0x81
+        || args[1] & 0x100000 == 0
+        || args[4] != 0
+        || args[6] > 7
+        || args[7] != 1
+        || !matches!(args[8], 0x20 | 0x60)
+    {
+        return Err(variant(
+            bus,
+            call,
+            "somente FILE_OPEN/read/synchronous nonalert, sem allocation size",
+        ));
+    }
+    Ok(())
+}
 impl Dispatcher {
     /// Publica o arquivo original de entrada uma única vez; sem handles/arquivos host.
     pub fn mount_executable_media(&mut self, bytes: &[u8]) -> xbox_core::Result<()> {
@@ -195,7 +212,7 @@ impl Dispatcher {
         let args: Vec<u32> = (0..9)
             .map(|i| call.argument(bus, i))
             .collect::<Result<_, _>>()?;
-        let (output, access, attributes, io) = (args[0], args[1], args[2], args[3]);
+        let (output, attributes, io) = (args[0], args[2], args[3]);
         if !ram_range(bus, output, 4, Acesso::Escrita)
             || !ram_range(bus, io, 8, Acesso::Escrita)
             || !ram_range(bus, attributes, 12, Acesso::Leitura)
@@ -210,20 +227,7 @@ impl Dispatcher {
         if self.files.image.is_none() {
             return Err(variant(bus, call, "sessão sem mídia de executável"));
         }
-        if access & !0x80100081 != 0
-            || access & 0x80000000 == 0 && access & 0x81 != 0x81
-            || access & 0x100000 == 0
-            || args[4] != 0
-            || args[6] > 7
-            || args[7] != 1
-            || !matches!(args[8], 0x20 | 0x60)
-        {
-            return Err(variant(
-                bus,
-                call,
-                "somente FILE_OPEN/read/synchronous nonalert, sem allocation size",
-            ));
-        }
+        validate_open_args(bus, call, &args)?;
         let root = bus.ler_u32(GuestVirt(attributes))?;
         let at = bus.ler_u32(GuestVirt(attributes + 4))?;
         let flags = bus.ler_u32(GuestVirt(attributes + 8))?;
@@ -273,6 +277,17 @@ impl Dispatcher {
             path = resolved;
         } else if root != 0 {
             return Err(variant(bus, call, "nome relativo sem namespace suportado"));
+        }
+        let device = b"\\Device\\CdRom0\\";
+        if !path
+            .get(..device.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(device))
+        {
+            return Err(variant(
+                bus,
+                call,
+                "dispositivo fora da mídia CdRom0 modelada",
+            ));
         }
         let matches = if flags == 0x40 {
             path.eq_ignore_ascii_case(PATH)

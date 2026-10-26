@@ -18,6 +18,11 @@ mod boot_dma_verification {
         let count=u32::from_le_bytes(bytes[count_at..count_at+4].try_into().unwrap()) as usize;
         bytes.drain(at..count_at+4+count*16);
     }
+    pub(super) fn legacy_file_media(bytes:&[u8])->Vec<u8>{
+        let mut result=bytes.to_vec();let at=result.windows(4).rposition(|v|v==b"CDFS").unwrap();
+        strip_file_media(&mut result);let empty=[b'C',b'D',b'F',b'S',1,0,0,0,0,0,0,0,0];
+        result.splice(at..at,empty);result
+    }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
     fn finish(s:&mut Session){s.atender_kernel().unwrap();assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);}
     // Fixture do layout físico anterior: remove a reserva e desloca os frames

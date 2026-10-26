@@ -18,6 +18,7 @@ mod dma;
 mod double_shifts;
 mod encoder_filters;
 mod exchange;
+mod files;
 mod free_contiguous;
 mod gpu_instance;
 mod indirect;
@@ -97,6 +98,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
+    main.push_str(&files::sources(output));
     main.push_str(&gpu_instance::sources(output));
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));

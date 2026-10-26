@@ -349,6 +349,11 @@ impl Session {
         state.eflags |= INTERRUPT_FLAG;
         state.fs_base = startup.fs_base;
         state.regs[ESP] = startup.esp;
+        let mut kernel = xbox_kernel::dispatch::Dispatcher::for_image(
+            xbe.header.base_address,
+            xbe.header.size_of_image,
+        )?;
+        kernel.mount_executable_media(bytes)?;
         Ok(Self {
             state,
             bus,
@@ -356,10 +361,7 @@ impl Session {
             vblanks: 0,
             scheduler: Some(scheduler::Scheduler::default()),
             in_interrupt: false,
-            kernel: xbox_kernel::dispatch::Dispatcher::for_image(
-                xbe.header.base_address,
-                xbe.header.size_of_image,
-            )?,
+            kernel,
         })
     }
 

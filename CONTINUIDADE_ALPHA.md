@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
 Atualizado em **2026-10-26**, com base no commit **`0438a9c`** e implementação local
-dos ADRs **0081–0083** (Fase 6 concluída; Fase 7 de I/O em andamento).
+dos ADRs **0081–0084** (Fase 6 concluída; Fase 7 de I/O em andamento).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0083) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0084) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (606 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (607 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `266 passed` em x86-64 e `250` fora dele —
+   confere o **contador de casos gerados**, hoje `269 passed` em x86-64 e `253` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -179,11 +179,24 @@ em 0,18 s. Inputs/SDK/estados continuam fora do Git; hashes e comandos no ADR-00
 
 ### Estado e migrações que precisam ser preservados
 
+**I/O do executável (PLANO 7.1–7.2, ADRs 0083–0084):** Session::load publica
+o XBE original como default.xbe somente leitura. NtCreateFile/NtReadFile/
+NtQueryInformationFile e NtClose usam handles guest, posição própria e bytes
+imutáveis; D: depende do link guest. Não abrem arquivos host. KRNL v14/CDFS v1
+salva mídia/handles; v1–v13 restauram sem mídia e não a ativam ao regravar.
+SAVE recusa mídia diferente do XBE original mesmo com CRC válido. P22 declara
+limites de tamanho/variantes/metadados; não é filesystem ou ISO completos.
+Gate target/gate/20261026-123910-iFilAuiI.log: **607 testes**, **269 gerados**;
+testes emitidos conferem ABI, leitura apesar de headers RAM modificados e replay
+integral com arquivo aberto. Quarto produtor próprio e fluxo público são 7.3.
+
 - **KRNL v14/CDFS v1 (ADR-0083, PLANO 7.1)**: três serviços de arquivo e
   NtClose usam mídia imutável/handles guest e cursor serializado. Perfil P22,
   um default.xbe até 32 MiB, leitura síncrona até 1 MiB, sem I/O host. Novos
-  dispatchers ainda precisam de mount_executable_media explícito; integrar
-  Session::load é 7.2. KRNL v1–v13 restaura sem mídia, sem promoção implícita.
+  dispatchers isolados precisam de mount_executable_media explícito; Session::load
+  passa a montar os bytes originais (ADR-0084). SAVE valida a igualdade entre
+  mídia e XBE do contêiner, além do CRC; não há leitura de arquivos host no HLE.
+  KRNL v1–v13 restaura sem mídia, sem promoção implícita.
   Onze testes novos; gate 606/266 em target/gate/20261026-121358-goLFnxPD.log.
 
 - **BUS0 v10/GAMM v1 (ADR-0079)**: RGB8 com índice/cursor de componente,

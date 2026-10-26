@@ -28,7 +28,7 @@ mod gpu_instance_verification {
         let mut migrated=loaded();Snapshot::load(&mut migrated,&mut SnapshotReader::new(&old).unwrap()).unwrap();
         assert!(!migrated.kernel.gpu_instance_memory().provisioned());attend(&mut migrated);boundary(&mut migrated);finish(&mut migrated);
         attend(&mut s);boundary(&mut s);let checkpoint=saved(&s);finish(&mut s);let complete=saved(&s);
-        assert!(saved(&migrated)==complete);let mut restored=loaded();Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();
+        assert!(migrated.kernel.executable_media().is_none());assert!(saved(&migrated)==super::boot_dma_verification::legacy_file_media(&complete));let mut restored=loaded();Snapshot::load(&mut restored,&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();
         assert!(saved(&restored)==checkpoint);finish(&mut restored);assert!(saved(&restored)==complete);
     }
     #[test]

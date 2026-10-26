@@ -479,7 +479,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   nxdk compila com asserts de ABI e traduz 12982 blocos sem --entry; montagem
   automática ainda é 7.2, execução real do produtor será validada em 7.3.
 
-- [ ] 7.2 Integrar a mídia à sessão e ao Rust gerado. Sessão nova publica o
+- [x] 7.2 Integrar a mídia à sessão e ao Rust gerado. Sessão nova publica o
   XBE original como default.xbe; restauração usa somente a mídia serializada.
   Leituras não usam bytes modificados da RAM nem arquivos abertos no host.
 
@@ -488,7 +488,13 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   aberto. Recusa preserva CPU e efeitos guest; snapshots legados continuam
   sem mídia. Replay não depende de arquivo host. ADR e documentação atualizados.
 
-- [ ] 7.3 Homebrew file-read e fluxo público. Fonte de teste própria no Git,
+  Evidência: `GATE OK: 607 testes`, target/gate/20261026-123910-iFilAuiI.log;
+  269 casos gerados. files_verification confere stdcall, bytes originais com
+  headers RAM alterados, handle/cursor/replay integral e recusa com CPU intacta;
+  KRNL v13 continua sem mídia. SAVE recusa mídia divergente com CRC válido.
+  ADR-0084; comparações integrais legadas preservadas com ausência explícita.
+
+- [~] 7.3 Homebrew file-read e fluxo público. Fonte de teste própria no Git,
   build isolado com SDK fixado, preparo/sonda/launcher para o quarto alvo.
   Exercitar CreateFileA/ReadFile/GetFileSizeEx/CloseHandle e exibir resultado
   calculado dos bytes lidos, com erro observável para qualquer divergência.

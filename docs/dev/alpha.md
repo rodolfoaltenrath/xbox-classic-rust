@@ -72,9 +72,17 @@ Resultados/hashes e limites físicos do perfil estão nos ADRs 0079–0082.
 seleciona outro destino (também disponível em modo finito). Diretório de destino
 explícito deve existir. Nunca sobrescreve estado ou o arquivo carregado.
 
+Sessões novas publicam o XBE original como arquivo guest somente leitura em
+`\Device\CdRom0\default.xbe`. O caminho `D:\default.xbe` depende do link D:
+criado pelo próprio guest. Escritas na RAM não alteram esse arquivo; leitura
+síncrona, posições por handle e bytes da mídia são parte do estado salvo.
+Não há acesso a caminhos do computador, outros arquivos, escrita ou ISO neste
+perfil. Estados KRNL anteriores à v14 continuam sem mídia depois de restaurar
+e regravar; a carga não ativa o perfil implicitamente (ADRs 0083–0084, P22).
+
 SAVE v1 contém o XBE exato e o snapshot integral com CRC32, limitado a 256 MiB;
 arquivos correntes têm dezenas de MiB, sem compressão. XBE divergente, corrupção,
-versão futura e truncamento recusam antes de trocar a sessão. CRC não autentica
+versão futura, mídia divergente e truncamento recusam antes de trocar a sessão. CRC não autentica
 arquivo malicioso; não carregar estados desconhecidos. Publicação requer hard
 links (NTFS/ext4); sem promessa de durabilidade do diretório sob falta de energia.
 Pausa/janela/teclas não são serializadas. Formatos internos e migrações legadas

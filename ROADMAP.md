@@ -1234,6 +1234,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-26 | Alpha / vídeo | Saída digital com gamma (ADR-0080, PLANO 6.2) | — | Cópia BGRA aplica rampa guest por canal, preservando RAM/alfa; exportações bruta/apresentada separadas e sem sobrescrita; estados legados conservam imagem bruta |
 | 2026-10-26 | Alpha / vídeo | Gamma-fade e callbacks MOVSS (ADRs 0081–0082, PLANO 6.3) | — | 13255 blocos sem --entry, 161 chamadas/zero recusadas e gamma não identidade; readback Win32 sem diferenças e distinto da RAM; pausa/save/restore/replay integral, 595 testes/266 gerados debug e release/21 ferramentas; hello/triangle preservados, fases 0–6 concluídas |
 | 2026-10-26 | Kernel / I/O | Arquivo imutável e leitura síncrona (ADR-0083, PLANO 7.1) | — | NtCreateFile/NtReadFile/NtQueryInformationFile e close, KRNL v14/CDFS v1, 11 testes novos e gate 606/266; integração à sessão e produtor real pendentes |
+| 2026-10-26 | Alpha / I/O | Mídia original na sessão AOT (ADR-0084, PLANO 7.2) | — | Session publica default.xbe original; SAVE confere identidade da mídia; Rust emitido abre/lê/consulta/fecha e reproduz handle aberto; kernels legados continuam sem mídia |
 
 
 ---
