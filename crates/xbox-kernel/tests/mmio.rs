@@ -2,7 +2,7 @@
 //!
 //! O contrato: a janela existe como identidade sobre o físico, é RW e nunca executável,
 //! o bus **registra** o que o guest toca, e nada vaza para a RAM. O dispositivo não tem
-//! modelo — escritas são descartadas e leituras devolvem zero como placeholder declarado.
+//! modelo nos offsets não implementados — escritas são descartadas e leituras devolvem zero.
 
 use xbox_formats::fixtures::xbe_com_codigo;
 use xbox_kernel::loader::Image;
@@ -67,18 +67,18 @@ fn escrita_em_registrador_e_registrada_e_descartada_sem_tocar_a_ram() {
     let mut bus = bus();
     let antes = bus.arena().bytes().to_vec();
 
-    bus.escrever_u8(GuestVirt(0xFD68_13C8), 0).unwrap();
+    bus.escrever_u8(GuestVirt(0xFD68_13D8), 0).unwrap();
     for _ in 0..768 {
-        bus.escrever_u8(GuestVirt(0xFD68_13C9), 0xAB).unwrap();
+        bus.escrever_u8(GuestVirt(0xFD68_13D9), 0xAB).unwrap();
     }
 
-    // A telemetria diz exatamente o que o guest fez: um registrador de índice e uma
-    // porta de dados escrita 768 vezes — a rampa de gamma de 256 entradas RGB.
+    // Portas vizinhas ao DAC continuam sem modelo (ADR-0079). A telemetria guarda uma
+    // escrita simples e outra repetida 768 vezes, sem qualquer efeito na RAM.
     let registros = bus.telemetria().registros();
     assert_eq!(registros.len(), 2, "{}", bus.telemetria().relatorio());
     let dados = registros
         .iter()
-        .find(|r| r.endereco == GuestPhys(0xFD68_13C9))
+        .find(|r| r.endereco == GuestPhys(0xFD68_13D9))
         .expect("porta de dados registrada");
     assert_eq!(dados.ocorrencias, 768);
     assert_eq!(dados.operacao, Operacao::Escrita);

@@ -6,6 +6,11 @@ mod boot_dma_verification {
     mod guest {include!("boot_dma_guest.rs");}
     fn loaded()->Session{Session::load(include_bytes!("boot_dma_guest.xbe")).unwrap()}
     fn saved(s:&Session)->Vec<u8>{let mut w=SnapshotWriter::new();s.save(&mut w);w.finish()}
+    pub(super) fn strip_gamma(bytes:&mut Vec<u8>){
+        let at=bytes.windows(4).rposition(|v|v==b"GAMM").unwrap();
+        assert_eq!(&bytes[at+4..at+8],&1u32.to_le_bytes());
+        bytes.drain(at..at+xbox_mem::nv2a_gamma::SNAPSHOT_BYTES);
+    }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
     fn finish(s:&mut Session){s.atender_kernel().unwrap();assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);}
     // Fixture do layout físico anterior: remove a reserva e desloca os frames
@@ -23,7 +28,7 @@ mod boot_dma_verification {
         let mut frames=AlocadorDeFrames::novo(s.bus.ram());
         for frame in 1..old_frames.total(){if old_frames.em_uso(frame){frames.reservar(GuestPhys((frame-1)*4096),1).unwrap();}}
         *s.bus.frames_mut()=frames;
-        let mut bytes=saved(&s);let at=bytes.windows(4).position(|v|v==b"BUS0").unwrap();bytes[at+4..at+8].copy_from_slice(&5u32.to_le_bytes());
+        let mut bytes=saved(&s);strip_gamma(&mut bytes);let at=bytes.windows(4).position(|v|v==b"BUS0").unwrap();bytes[at+4..at+8].copy_from_slice(&5u32.to_le_bytes());
         let graph=bytes.windows(4).rposition(|v|v==b"PGRF").unwrap();let len=u64::from_le_bytes(bytes[graph+12..graph+20].try_into().unwrap()) as usize;bytes.drain(graph..graph+20+len);let at=bytes.windows(4).rposition(|v|v==b"PFFO").unwrap();let count=u32::from_le_bytes(bytes[at+12..at+16].try_into().unwrap()) as usize;let mut end=at+16+count*4;if u32::from_le_bytes(bytes[at+8..at+12].try_into().unwrap())==2{let len=u64::from_le_bytes(bytes[end..end+8].try_into().unwrap()) as usize;end+=8+len;}bytes.drain(at..end);
         let at=bytes.windows(4).position(|v|v==b"BTPG").unwrap();bytes.drain(at..at+9);bytes
     }

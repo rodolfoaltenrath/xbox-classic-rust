@@ -16,6 +16,11 @@ pub(super) fn without_pfifo(bytes: &[u8]) -> &[u8] {
 
 /// BUS0 até v8 terminava no PFIFO.
 pub(super) fn without_pgraph(bytes: &[u8]) -> &[u8] {
+    // BUS0 v10 acrescentou GAMM depois do PGRAPH. A fixture antiga precisa
+    // retirar o campo novo, não truncar/engolir parte da seção anterior.
+    let gamma = bytes.len() - xbox_mem::nv2a_gamma::SNAPSHOT_BYTES;
+    assert_eq!(&bytes[gamma..gamma + 4], b"GAMM");
+    let bytes = &bytes[..gamma];
     let at = bytes.windows(4).rposition(|v| v == b"PGRF").expect("PGRF");
     let len = u64::from_le_bytes(bytes[at + 12..at + 20].try_into().unwrap()) as usize;
     assert_eq!(at + 20 + len, bytes.len());

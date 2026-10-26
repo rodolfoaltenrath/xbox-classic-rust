@@ -1112,6 +1112,7 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P18 | **PGRAPH SoftwareV1 em RAM** (ADR-0068): F32 arrays, VP MOV/MUL/ADD/MAD/RCP, raster de listas TRIANGLES e combiner diffuse | caminho público do triangle, referência analítica versionada e dados guest reais | precisão software (arestas 8 bits, VP f32, pesos f64), opcodes/modos limitados, sem textura/blend; não é comparação física do NV2A | novos perfis com capturas/hardware e extensão validada de raster/combiner/shaders, preservando SoftwareV1 e replay |
 | P19 | **Scheduler TwoThreadV1** (ADR-0070): inicial + uma filha, Passive/IF/shadow, quantum sintético 4096 e reavaliação de waits após HLE | Delay bloqueia e outra Ready executa sem salto de Clock; contexto completo e replay | sem múltiplas filhas/prioridades/APC/timeout absoluto; no perfil MaskedV1 há uma única chamada NtWait pendente e a segunda recusa; contenção de critical section recusa; não representa o dispatcher NT geral | casos guest reais exigindo extensão de threads/filas/prioridades/waits, com perfil e migração testados |
 | P20 | **IRQ MaskedV1/HLE** (ADR-0072): IF/shadow e DIRQL efetivos entre instruções, mas ISR/DPC atômicos e somente linha GPU conectada | pbkit executa seus callbacks reais, com replay e preempção dentro de bloco | sem IRQ aninhada nos callbacks, PIC/APIC geral, NMI, IDT/IRET de kernel guest ou retomada de HLT; KfRaise/KfLower continuam recusados | consumidor real exigindo esses caminhos, evidência e frames/interrupções persistentes com migração/replay |
+| P21 | **DAC gamma PublicReferenceV1** (ADR-0079): RGB8 imediato, identidade inicial e cursor circular; apresentação ainda é a tarefa PLANO 6.2 | HAL/pbkit escrevem a tabela completa; perfil público xemu fixado fornece semântica e reset | wrap não confirmado em console, reendereçamento parcial com ressalva no nxdk, sem latência/saída analógica/formatos extra | evidência física de wrap/reset/reescrita e extensão por perfil versionado; não redefinir snapshots antigos |
 
 O alpha contínuo (ADRs 0076–0078) só muda a política do host: pausa não avança
 CPU/Clock, SAVE v1 envolve os snapshots existentes e os atalhos não são USB/XID.
@@ -1228,6 +1229,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-23 | Alpha / estados | Arquivos completos ligados ao XBE (ADR-0076, PLANO 5.1) | — | SAVE v1, CRC32, teto 256 MiB, sessão candidata e publicação sem sobrescrita; --salvar/--carregar no main; formatos internos preservados |
 | 2026-10-23 | Alpha / execução | Modo contínuo e pausa/save/restore host (ADR-0077, PLANO 5.2) | — | Mesmo guest entre trechos; só orçamento permite continuar; pausa sem Clock/CPU; F5 gera estado e F9 restaura candidato; teclado Win32 não é input Xbox |
 | 2026-10-26 | Alpha / execução | Iniciador contínuo e retomada integral (ADR-0078, PLANO 5.3) | — | Hello/triangle pausam sem avanço e restauram arquivo integral idêntico; retomada em outro processo; close com save final até 2422 ms; gate 586/261 e 19 ferramentas; sondas preservadas, fases 0–5 concluídas |
+| 2026-10-26 | 5 / vídeo | DAC gamma RGB8 (ADR-0079, PLANO 6.1) | — | BUS0 v10/GAMM v1, cursor parcial e migração legada; referência pública fixada; aplicação na apresentação é a tarefa 6.2 |
 
 
 ---
@@ -1241,7 +1243,8 @@ Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
 Gate Windows 586, 261 casos gerados debug/release e 19 testes de ferramentas.
 As duas sondas preservam CPU/pixels e zero recusas; restore integral e
 fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
-de bastão. Novo bloco exige escopo do mantenedor. Linux gráfico, controles
+de bastão. Fase 6 em execução: DAC gamma RGB8, aplicação na apresentação e
+terceiro homebrew gamma-fade, conforme o PLANO. Linux gráfico, controles
 guest/áudio, filtros e compatibilidade comercial permanecem pendentes.
 Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.
 

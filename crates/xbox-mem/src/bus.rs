@@ -38,6 +38,7 @@ use crate::boot_dma::BootDmaPage;
 use crate::dispositivos::{Contexto, Dispositivo, Motivo, Operacao, Telemetria};
 use crate::frames::AlocadorDeFrames;
 use crate::mmu::{Falta, Mmu, MotivoDeFalta};
+use crate::nv2a_gamma::Nv2aGamma;
 use crate::nv2a_irq::Nv2aIrq;
 use crate::nv2a_pfb::Nv2aPfb;
 use crate::nv2a_pfifo::Nv2aPfifo;
@@ -56,6 +57,7 @@ pub struct Bus {
     boot_dma: BootDmaPage,
     telemetria: Telemetria,
     nv2a_irq: Nv2aIrq,
+    nv2a_gamma: Nv2aGamma,
     nv2a_pramdac: Nv2aPramdac,
     nv2a_pfb: Nv2aPfb,
     nv2a_pramin: Nv2aPramin,
@@ -83,6 +85,7 @@ impl Bus {
             boot_dma: BootDmaPage::default(),
             telemetria: Telemetria::nova(),
             nv2a_irq: Nv2aIrq::default(),
+            nv2a_gamma: Nv2aGamma::default(),
             nv2a_pramdac: Nv2aPramdac::default(),
             nv2a_pfb: Nv2aPfb::for_ram(tamanho),
             nv2a_pramin: Nv2aPramin::default(),
@@ -142,6 +145,10 @@ impl Bus {
     /// Os registradores de interrupção de vblank do NV2A (ADR-0055).
     pub const fn nv2a_irq(&self) -> &Nv2aIrq {
         &self.nv2a_irq
+    }
+    /// Rampa do DAC e perfil de apresentação; programação ocorre por MMIO.
+    pub const fn nv2a_gamma(&self) -> &Nv2aGamma {
+        &self.nv2a_gamma
     }
     /// Perfil e coeficiente autoritativos; programação ocorre pelos acessos MMIO.
     pub const fn nv2a_pramdac(&self) -> &Nv2aPramdac {
@@ -400,6 +407,13 @@ impl Bus {
                         acesso: Acesso::Escrita,
                         motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
                     })?;
+                self.nv2a_gamma
+                    .validate_access(deslocamento, restante.len(), true)
+                    .map_err(|o_que| Falta {
+                        endereco: atual,
+                        acesso: Acesso::Escrita,
+                        motivo: MotivoDeFalta::NaoImplementado { fisico: pa, o_que },
+                    })?;
             }
             if matches!(
                 self.mapa.classificar(pa),
@@ -633,6 +647,8 @@ impl Bus {
             Ok(self.nv2a_pfb.read(offset))
         } else if self.nv2a_pramdac.validate_access(offset, len)? {
             Ok(self.nv2a_pramdac.coefficient())
+        } else if self.nv2a_gamma.validate_access(offset, len, false)? {
+            Ok(Some(self.nv2a_gamma.read()))
         } else if len == 4 {
             Ok(self.nv2a_irq.read(offset))
         } else {
@@ -668,6 +684,8 @@ impl Bus {
             self.nv2a_pramdac.write(u32::from_le_bytes(
                 bytes.try_into().expect("largura validada"),
             ));
+        } else if self.nv2a_gamma.validate_access(offset, bytes.len(), true)? {
+            self.nv2a_gamma.write(offset, bytes[0]);
         } else if let Ok(word) = <[u8; 4]>::try_from(bytes) {
             return Ok(self.nv2a_irq.write(offset, u32::from_le_bytes(word)));
         } else {
@@ -787,7 +805,7 @@ fn valor_para_telemetria(origem: &[u8]) -> Option<u32> {
 
 impl Snapshot for Bus {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("BUS0", 9);
+        out.section("BUS0", 10);
         out.u64(self.arena.len() as u64);
         self.arena.save(out);
         self.mmu.save(out);
@@ -799,11 +817,12 @@ impl Snapshot for Bus {
         self.boot_dma.save(out);
         self.nv2a_pfifo.save(out);
         self.nv2a_pgraph.save(out);
+        self.nv2a_gamma.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> std::result::Result<(), SnapshotError> {
-        let versao = inp.section("BUS0", 9)?;
-        if !matches!(versao, 1..=9) {
+        let versao = inp.section("BUS0", 10)?;
+        if !matches!(versao, 1..=10) {
             return Err(SnapshotError::BadValue {
                 section: "BUS0",
                 what: "versão de bus desconhecida",
@@ -867,6 +886,11 @@ impl Snapshot for Bus {
                 section: "PGRF",
                 what,
             })?;
+        if versao >= 10 {
+            self.nv2a_gamma.load(inp)?;
+        } else {
+            self.nv2a_gamma = Nv2aGamma::legacy();
+        }
         Ok(())
     }
 }

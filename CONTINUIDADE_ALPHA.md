@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-26**, com base no commit **`1361f4a`** e implementação local
-do ADR **0078** (iniciador e validação do alpha contínuo; PLANO Fase 5 concluída).
+Atualizado em **2026-10-26**, com base no commit **`c9c7220`** e implementação local
+do ADR **0079** (DAC gamma; PLANO Fase 6 em execução).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,15 +29,15 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P20), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P21), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0078) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0079) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v9/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v10/`IRQL` v2, `AOTS` v4/`SCHD` v1/`TCTX` v2/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -46,7 +46,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (586 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (592 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
    confere o **contador de casos gerados**, hoje `261 passed` em x86-64 e `245` fora dele —
    some os testes novos ali).
@@ -127,7 +127,7 @@ aproximadamente 68 MB e são ignoradas pelo Git. Em ambos, outro processo
 carregou os mesmos CPU/Clock e continuou. A tentativa interrompida do triangle
 em 23/10 não foi usada como aceite; em 26/10, executar depois do gate com
 -TimeoutSeconds 300 para progresso. WM_CLOSE continua limitado a cinco segundos.
-Gate atual 586/261 gerados debug e 19 ferramentas; release 261 validado em 23/10.
+Gate atual 592/261 gerados debug e 19 ferramentas; release 261 validado em 23/10.
 Sondas de 26/10 preservam 45/0/302 pixels no hello e 278/0/305922 no triangle.
 Readback Win32 também preserva zero diferenças RGB: pastas
 session-hello-frame-phase5/ e session-triangle-frame-phase5-20261026/.
@@ -137,6 +137,11 @@ hello-LAfc6doM (target/alpha-live-smoke-hello/runs) e triangle-LqNrxSMj
 
 ### Estado e migrações que precisam ser preservados
 
+- **BUS0 v10/GAMM v1 (ADR-0079)**: RGB8 com índice/cursor de componente,
+  identidade e wrap do perfil público. BUS0 v1–v9 migra sem modelo e sem gamma
+  na imagem; regravar mantém isso. Apenas os dois bytes observados são modelados;
+  outras larguras/leitura de dados recusam. Incertezas físicas em P21. PLANO 6.2
+  aplica a paleta à apresentação; 6.1 só entrega o dispositivo.
 - **Controle host (ADR-0077)**: --continuo exige --janela; Espaço pausa,
   F5 salva em --estados, F9 restaura última geração desta execução. Apenas
   orçamento vira próximo trecho. Pausa/fila de teclas não são estado guest;
@@ -288,10 +293,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases **0–5 estão concluídas**: arquivos SAVE ligados ao XBE, pausa,
-execução contínua, gerações e retomada em outro processo, com launcher e
-evidências dos dois homebrews. Não há tarefa aberta no PLANO; novo bloco
-depende de escopo do mantenedor. Não reabrir tarefas históricas concluídas.
+As fases **0–5 estão concluídas**. O mantenedor autorizou a **Fase 6**:
+DAC gamma, aplicação na apresentação e gamma-fade como terceiro homebrew.
+Seguir PLANO em ordem: modelo/migrações (6.1), saída transformada com RAM
+preservada (6.2), integração/validação real (6.3). Não reabrir tarefas históricas.
 Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de

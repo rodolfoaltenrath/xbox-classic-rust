@@ -132,6 +132,10 @@ fn bus_v1_v2_migram_sem_herdar_perfil_e_o_legado_sobrevive_novo_snapshot() {
         destination.escrever_u32(PLL, 0x00010902).unwrap();
         load(&mut destination, &old);
         assert_eq!(
+            destination.nv2a_gamma().profile(),
+            xbox_mem::nv2a_gamma::GammaProfile::LegacyUnmodeled
+        );
+        assert_eq!(
             destination.nv2a_pramdac().profile(),
             PramdacProfile::LegacyUnmodeled
         );

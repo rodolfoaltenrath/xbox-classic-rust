@@ -1,4 +1,4 @@
-# Plano: alpha contínua e retomável no Windows
+# Plano: gamma do NV2A e fades reais no alpha
 
 Modo: autônomo
 
@@ -18,11 +18,11 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 5**, acrescentada em 2026-10-23 por autorização do mantenedor.
-As fases 0–4 abaixo preservam o plano anterior concluído e suas evidências.
-Meta: executar continuamente, pausar e salvar/restaurar a sessão inteira com
-vínculo ao XBE, preservando erros e reprodução determinística.
-Não inclui controles guest/USB, áudio, texturas ou backend Linux.
+Bloco vigente: **Fase 6**, acrescentada em 2026-10-26 por autorização do mantenedor.
+As fases 0–5 abaixo preservam o plano anterior concluído e suas evidências.
+Meta: modelar a rampa RGB escrita pelo guest, aplicá-la na apresentação e
+executar gamma-fade do nxdk sem perder snapshots nem o diagnóstico da RAM bruta.
+Não inclui filtros analógicos do encoder, controles guest/USB, áudio ou texturas.
 
 Ponto de partida histórico (CONTINUIDADE_ALPHA.md, 2026-10-22): o triangle chega ao polling de
 NV_USER DMA_GET (0xFD800044, sem modelo), DMA_GET fica em zero por 12402025 leituras,
@@ -384,3 +384,47 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   triangle-LqNrxSMj (alpha/runs), status 0, final.obsstate preservado; Cargo
   reutilizado em 0,42/1,46 s. ADR-0078, README, alpha, CHANGELOG, ROADMAP e
   passagem de bastão atualizados. Fases 0–5 concluídas.
+
+## Fase 6 — Gamma do NV2A e fades reais
+
+- [x] 6.1 Modelar o DAC observado em MMIO. Documentar consumidor nxdk e referência
+  pública fixada; implementar índice, componentes RGB de 8 bits e avanço do
+  cursor, com larguras recusadas antes de efeitos. BUS0 novo e seção própria
+  versionada, preservando a ausência do modelo em snapshots antigos.
+
+  **Aceite:** GATE OK; testes de identidade, ordem RGB, programação parcial,
+  reset de índice, limite/wrap do perfil público, aliases físicos/virtuais,
+  larguras inválidas sem efeito, snapshot entre componentes, corrupção e
+  migração de BUS0 v9 e anteriores sem ativação implícita. Atualizar fixtures
+  legadas pelo layout real, preservando asserções. ADR, CHANGELOG, ROADMAP
+  §16.1 e passagem de bastão registram fonte, incertezas e limites.
+
+  Evidência: `GATE OK: 592 testes`, target/gate/20261026-104736-VwWbcpTU.log;
+  261 casos gerados. Seis testes em xbox-mem/tests/gamma.rs cobrem RGB/alias,
+  preflight, wrap, replay parcial, corrupção e BUS0 v9. Migrações v1/v2 também
+  conferem LegacyUnmodeled; fixtures legadas nativas preservam seus contratos.
+  Teste histórico de MMIO sem modelo mantém asserções em portas vizinhas.
+  BUS0 v10/GAMM v1, ADR-0079; fontes fixadas e incertezas registradas em P21.
+- [ ] 6.2 Aplicar a rampa à apresentação, preservando a memória guest. Manter
+  --quadro como BGRA bruto e oferecer exportação separada da saída apresentada.
+  Nenhum título ou shader reconhecido por nome/hash; nenhum empréstimo da arena
+  ao backend de janela. Snapshot antigo continua com a apresentação legada.
+
+  **Aceite:** GATE OK; Rust realmente gerado comprova RAM inalterada e saída
+  transformada por rampa não identidade, com alfa preservado, canais corretos,
+  exportação sem sobrescrita, replay e restore legado. Identidade mantém as
+  imagens de hello/triangle; testes de opções/exportação passam. ADR, CHANGELOG,
+  docs/dev/alpha.md e continuidade explicam captura bruta versus saída do DAC.
+
+- [ ] 6.3 Entregar gamma-fade como terceiro homebrew reproduzível. Integrar
+  preparo/sonda/launcher, com build nxdk fixado e fontes fora do Git. Resolver
+  somente bloqueios concretos de tradução/kernel encontrados no alvo, sem
+  sucesso artificial. Preservar modo contínuo e estados da fase anterior.
+
+  **Aceite:** GATE OK e testes de ferramentas; sondas hello/triangle mantêm zero
+  recusas e imagens de referência. Gamma-fade executa pelo menos uma transição
+  real de rampa além da identidade, com zero serviços recusados; janela Win32
+  coincide com a saída exportada do DAC e difere da RAM bruta nesse ponto.
+  Save/restore com rampa não identidade preserva saída e continuação. README,
+  ADR, CHANGELOG, ROADMAP §16.1 e passagem de bastão registram comandos,
+  métricas, hashes e limites. Commit por tarefa, nenhum push.

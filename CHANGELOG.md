@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- DAC gamma RGB8 do NV2A: índice, três componentes e cursor do perfil público,
+  acessos por byte com recusa antes de efeitos. BUS0 v10/GAMM v1 guarda paleta
+  e canal parcial; estados antigos preservam ausência de modelo. Evidência
+  nxdk/xemu fixada e incertezas P21 declaradas (ADR-0079, PLANO 6.1).
+
 - Iniciador do alpha com --continuo/--carregar/--salvar, gerações F5 por rodada
   e estado final automático no modo contínuo. verify-session.ps1 verifica
   sessão integral em pausa, avanço, restore, falha recuperável e outro processo;

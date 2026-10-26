@@ -68,6 +68,7 @@ pub mod bus;
 pub mod dispositivos;
 pub mod frames;
 pub mod mmu;
+pub mod nv2a_gamma;
 pub mod nv2a_irq;
 pub mod nv2a_pfb;
 pub mod nv2a_pfifo;
