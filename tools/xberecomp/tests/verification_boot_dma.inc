@@ -11,6 +11,13 @@ mod boot_dma_verification {
         assert_eq!(&bytes[at+4..at+8],&1u32.to_le_bytes());
         bytes.drain(at..at+xbox_mem::nv2a_gamma::SNAPSHOT_BYTES);
     }
+    pub(super) fn strip_file_media(bytes:&mut Vec<u8>){
+        let at=bytes.windows(4).rposition(|v|v==b"CDFS").unwrap();
+        assert_eq!(&bytes[at+4..at+8],&1u32.to_le_bytes());
+        let count_at=match bytes[at+8] {0=>at+9,1=>at+13+u32::from_le_bytes(bytes[at+9..at+13].try_into().unwrap()) as usize,_=>panic!("presence")};
+        let count=u32::from_le_bytes(bytes[count_at..count_at+4].try_into().unwrap()) as usize;
+        bytes.drain(at..count_at+4+count*16);
+    }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
     fn finish(s:&mut Session){s.atender_kernel().unwrap();assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);}
     // Fixture do layout físico anterior: remove a reserva e desloca os frames

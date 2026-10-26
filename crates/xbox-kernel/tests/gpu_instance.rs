@@ -124,7 +124,7 @@ fn snapshot_preserva_reserva_e_rejeita_marcador_sem_recurso_transacionalmente() 
     assert_eq!(saved(&restored), active);
     for (version, value) in [(0u32, 0u8), (2, 0), (1, 2)] {
         let mut bad = active.clone();
-        let at = bad.len() - 9;
+        let at = bad.windows(4).rposition(|v| v == b"GINS").unwrap();
         bad[at + 4..at + 8].copy_from_slice(&version.to_le_bytes());
         bad[at + 8] = value;
         assert!(
@@ -135,7 +135,8 @@ fn snapshot_preserva_reserva_e_rejeita_marcador_sem_recurso_transacionalmente() 
         assert_eq!(saved(&restored), active);
     }
     let mut orphan = cold;
-    *orphan.last_mut().unwrap() = 1;
+    let at = orphan.windows(4).rposition(|v| v == b"GINS").unwrap();
+    orphan[at + 8] = 1;
     assert!(
         restored
             .load(&mut SnapshotReader::new(&orphan).unwrap())
@@ -150,7 +151,8 @@ fn snapshot_preserva_reserva_e_rejeita_marcador_sem_recurso_transacionalmente() 
 fn krnl_v12_migra_para_nao_provisionado_sem_herdar_destino() {
     let (mut bus, mut d, r) = setup();
     let mut old = saved(&d);
-    old.truncate(old.len() - 9);
+    let at = old.windows(4).rposition(|v| v == b"GINS").unwrap();
+    old.truncate(at);
     old[16..20].copy_from_slice(&12u32.to_le_bytes());
     call(&mut bus, &mut d, &r, u32::MAX, 0x12100).unwrap();
     let mut reader = SnapshotReader::new(&old).unwrap();

@@ -17,6 +17,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Kernel: arquivo de executável imutável, NtCreateFile/NtReadFile/
+  NtQueryInformationFile síncronos e fechamento de handles; KRNL v14/CDFS v1
+  com migração legada sem mídia. Integração à sessão pendente (ADR-0083).
+
 - Gamma-fade do nxdk integrado ao preparo/sonda/launcher, com capturas bruta e
   apresentada, verificação Win32 e estados contínuos (ADR-0081). Descoberta de
   callbacks preserva candidatos GPR através de MOVSS, mantendo chamadas

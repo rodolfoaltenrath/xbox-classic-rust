@@ -1113,6 +1113,7 @@ Fontes técnicas públicas que sustentam a implementação (consultar, citar nos
 | P19 | **Scheduler TwoThreadV1** (ADR-0070): inicial + uma filha, Passive/IF/shadow, quantum sintético 4096 e reavaliação de waits após HLE | Delay bloqueia e outra Ready executa sem salto de Clock; contexto completo e replay | sem múltiplas filhas/prioridades/APC/timeout absoluto; no perfil MaskedV1 há uma única chamada NtWait pendente e a segunda recusa; contenção de critical section recusa; não representa o dispatcher NT geral | casos guest reais exigindo extensão de threads/filas/prioridades/waits, com perfil e migração testados |
 | P20 | **IRQ MaskedV1/HLE** (ADR-0072): IF/shadow e DIRQL efetivos entre instruções, mas ISR/DPC atômicos e somente linha GPU conectada | pbkit executa seus callbacks reais, com replay e preempção dentro de bloco | sem IRQ aninhada nos callbacks, PIC/APIC geral, NMI, IDT/IRET de kernel guest ou retomada de HLT; KfRaise/KfLower continuam recusados | consumidor real exigindo esses caminhos, evidência e frames/interrupções persistentes com migração/replay |
 | P21 | **DAC gamma PublicReferenceV1** (ADRs 0079–0080): RGB8 imediato, identidade inicial e cursor circular; cópia apresentada aplica a paleta | HAL/pbkit escrevem a tabela completa; perfil público xemu fixado fornece semântica e reset | wrap não confirmado em console, reendereçamento parcial com ressalva no nxdk, sem latência/saída analógica/formatos extra | evidência física de wrap/reset/reescrita e extensão por perfil versionado; não redefinir snapshots antigos |
+| P22 | **Arquivo de executável ImageFileV1** (ADR-0083): um default.xbe imutável, até 32 MiB/256 handles, leitura síncrona até 1 MiB por chamada; metadados virtuais declarados | permite validar I/O real do guest, posições e replay sem depender de arquivos host | sem diretórios, arquivos adicionais, ISO, escrita/async; timestamps zero e allocation size por byte não representam disco físico | integrar VFS/mídia com nomes e metadados derivados, variantes NT e perfis de armazenamento com evidência/migração |
 
 O alpha contínuo (ADRs 0076–0078) só muda a política do host: pausa não avança
 CPU/Clock, SAVE v1 envolve os snapshots existentes e os atalhos não são USB/XID.
@@ -1232,6 +1233,7 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-26 | 5 / vídeo | DAC gamma RGB8 (ADR-0079, PLANO 6.1) | — | BUS0 v10/GAMM v1, cursor parcial e migração legada; referência pública fixada; aplicação na apresentação é a tarefa 6.2 |
 | 2026-10-26 | Alpha / vídeo | Saída digital com gamma (ADR-0080, PLANO 6.2) | — | Cópia BGRA aplica rampa guest por canal, preservando RAM/alfa; exportações bruta/apresentada separadas e sem sobrescrita; estados legados conservam imagem bruta |
 | 2026-10-26 | Alpha / vídeo | Gamma-fade e callbacks MOVSS (ADRs 0081–0082, PLANO 6.3) | — | 13255 blocos sem --entry, 161 chamadas/zero recusadas e gamma não identidade; readback Win32 sem diferenças e distinto da RAM; pausa/save/restore/replay integral, 595 testes/266 gerados debug e release/21 ferramentas; hello/triangle preservados, fases 0–6 concluídas |
+| 2026-10-26 | Kernel / I/O | Arquivo imutável e leitura síncrona (ADR-0083, PLANO 7.1) | — | NtCreateFile/NtReadFile/NtQueryInformationFile e close, KRNL v14/CDFS v1, 11 testes novos e gate 606/266; integração à sessão e produtor real pendentes |
 
 
 ---
@@ -1246,7 +1248,8 @@ Gate Windows 595, 266 casos gerados debug/release e 21 testes de ferramentas.
 Hello/triangle preservam CPU/pixels e zero recusas; gamma-fade mostra rampa
 não identidade com janela igual ao DAC e distinta da RAM. Restore integral e
 fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
-de bastão. Não há tarefa aberta no PLANO; o próximo bloco precisa de escopo.
+de bastão. Fase 7 em andamento: arquivo original de mídia, I/O síncrona,
+persistência dos handles e homebrew file-read próprio.
 Linux gráfico, controles guest/áudio, filtros e compatibilidade comercial
 permanecem pendentes.
 Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.

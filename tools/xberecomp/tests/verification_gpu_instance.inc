@@ -23,7 +23,7 @@ mod gpu_instance_verification {
     }
     #[test]
     fn snapshot_replay_e_migracao_krnl_v12_preservam_ou_provisionam_pool(){
-        let mut s=loaded();boundary(&mut s);let mut old=saved(&s);
+        let mut s=loaded();boundary(&mut s);let mut old=saved(&s);super::boot_dma_verification::strip_file_media(&mut old);
         let at=old.windows(4).rposition(|v|v==b"KRNL").unwrap();old[at+4..at+8].copy_from_slice(&12u32.to_le_bytes());let at=old.windows(4).rposition(|v|v==b"GINS").unwrap();old.drain(at..at+9);
         let mut migrated=loaded();Snapshot::load(&mut migrated,&mut SnapshotReader::new(&old).unwrap()).unwrap();
         assert!(!migrated.kernel.gpu_instance_memory().provisioned());attend(&mut migrated);boundary(&mut migrated);finish(&mut migrated);

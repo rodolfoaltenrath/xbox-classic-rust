@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-26**, com base no commit **`2d2868f`** e implementação local
-dos ADRs **0081–0082** (gamma-fade; Fase 6 do PLANO concluída).
+Atualizado em **2026-10-26**, com base no commit **`0438a9c`** e implementação local
+dos ADRs **0081–0083** (Fase 6 concluída; Fase 7 de I/O em andamento).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,15 +29,15 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P21), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0082) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0083) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v13/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v1/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v14/`CDFS` v1/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v10/`IRQL` v2, `AOTS` v4/`SCHD` v1/`TCTX` v2/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -46,7 +46,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (595 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (606 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
    confere o **contador de casos gerados**, hoje `266 passed` em x86-64 e `250` fora dele —
    some os testes novos ali).
@@ -178,6 +178,13 @@ estado final 68287494 bytes, host/status0 e close 804,7775 ms. Build reutilizado
 em 0,18 s. Inputs/SDK/estados continuam fora do Git; hashes e comandos no ADR-0081.
 
 ### Estado e migrações que precisam ser preservados
+
+- **KRNL v14/CDFS v1 (ADR-0083, PLANO 7.1)**: três serviços de arquivo e
+  NtClose usam mídia imutável/handles guest e cursor serializado. Perfil P22,
+  um default.xbe até 32 MiB, leitura síncrona até 1 MiB, sem I/O host. Novos
+  dispatchers ainda precisam de mount_executable_media explícito; integrar
+  Session::load é 7.2. KRNL v1–v13 restaura sem mídia, sem promoção implícita.
+  Onze testes novos; gate 606/266 em target/gate/20261026-121358-goLFnxPD.log.
 
 - **BUS0 v10/GAMM v1 (ADR-0079)**: RGB8 com índice/cursor de componente,
   identidade e wrap do perfil público. BUS0 v1–v9 migra sem modelo e sem gamma
@@ -337,11 +344,12 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases **0–6 estão concluídas**. O alpha apresenta hello, triangle e
-gamma-fade; o último valida gamma não identidade e retomada integral. Não há
-tarefa aberta no PLANO; o próximo bloco ainda precisa ser definido conforme
-o escopo solicitado pelo mantenedor. Não reabrir tarefas históricas.
-Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P21 e as fases maiores do ROADMAP.
+As fases **0–6 estão concluídas**. A Fase 7 acrescenta leitura síncrona do
+executável original. Seguir o PLANO: 7.1 kernel/handles/migração, 7.2 montagem
+na sessão e Rust gerado, 7.3 homebrew próprio file-read/launcher/sondas.
+O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.
+Não reabrir tarefas históricas. Continuam os provisórios
+P1/P2/P4/P6/P8/P9/P12–P22 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
 callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda

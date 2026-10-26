@@ -1,4 +1,4 @@
-# Plano: gamma do NV2A e fades reais no alpha
+# Plano: leitura síncrona do executável pela mídia guest
 
 Modo: autônomo
 
@@ -18,11 +18,12 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 6**, acrescentada em 2026-10-26 por autorização do mantenedor.
-As fases 0–5 abaixo preservam o plano anterior concluído e suas evidências.
-Meta: modelar a rampa RGB escrita pelo guest, aplicá-la na apresentação e
-executar gamma-fade do nxdk sem perder snapshots nem o diagnóstico da RAM bruta.
-Não inclui filtros analógicos do encoder, controles guest/USB, áudio ou texturas.
+Bloco vigente: **Fase 7**, acrescentada em 2026-10-26 ao pedido de prosseguimento.
+As fases 0–6 preservam as entregas concluídas e suas evidências. Meta: o guest
+abrir e ler os bytes originais de D:\default.xbe por I/O síncrona, com handles,
+EOF e posições reproduzíveis. Validar com um homebrew próprio compilado pelo
+nxdk fixado. Não inclui escrita, diretórios, ISO, arquivos arbitrários do host,
+I/O assíncrona ou a promessa de filesystem completo.
 
 Ponto de partida histórico (CONTINUIDADE_ALPHA.md, 2026-10-22): o triangle chega ao polling de
 NV_USER DMA_GET (0xFD800044, sem modelo), DMA_GET fica em zero por 12402025 leituras,
@@ -454,3 +455,48 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   Comando público contínuo/carregar validado: gamma-fade-SMskuCZc, host/status0,
   close 804,7775 ms, final.obsstate; todas as pastas acima em target/gamma-phase6
   salvo runs/sonda. ADRs 0081–0082, fontes/hashes/limites documentados.
+
+## Fase 7 — Arquivo de mídia e leitura síncrona
+
+- [x] 7.1 Kernel de arquivo somente leitura. Perfil explícito do executável
+  imutável, NtCreateFile/NtReadFile/NtQueryInformationFile e NtClose, usando o
+  mesmo alocador de handles dos outros objetos. KRNL novo/CDFS versionado;
+  versões antigas preservam ausência de mídia, sem promovê-las ao restaurar.
+
+  **Aceite:** GATE OK; testes de bytes reais, opens independentes, EOF/leitura
+  curta, offsets explícitos/correntes, informações suportadas, fechamento,
+  namespace/case, parâmetros inválidos e variantes recusadas. Preflight impede
+  escritas parciais e consumo de posição/handle em falhas. Snapshots conferem
+  corrupção/limites/colisões e migração KRNL v13/anteriores sem ativação.
+  Fixtures legadas preservam suas asserções. ADR, CHANGELOG, ROADMAP §16.1
+  e continuidade declaram o recorte e as fontes do ABI Xbox/contrato NT.
+
+  Evidência: `GATE OK: 606 testes`, target/gate/20261026-121358-goLFnxPD.log;
+  266 casos gerados. Onze testes novos em xbox-kernel/tests/files.rs verificam
+  bytes/EOF/cursor, namespace/share, preflight e aliases físicos, corrupção,
+  limites, colisão com mutant e migração KRNL v13. GINS mantém as asserções por
+  tag; fixture nativa v12 remove CDFS pelo layout. ADR-0083/P22. O produtor
+  nxdk compila com asserts de ABI e traduz 12982 blocos sem --entry; montagem
+  automática ainda é 7.2, execução real do produtor será validada em 7.3.
+
+- [ ] 7.2 Integrar a mídia à sessão e ao Rust gerado. Sessão nova publica o
+  XBE original como default.xbe; restauração usa somente a mídia serializada.
+  Leituras não usam bytes modificados da RAM nem arquivos abertos no host.
+
+  **Aceite:** GATE OK; caso compilado do Rust emitido abre/lê/consulta/fecha
+  com ABI correta, retorna bytes do XBE e reproduz continuação desde handle
+  aberto. Recusa preserva CPU e efeitos guest; snapshots legados continuam
+  sem mídia. Replay não depende de arquivo host. ADR e documentação atualizados.
+
+- [ ] 7.3 Homebrew file-read e fluxo público. Fonte de teste própria no Git,
+  build isolado com SDK fixado, preparo/sonda/launcher para o quarto alvo.
+  Exercitar CreateFileA/ReadFile/GetFileSizeEx/CloseHandle e exibir resultado
+  calculado dos bytes lidos, com erro observável para qualquer divergência.
+
+  **Aceite:** GATE OK e testes das ferramentas; sonda file-read com zero
+  recusas e diagnóstico de leitura válida no framebuffer real, conferido
+  contra o XBE do build. Janela Win32 corresponde à exportação. Estado salvo
+  com arquivo aberto restaura mídia/posição e continua de forma determinística.
+  Sondas hello/triangle/gamma-fade preservam zero recusas e referências de
+  pixels/rampa. README, ADR, CHANGELOG, ROADMAP e passagem de bastão contêm
+  comandos, evidências e limites; commit por tarefa e nenhum push.

@@ -28,6 +28,7 @@ mod contiguous;
 mod critical;
 mod delay;
 mod events;
+mod files;
 mod gpu_instance;
 mod interlocked;
 mod interrupts;
@@ -48,6 +49,7 @@ pub use contiguous::{
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
 pub use delay::PedidoDeTempo;
 use events::{EventOperation, Events};
+pub use files::{MAX_FILE_HANDLES, MAX_MEDIA_BYTES};
 pub use gpu_instance::GpuInstanceMemory;
 pub use interrupts::{GPU_IRQ, GuestCall};
 pub use irql::Irql;
@@ -83,6 +85,9 @@ pub const ORDINAL_MM_FREE_CONTIGUOUS_MEMORY: u32 = 171;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
+pub const ORDINAL_NT_CREATE_FILE: u32 = 190;
+pub const ORDINAL_NT_QUERY_INFORMATION_FILE: u32 = 211;
+pub const ORDINAL_NT_READ_FILE: u32 = 219;
 pub const ORDINAL_RTL_ENTER_CRITICAL_SECTION: u32 = 277;
 pub const ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION: u32 = 291;
 pub const ORDINAL_RTL_LEAVE_CRITICAL_SECTION: u32 = 294;
@@ -145,6 +150,9 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
     ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
     ORDINAL_NT_CLOSE,
+    ORDINAL_NT_CREATE_FILE,
+    ORDINAL_NT_QUERY_INFORMATION_FILE,
+    ORDINAL_NT_READ_FILE,
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
     ORDINAL_INTERLOCKED_EXCHANGE,
@@ -278,6 +286,7 @@ pub struct Dispatcher {
     video: VideoState,
     contiguous: ContiguousMemory,
     gpu_instance: GpuInstanceMemory,
+    files: files::Files,
     // Pedido de avanço de tempo deixado pelo último serviço; só a sessão consome.
     // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
     // ponto de salvamento (ver `Session::atender_kernel`).
@@ -551,6 +560,9 @@ impl Dispatcher {
                 self.links.open(bus, &call, self.irql, &mut self.mutants)
             }
             ORDINAL_NT_CLOSE => self.nt_close(bus, &call, scheduled),
+            ORDINAL_NT_CREATE_FILE => self.nt_create_file(bus, &call),
+            ORDINAL_NT_READ_FILE => self.nt_read_file(bus, &call),
+            ORDINAL_NT_QUERY_INFORMATION_FILE => self.nt_query_information_file(bus, &call),
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(
                 bus,
                 &call,
@@ -697,6 +709,15 @@ impl Dispatcher {
             };
         }
 
+        if self.files.contains(handle) {
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "espera de objeto de arquivo fora do perfil de I/O síncrona",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        }
         if self.links.contains(handle) {
             return variante("link simbólico não é objeto aguardável");
         }
@@ -839,7 +860,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 13);
+        out.section("KRNL", 14);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -855,10 +876,11 @@ impl Snapshot for Dispatcher {
         self.events.save(out);
         self.interrupts.save(out);
         self.gpu_instance.save(out);
+        self.files.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 13)?;
+        let version = inp.section("KRNL", 14)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -931,6 +953,10 @@ impl Snapshot for Dispatcher {
             gpu_instance.load(inp)?;
         }
         gpu_instance.validate(&contiguous, None)?;
+        let mut files = files::Files::default();
+        if version >= 14 {
+            files.load(inp)?;
+        }
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -953,6 +979,7 @@ impl Snapshot for Dispatcher {
             video,
             contiguous,
             gpu_instance,
+            files,
             // Deliberadamente `None`: o pedido de tempo vive só entre o atendimento e a
             // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço
@@ -960,6 +987,7 @@ impl Snapshot for Dispatcher {
             pending_time: None,
             pending_block: false,
         };
+        self.files.validate(self)?;
         Ok(())
     }
 }
