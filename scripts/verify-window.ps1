@@ -1,10 +1,14 @@
-# Captures the actual Win32 client surface and compares RGB with --quadro output.
+# Captures the actual Win32 client surface; optionally compares DAC output.
 # Build first: execution deadlines below deliberately exclude Cargo/rustc.
 param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [ValidateRange(1,1000000000)][int]$Slices = 320,
     [switch]$DuringExecution,
+    [switch]$Presented,
+    [switch]$RequireDifference,
+    [string]$LoadState,
+    [switch]$SaveFinalState,
     [ValidateRange(5,600)][int]$StartupTimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -14,6 +18,8 @@ $folder = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $folder) { throw "Output directory must be new: $folder" }
 [IO.Directory]::CreateDirectory($folder) | Out-Null
 $frame = Join-Path $folder 'guest.bgra'
+$display = Join-Path $folder 'display.bgra'
+if ($RequireDifference -and (-not $Presented -or $DuringExecution)) { throw 'RequireDifference needs Presented and a frozen final frame' }
 $errorLog = Join-Path $folder 'stderr.log'
 $outputLog = Join-Path $folder 'stdout.log'
 Add-Type -AssemblyName System.Drawing
@@ -79,7 +85,9 @@ function Read-RunLog {
         try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
     } finally { $stream.Dispose() }
 }
-$arguments = '--janela --fatias {0} --quadro "{1}"' -f $Slices,$frame
+$arguments = '--janela --fatias {0} --quadro "{1}" --quadro-apresentado "{2}"' -f $Slices,$frame,$display
+if ($LoadState) { $arguments += ' --carregar "{0}"' -f (Resolve-Path -LiteralPath $LoadState).Path }
+if ($SaveFinalState) { $arguments += ' --salvar "{0}"' -f (Join-Path $folder 'final.obsstate') }
 # This is an interactive application under test. Hidden startup also hides its
 # first ShowWindow, so explicitly show it; helper processes stay out of this path.
 $app = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -WindowStyle Normal -RedirectStandardOutput $outputLog -RedirectStandardError $errorLog
@@ -106,7 +114,9 @@ try {
         if ((Read-RunLog) -notmatch 'janela mantida aberta') { throw 'Final-frame deadline exceeded' }
         # Main keeps presenting the frozen final state. Read back the window DC,
         # not a bitmap constructed from guest.bgra; alpha is intentionally ignored.
-        $stats = [AlphaWindowCheck]::CaptureAndCompare($app.MainWindowHandle,$frame,(Join-Path $folder 'client.png'))
+        $expected = if ($Presented) { $display } else { $frame }
+        $stats = [AlphaWindowCheck]::CaptureAndCompare($app.MainWindowHandle,$expected,(Join-Path $folder 'client.png'))
+        if ($RequireDifference -and (Get-FileHash -LiteralPath $frame).Hash -eq (Get-FileHash -LiteralPath $display).Hash) { throw 'DAC output must differ from raw framebuffer' }
     }
     $closing = [Diagnostics.Stopwatch]::StartNew()
     if (-not [AlphaWindowCheck]::PostMessageW($app.MainWindowHandle,0x10,[UIntPtr]::Zero,[IntPtr]::Zero)) { throw 'WM_CLOSE failed' }
@@ -126,7 +136,10 @@ try {
     if (-not (Test-Path -LiteralPath $frame)) { throw 'Guest frame was not exported' }
     $report = [ordered]@{ executable=$exe; during_execution=[bool]$DuringExecution; slices=$Slices;
         exit_code=$exitCode; close_ms=$closing.Elapsed.TotalMilliseconds; surface=$stats;
-        guest_sha256=(Get-FileHash -LiteralPath $frame -Algorithm SHA256).Hash }
+        guest_sha256=(Get-FileHash -LiteralPath $frame -Algorithm SHA256).Hash;
+        presented=[bool]$Presented; loaded_state=$LoadState; saved_final_state=[bool]$SaveFinalState;
+        differs_from_raw=((Get-FileHash -LiteralPath $frame).Hash -ne (Get-FileHash -LiteralPath $display).Hash);
+        display_sha256=(Get-FileHash -LiteralPath $display -Algorithm SHA256).Hash }
     $report | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $folder 'result.json')
     $report | ConvertTo-Json -Depth 4
 } finally {

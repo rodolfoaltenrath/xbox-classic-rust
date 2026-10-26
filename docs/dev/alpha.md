@@ -2,9 +2,9 @@
 
 ## Uso vigente — 2026-10-26
 
-O bloco visual Windows reproduz hello/triangle, apresenta seus frames reais e
-encerra pelo X. A Fase 5 acrescenta execução contínua, pausa e arquivos de
-estado completos. Leia CONTINUIDADE_ALPHA.md para o estado técnico
+O bloco visual Windows reproduz hello/triangle e gamma-fade, apresenta seus
+frames reais e encerra pelo X. Fase 5: execução contínua, pausa e estados
+completos. Fase 6: DAC RGB8 e fades calculados pelo guest. Leia CONTINUIDADE_ALPHA.md para o estado técnico
 completo; os relatos por ADR mais abaixo são históricos.
 
 Requisitos: Rust fixado 1.98.1, linker compatível, Cargo/dependências disponíveis
@@ -16,6 +16,7 @@ baixa jogos/SDK nem usa BIOS. Sem entrada, ele informa o caminho ausente.
 # Git Bash, raiz do repositório
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
+bash scripts/run-alpha.sh gamma-fade --continuo
 bash scripts/run-alpha.sh gamma-fade --continuo
 ```
 
@@ -46,6 +47,27 @@ as duas opções podem coexistir e exigem nomes novos. O formato é BGRA 640×48
 sem padding, alfa preservado. Estados BUS0 v1–v9 restauram apresentação bruta
 e continuam assim ao regravar; a restauração não ativa gamma implicitamente.
 Não há filtros flicker/soften nem simulação do sinal analógico/monitor.
+
+Gamma-fade usa `target/homebrew-gamma/gamma-fade-raw.xbe` e orçamento padrão
+de 128 fatias; 64 terminava antes do fade. Para gerar a entrada no WSL:
+`bash scripts/build-nxdk-sample.sh gamma-fade homebrew-gamma`. O SDK precisa
+estar preparado na revisão fixada; fontes e artefatos continuam fora do Git.
+Na sonda/128, a rampa tem 255 entradas não identidade, 161 chamadas atendidas
+e zero recusadas. Não foi necessário implementar serviço de kernel novo.
+
+Verificação Win32 do executável já compilado, com pasta de saída nova:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-window.ps1 -Executable target/sample-build/gamma-fade/release/obsidian-native.exe -OutputDirectory target/gamma-window-check -Slices 128 -Presented -RequireDifference -SaveFinalState
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-session.ps1 -Executable target/sample-build/gamma-fade/release/obsidian-native.exe -OutputDirectory target/gamma-session-check -Sample gamma-fade -TimeoutSeconds 300
+```
+
+`-Presented` compara o DC capturado com display.bgra; `-RequireDifference`
+exige diferença da RAM. `-LoadState caminho` permite continuar um estado na
+verificação de janela, e `-SaveFinalState` publica final.obsstate. A prova de
+sessão exige gamma não identidade após F9 e conserva os testes de pausa,
+falha de restore, outro processo e prazo de fechamento de cinco segundos.
+Resultados/hashes e limites físicos do perfil estão nos ADRs 0079–0082.
 `final.obsstate` é salvo ao fechar uma rodada contínua; `--salvar "novo caminho"`
 seleciona outro destino (também disponível em modo finito). Diretório de destino
 explícito deve existir. Nunca sobrescreve estado ou o arquivo carregado.

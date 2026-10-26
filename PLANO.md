@@ -405,6 +405,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   conferem LegacyUnmodeled; fixtures legadas nativas preservam seus contratos.
   Teste histórico de MMIO sem modelo mantém asserções em portas vizinhas.
   BUS0 v10/GAMM v1, ADR-0079; fontes fixadas e incertezas registradas em P21.
+
 - [x] 6.2 Aplicar a rampa à apresentação, preservando a memória guest. Manter
   --quadro como BGRA bruto e oferecer exportação separada da saída apresentada.
   Nenhum título ou shader reconhecido por nome/hash; nenhum empréstimo da arena
@@ -423,7 +424,8 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   Quadro testa identidade em todos os 256 níveis de cada canal: conserva cada
   byte RGB das imagens de referência; revalidação dos homebrews reais na 6.3.
   Opções de saída independentes/repetidas/incompletas cobertas; ADR-0080.
-- [ ] 6.3 Entregar gamma-fade como terceiro homebrew reproduzível. Integrar
+
+- [x] 6.3 Entregar gamma-fade como terceiro homebrew reproduzível. Integrar
   preparo/sonda/launcher, com build nxdk fixado e fontes fora do Git. Resolver
   somente bloqueios concretos de tradução/kernel encontrados no alvo, sem
   sucesso artificial. Preservar modo contínuo e estados da fase anterior.
@@ -435,3 +437,20 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   Save/restore com rampa não identidade preserva saída e continuação. README,
   ADR, CHANGELOG, ROADMAP §16.1 e passagem de bastão registram comandos,
   métricas, hashes e limites. Commit por tarefa, nenhum push.
+
+  Evidência: `GATE OK: 595 testes`, target/gate/20261026-111413-Waq1DjEq.log;
+  266 casos gerados debug/release, native-release-final.log; 21 ferramentas,
+  TOOLS OK em target/gamma-phase6/tools-final-source.log. Hello/64: 45/zero,
+  302 pixels/12 linhas, log hello-20261026-111845-AhleASQU.log. Triangle/320:
+  278/zero, 305922/479, R4977/G4998/B4977, nove draws/27 triângulos,
+  log triangle-20261026-111855-dp7h9SQX.log. Gamma-fade/128: 161/zero,
+  255 entradas não identidade, 299222 pixels RAM, zero MMIO sem modelo;
+  log gamma-fade-20261026-112938-2cwi0vUS.log. Readback Win32 release:
+  zero diferenças RGB contra DAC e SHA distinto da RAM; visual-gamma-release/.
+  Session-gamma-release/: pausa/restauração integral idêntica, 26646187 ->
+  30056597 instruções antes de F9, restore inválido preservado e outro processo
+  continua; close com save 1160,5467/959,7528 ms. Duas continuações e replay
+  release mantêm snapshot SHA e650acbc...611f55 e imagem 22cc6a75...7b0839.
+  Comando público contínuo/carregar validado: gamma-fade-SMskuCZc, host/status0,
+  close 804,7775 ms, final.obsstate; todas as pastas acima em target/gamma-phase6
+  salvo runs/sonda. ADRs 0081–0082, fontes/hashes/limites documentados.

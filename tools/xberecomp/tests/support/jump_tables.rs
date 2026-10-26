@@ -44,5 +44,14 @@ pub(super) fn sources(output: &Path) -> String {
         "callback_flow_guest",
         xbe_com_codigo(&code).unwrap(),
     );
+    let mut sse = code[..22].to_vec(); // Dois escapes, mantendo a fixture anterior.
+    sse.extend([0xB9, 0x20, 0x20, 1, 0, 0x83, 0xEC, 4, 0x8B, 0x01]);
+    sse.extend([
+        0xF3, 0x0F, 0x10, 0x05, 0x24, 0x20, 1, 0, 0xF3, 0x0F, 0x11, 0x04, 0x24,
+    ]);
+    sse.extend([0xFF, 0xD0, 0x83, 0xC4, 4, 0xC3]);
+    sse.resize(0x70, 0xCC);
+    sse[0x40..].copy_from_slice(&code[0x40..]);
+    write(output, "callback_sse_guest", xbe_com_codigo(&sse).unwrap());
     include_str!("../verification_jump_tables.inc").to_owned()
 }

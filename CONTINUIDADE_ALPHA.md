@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-26**, com base no commit **`c9c7220`** e implementação local
-dos ADRs **0079–0080** (DAC gamma e aplicação; PLANO Fase 6 em execução).
+Atualizado em **2026-10-26**, com base no commit **`2d2868f`** e implementação local
+dos ADRs **0081–0082** (gamma-fade; Fase 6 do PLANO concluída).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P21), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0080) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0082) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (593 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (595 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `265 passed` em x86-64 e `249` fora dele —
+   confere o **contador de casos gerados**, hoje `266 passed` em x86-64 e `250` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -127,13 +127,55 @@ aproximadamente 68 MB e são ignoradas pelo Git. Em ambos, outro processo
 carregou os mesmos CPU/Clock e continuou. A tentativa interrompida do triangle
 em 23/10 não foi usada como aceite; em 26/10, executar depois do gate com
 -TimeoutSeconds 300 para progresso. WM_CLOSE continua limitado a cinco segundos.
-Gate atual 593/265 gerados debug e 19 ferramentas; release 261 validado em 23/10.
+Referência da fase 5: gate 586/261 gerados debug e 19 ferramentas; release 261 em 23/10.
 Sondas de 26/10 preservam 45/0/302 pixels no hello e 278/0/305922 no triangle.
 Readback Win32 também preserva zero diferenças RGB: pastas
 session-hello-frame-phase5/ e session-triangle-frame-phase5-20261026/.
 Comando público --continuo --carregar abre ambos e salva final.obsstate ao X:
 hello-LAfc6doM (target/alpha-live-smoke-hello/runs) e triangle-LqNrxSMj
 (target/alpha/runs), status zero. Cache Cargo 0,42/1,46 s, respectivamente.
+
+**Gamma do DAC e terceiro homebrew (PLANO 6, ADRs 0079–0082):** a janela usa
+a rampa RGB8 escrita pelo próprio guest, em uma cópia que preserva RAM e alfa.
+--quadro continua bruto; --quadro-apresentado é a saída digital, sem filtros
+analógicos. O launcher grava os dois arquivos, guest.bgra/display.bgra.
+BUS0 v10/GAMM v1 preserva cursor parcial e paleta; v1–v9 migra sem modelo,
+conservando a apresentação bruta mesmo depois de regravar. Incertezas em P21.
+
+Gamma-fade nxdk fixado: 13255 blocos, sem --entry; inventário 38/71 serviços
+com variantes implementadas e 4/4 dados representados. Nenhum serviço novo
+foi necessário nesta fase. O bloqueio em call eax/0x115B4 foi resolvido por
+preservar candidatos GPR através de MOVSS (ADR-0082), mantendo UnknownTarget
+dinâmico. A nova análise não altera o Rust emitido de hello/triangle.
+
+Sonda gamma-fade/128: **161 atendidas/zero recusadas**, 23199969 instruções,
+354799260 ciclos/483 ms sintéticos, 299222 pixels/480 linhas na RAM,
+255 entradas não identidade e zero MMIO sem modelo. Log:
+target/sonda/gamma-fade-20261026-112938-2cwi0vUS.log. Win32 release coincide
+com a saída DAC, zero diferenças RGB, e difere da RAM; close 71,7051 ms.
+Artefatos: target/gamma-phase6/visual-gamma-release/.
+
+Estado não identidade pausado/restaurado: arquivo integral idêntico,
+26646187 -> 30056597 instruções antes de F9; restore inválido conserva a
+sessão e outro processo continua. Fechamento pausado/executando com save:
+1160,5467/959,7528 ms. target/gamma-phase6/session-gamma-release/.
+Duas continuações do mesmo checkpoint e outra em release mantêm snapshot
+SHA e650acbc3d3764b800bb31717083ed49bd6dfb7cb82a102f3e15fdd61f611f55 e
+imagem idênticos (visual-gamma-restored-release/, zero diferenças RGB).
+
+Gate vigente: **595 testes**, 266 casos gerados debug/release, 21 ferramentas;
+logs target/gate/20261026-111413-Waq1DjEq.log e
+target/gamma-phase6/{native-release-final,tools-final-source}.log.
+Hello/64 mantém 45/zero e 302 pixels/12 linhas, agora zero MMIO sem modelo;
+sonda hello-20261026-111845-AhleASQU.log. Readback hello/triangle conserva
+as imagens anteriores, zero diferenças, pastas visual-hello/visual-triangle
+em target/gamma-phase6. Sonda final triangle/320 mantém 278/zero, 305922/479,
+R4977/G4998/B4977, 9 draws/27 triângulos; 163 MMIO sem modelo, duas portas do
+DAC a menos que os 165 anteriores. Log triangle-20261026-111855-dp7h9SQX.log.
+Comando público gamma-fade --continuo --carregar validado em
+target/alpha/runs/gamma-fade-SMskuCZc: 30820 chamadas/zero recusadas,
+estado final 68287494 bytes, host/status0 e close 804,7775 ms. Build reutilizado
+em 0,18 s. Inputs/SDK/estados continuam fora do Git; hashes e comandos no ADR-0081.
 
 ### Estado e migrações que precisam ser preservados
 
@@ -295,11 +337,11 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases **0–5 estão concluídas**. O mantenedor autorizou a **Fase 6**:
-DAC gamma, aplicação na apresentação e gamma-fade como terceiro homebrew.
-Seguir PLANO em ordem: modelo/migrações (6.1), saída transformada com RAM
-preservada (6.2), integração/validação real (6.3). Não reabrir tarefas históricas.
-Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P20 e as fases maiores do ROADMAP.
+As fases **0–6 estão concluídas**. O alpha apresenta hello, triangle e
+gamma-fade; o último valida gamma não identidade e retomada integral. Não há
+tarefa aberta no PLANO; o próximo bloco ainda precisa ser definido conforme
+o escopo solicitado pelo mantenedor. Não reabrir tarefas históricas.
+Continuam os provisórios P1/P2/P4/P6/P8/P9/P12–P21 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.
 P5 foi encerrado no ADR-0069: guardas e loops readonly mais candidatos de
 callbacks eliminam as entradas manuais do triangle. Outros indiretos ainda

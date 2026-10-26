@@ -48,8 +48,8 @@ if os.environ.get('TEST_ARGS_FILE'):
         self.env = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH'],
                         ALPHA_STATE_DIR=str(self.state), ALPHA_BUILD_DIR=str(self.root / 'build with spaces'))
 
-    def run_alpha(self, *extra, headless=True, **env):
-        args = ['hello', '--xbe', str(self.xbe)]
+    def run_alpha(self, *extra, headless=True, sample='hello', **env):
+        args = [sample, '--xbe', str(self.xbe)]
         if headless:
             args.append('--sem-janela')
         return subprocess.run(['bash', str(SCRIPTS / 'run-alpha.sh'), *args, *extra],
@@ -57,6 +57,18 @@ if os.environ.get('TEST_ARGS_FILE'):
 
     def runs(self):
         return sorted((self.state / 'runs').iterdir(), key=lambda p: p.stat().st_mtime_ns)
+
+    def test_gamma_fade_keeps_raw_and_presented_exports_and_sample_cache(self):
+        captured = self.root / 'args.json'
+        result = self.run_alpha(sample='gamma-fade', TEST_ARGS_FILE=str(captured))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        folder = self.runs()[0]
+        self.assertTrue(folder.name.startswith('gamma-fade-'))
+        args = json.loads(captured.read_text())
+        self.assertEqual(args[args.index('--quadro')+1],str(folder / 'guest.bgra'))
+        self.assertEqual(args[args.index('--quadro-apresentado')+1],str(folder / 'display.bgra'))
+        self.assertEqual(args[args.index('--fatias')+1],'128')
+        self.assertTrue(list((self.state / 'cache').glob('gamma-fade-*.project')))
 
     def test_cache_reuses_only_identical_input_and_keeps_preparation_and_logs(self):
         for _ in range(2):

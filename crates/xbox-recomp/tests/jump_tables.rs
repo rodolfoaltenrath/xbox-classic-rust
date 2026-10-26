@@ -186,3 +186,35 @@ fn escapes_para_enderecos_absolutos_distintos_nao_autorizam_alias_falso() {
             .contains_key(&0x11040)
     );
 }
+
+#[test]
+fn callback_carregado_de_memoria_sobrevive_movss_entre_carga_e_chamada() {
+    let code = [
+        0xC7, 0x05, 0x20, 0x20, 1, 0, 0x40, 0x10, 1, 0, // endereço escapa para RAM.
+        0x8B, 0x01, // callback dinâmico vindo de [ecx].
+        0xF3, 0x0F, 0x10, 0x05, 0x24, 0x20, 1, 0, // movss xmm0,[0x12024].
+        0xF3, 0x0F, 0x11, 0x04, 0x24, // movss [esp],xmm0.
+        0xFF, 0xD0, 0xC3,
+    ];
+    assert!(
+        analyze(&image(&code, false))
+            .unwrap()
+            .blocks
+            .contains_key(&0x11040)
+    );
+}
+
+#[test]
+fn conversao_sse_que_sobrescreve_gpr_invalida_candidato_de_callback() {
+    let code = [
+        0xC7, 0x05, 0x20, 0x20, 1, 0, 0x40, 0x10, 1, 0, 0x8B, 0x01, 0xF3, 0x0F, 0x2C,
+        0xC0, // cvttss2si eax,xmm0 escreve eax.
+        0xFF, 0xD0, 0xC3,
+    ];
+    assert!(
+        !analyze(&image(&code, false))
+            .unwrap()
+            .blocks
+            .contains_key(&0x11040)
+    );
+}

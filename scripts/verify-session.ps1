@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [ValidateSet('hello','triangle')][string]$Sample,
+    [ValidateSet('hello','triangle','gamma-fade')][string]$Sample,
     [ValidateRange(10,600)][int]$TimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,7 @@ $exe = (Resolve-Path -LiteralPath $Executable).Path
 $folder = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $folder) { throw "Output directory must be new: $folder" }
 [IO.Directory]::CreateDirectory($folder) | Out-Null
-$slices = if ($Sample -eq 'hello') { 64 } else { 320 }
+$slices = switch ($Sample) { 'triangle' { 320 } 'gamma-fade' { 128 } default { 64 } }
 $states = Join-Path $folder 'states'
 $final = Join-Path $folder 'final.obsstate'
 $log = Join-Path $folder 'stderr.log'
@@ -63,7 +63,7 @@ function Assert-NoRefusals {
     if ((Read-Log) -notmatch 'Kernel: \d+ chamadas atendidas, 0 recusadas;') { throw "Missing successful kernel summary: $(Read-Log)" }
 }
 try {
-    $arguments = '--janela --continuo --fatias {0} --estados "{1}" --salvar "{2}" --quadro "{3}"' -f $slices,$states,$final,(Join-Path $folder 'guest.bgra')
+    $arguments = '--janela --continuo --fatias {0} --estados "{1}" --salvar "{2}" --quadro "{3}" --quadro-apresentado "{4}"' -f $slices,$states,$final,(Join-Path $folder 'guest.bgra'),(Join-Path $folder 'display.bgra')
     $app = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -WindowStyle Normal -RedirectStandardOutput (Join-Path $folder 'stdout.log') -RedirectStandardError $log
     $null = $app.Handle
     # Two complete batches exceed the former default finite budget.
@@ -102,6 +102,11 @@ try {
     $pausedClose = Close-App
     Assert-NoRefusals
     if ((Hash $final) -ne $expected) { throw 'Paused close changed session before final save' }
+    $rawHash = Hash (Join-Path $folder 'guest.bgra')
+    $dacHash = Hash (Join-Path $folder 'display.bgra')
+    if ($Sample -eq 'gamma-fade' -and ($rawHash -eq $dacHash -or (Read-Log) -notmatch 'DAC gamma: perfil=PublicReferenceV1 .*entradas_nao_identidade=Some\([1-9]\d*\)')) {
+        throw 'Restored gamma-fade must preserve a nonidentity DAC and transformed output'
+    }
     $loadedLog = Join-Path $folder 'resumed-stderr.log'
     $log = $loadedLog
     $resumedFinal = Join-Path $folder 'resumed-final.obsstate'
@@ -119,7 +124,8 @@ try {
         advanced_retired=$advanced.Groups[1].Value; advanced_cycles=$advanced.Groups[2].Value;
         paused_state_sha256=$expected; pause_unchanged=$true; restore_equal=$true;
         failed_restore_preserved=$true; resumed_in_new_process=$true;
-        paused_close_ms=$pausedClose; running_close_ms=$runningClose; refused=0 }
+        paused_close_ms=$pausedClose; running_close_ms=$runningClose; refused=0;
+        raw_sha256=$rawHash; display_sha256=$dacHash; dac_differs_from_raw=($rawHash -ne $dacHash) }
     $report | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $folder 'result.json')
     $report | ConvertTo-Json
 } finally {

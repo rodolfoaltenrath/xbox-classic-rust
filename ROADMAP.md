@@ -1231,22 +1231,24 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-26 | Alpha / execução | Iniciador contínuo e retomada integral (ADR-0078, PLANO 5.3) | — | Hello/triangle pausam sem avanço e restauram arquivo integral idêntico; retomada em outro processo; close com save final até 2422 ms; gate 586/261 e 19 ferramentas; sondas preservadas, fases 0–5 concluídas |
 | 2026-10-26 | 5 / vídeo | DAC gamma RGB8 (ADR-0079, PLANO 6.1) | — | BUS0 v10/GAMM v1, cursor parcial e migração legada; referência pública fixada; aplicação na apresentação é a tarefa 6.2 |
 | 2026-10-26 | Alpha / vídeo | Saída digital com gamma (ADR-0080, PLANO 6.2) | — | Cópia BGRA aplica rampa guest por canal, preservando RAM/alfa; exportações bruta/apresentada separadas e sem sobrescrita; estados legados conservam imagem bruta |
+| 2026-10-26 | Alpha / vídeo | Gamma-fade e callbacks MOVSS (ADRs 0081–0082, PLANO 6.3) | — | 13255 blocos sem --entry, 161 chamadas/zero recusadas e gamma não identidade; readback Win32 sem diferenças e distinto da RAM; pausa/save/restore/replay integral, 595 testes/266 gerados debug e release/21 ferramentas; hello/triangle preservados, fases 0–6 concluídas |
 
 
 ---
 
 ### Próxima ação
 
-PLANO fases **0–5 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows
-e sessões contínuas com pausa/save/restore (ADRs 0069–0078).
+PLANO fases **0–6 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows,
+sessões contínuas e gamma do DAC com terceiro homebrew (ADRs 0069–0082).
 `bash scripts/run-alpha.sh triangle --continuo` mantém a mesma sessão até X;
 Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
-Gate Windows 586, 261 casos gerados debug/release e 19 testes de ferramentas.
-As duas sondas preservam CPU/pixels e zero recusas; restore integral e
+Gate Windows 595, 266 casos gerados debug/release e 21 testes de ferramentas.
+Hello/triangle preservam CPU/pixels e zero recusas; gamma-fade mostra rampa
+não identidade com janela igual ao DAC e distinta da RAM. Restore integral e
 fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
-de bastão. Fase 6 em execução: DAC gamma RGB8, aplicação na apresentação e
-terceiro homebrew gamma-fade, conforme o PLANO. Linux gráfico, controles
-guest/áudio, filtros e compatibilidade comercial permanecem pendentes.
+de bastão. Não há tarefa aberta no PLANO; o próximo bloco precisa de escopo.
+Linux gráfico, controles guest/áudio, filtros e compatibilidade comercial
+permanecem pendentes.
 Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.
 
 #### Histórico das ações anteriores

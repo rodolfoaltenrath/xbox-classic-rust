@@ -6,6 +6,7 @@
 //! indiretas. A execução continua lendo RAM e validando `UnknownTarget`. Tabelas
 //! indexadas readonly só são lidas pelo passe separado com prova de limites.
 use super::{Binary, Insn, Operand, Operation, Width};
+use crate::ir::Sse;
 use std::collections::{BTreeMap, BTreeSet};
 use xbox_formats::Xbe;
 const MAX_CANDIDATES: usize = 4096;
@@ -90,6 +91,10 @@ pub(super) fn discover(xbe: &Xbe<'_>, blocks: &BTreeMap<u32, Vec<Insn>>) -> BTre
                         regs.iter_mut().for_each(BTreeSet::clear);
                     }
                     Operation::Binary(Binary::Cmp | Binary::Test, ..)
+                    // MOVSS só escreve XMM/memória. Preservar candidatos GPR
+                    // permite o callback após preparar argumento float (ADR-0082).
+                    // Conversões SSE para GPR continuam invalidando abaixo.
+                    | Operation::Sse(Sse::MoveScalar { .. })
                     | Operation::Nop
                     | Operation::Direction(_)
                     | Operation::Jump(_)

@@ -17,6 +17,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Gamma-fade do nxdk integrado ao preparo/sonda/launcher, com capturas bruta e
+  apresentada, verificação Win32 e estados contínuos (ADR-0081). Descoberta de
+  callbacks preserva candidatos GPR através de MOVSS, mantendo chamadas
+  dinâmicas e recusa de destinos desconhecidos (ADR-0082).
+
 - Apresentação aplica a paleta RGB8 do DAC à cópia do framebuffer, preservando
   RAM e alfa; `--quadro` continua bruto e `--quadro-apresentado` exporta a saída
   digital. Snapshots legados conservam imagem bruta (ADR-0080, PLANO 6.2).

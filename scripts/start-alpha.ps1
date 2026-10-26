@@ -11,11 +11,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $exe = (Resolve-Path -LiteralPath $Executable).Path
 $folder = (Resolve-Path -LiteralPath $RunDirectory).Path
-foreach ($name in @('stdout.log','stderr.log','pid.txt','guest.bgra')) {
+foreach ($name in @('stdout.log','stderr.log','pid.txt','guest.bgra','display.bgra')) {
     if (Test-Path -LiteralPath (Join-Path $folder $name)) { throw "Run artifact already exists: $name" }
 }
 $frame = Join-Path $folder 'guest.bgra'
-$arguments = '--fatias {0} --quadro "{1}"' -f $Slices,$frame
+$arguments = '--fatias {0} --quadro "{1}" --quadro-apresentado "{2}"' -f $Slices,$frame,(Join-Path $folder 'display.bgra')
 if ($Continuous -and $Headless) { throw 'Continuous mode requires a window' }
 if ($Continuous) { $arguments += ' --continuo --estados "{0}"' -f (Join-Path $folder 'states') }
 if ($LoadState) {

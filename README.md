@@ -5,9 +5,9 @@ estática: **XBE → análise x86 → Rust gerado → executável nativo**, acom
 camada de compatibilidade Xbox. O objetivo é uma experiência de mini console,
 navegável por controle, com Windows/Linux e futuramente Linux direto em KMS/DRM.
 
-**O alpha executa hello e triangle do nxdk e apresenta texto/triângulos em janela
-Win32.** A captura da janela foi comparada com o framebuffer guest: zero diferenças
-RGB em ambos. Há kernel HLE, duas threads cooperativas, interrupções e rasterização
+**O alpha executa homebrews do nxdk em janela Win32.** Hello e triangle apresentam
+texto/triângulos; gamma-fade exercita a rampa de cores do DAC. Há kernel HLE,
+duas threads cooperativas, interrupções e rasterização
 software parcial. **Jogos comerciais ainda não executam**; áudio, controles, Linux
 gráfico e compatibilidade geral continuam pendentes. O projeto não inclui jogos,
 BIOS ou bibliotecas proprietárias.
@@ -15,7 +15,8 @@ BIOS ou bibliotecas proprietárias.
 ## Rodar o alpha no Windows
 
 Pré-requisitos: Git com Git Bash, Rust 1.98.1 fixado, linker funcional e os XBEs
-homebrew locais (`target/homebrew/hello.xbe` e `target/homebrew2/triangle-raw.xbe`).
+homebrew locais (`target/homebrew/hello.xbe`, `target/homebrew2/triangle-raw.xbe`
+ou `target/homebrew-gamma/gamma-fade-raw.xbe`).
 Para compilar os samples com o SDK público fixado, consulte
 [o guia do homebrew](docs/dev/homebrew.md). Entradas e SDK ficam fora do Git.
 
@@ -24,6 +25,7 @@ No **Git Bash**, na raiz do repositório:
 ```bash
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
+bash scripts/run-alpha.sh gamma-fade --continuo
 ```
 
 No PowerShell, use o Bash do Git (o `bash.exe` do WSL não oferece a janela Win32):
@@ -37,7 +39,8 @@ O comando prepara a tradução atual, compila e abre a janela. O primeiro build
 pode levar vários minutos; projetos idênticos reutilizam a biblioteca compilada.
 Feche pelo **X**. Se o orçamento acabar antes, a imagem fica congelada até fechar;
 o status 1 de orçamento é preservado e explicado. Fechar durante a execução é
-parada pelo host/status 0. Logs de cada rodada e BGRA ficam em `target/alpha/runs/`.
+parada pelo host/status 0. Logs de cada rodada ficam em `target/alpha/runs/`,
+com `guest.bgra` (RAM bruta) e `display.bgra` (cópia após a rampa RGB8 do DAC).
 Opções, caminhos com espaços e verificação visual em [alpha](docs/dev/alpha.md).
 
 Para continuar até fechar, com pausa e estados completos:
@@ -73,10 +76,12 @@ cargo run -p obsidian -- check-memory caminho/do/jogo.iso
 
 O estado vigente está no [guia do alpha](docs/dev/alpha.md) e na
 [passagem de bastão](CONTINUIDADE_ALPHA.md). Cobertura com variantes limitadas:
-**38/69 serviços do hello e 42/75 do triangle**. Ambos traduzem sem raízes manuais;
-o triangle passa por PFIFO/PRAMIN, ISR/DPC, vertex program e rasterização software.
+**38/69 serviços do hello e 42/75 do triangle**. Ambos traduzem sem raízes manuais.
+O triangle passa por PFIFO/PRAMIN, ISR/DPC, vertex program e rasterização software.
+Gamma-fade importa 71 funções, das quais 38 possuem variantes implementadas.
 Snapshots preservam CPU/RAM/kernel/GPU/scheduler com migrações explícitas.
-Gamma/filtros e os limites da GPU continuam declarados no ROADMAP §16.1.
+O perfil público de gamma e os filtros/limites restantes da GPU continuam
+declarados no ROADMAP §16.1; a janela não simula o sinal analógico do console.
 
 ## Demonstração de recompilação
 

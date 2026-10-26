@@ -1,5 +1,28 @@
 # Homebrew nxdk e fronteira do kernel
 
+## Comandos vigentes — 2026-10-26
+
+Consultar CONTINUIDADE_ALPHA.md para o estado atual; as seções por ADR abaixo
+são históricas. Para o terceiro sample, após preparar o SDK público fixado
+com build-homebrew.sh, no WSL:
+
+```bash
+bash scripts/build-nxdk-sample.sh gamma-fade homebrew-gamma
+```
+
+Depois, no Git Bash/Windows:
+
+```bash
+bash scripts/run-alpha.sh gamma-fade --continuo
+bash scripts/sonda.sh gamma-fade 128
+```
+
+O SDK fica fora do Git; o script exige a revisão/submódulos fixados e árvore
+limpa, sem baixar dependências. XBE/PE/manifests/log/hashes ficam em target.
+Metadados podem diferir entre builds; conservar o XBE exato usado por estados.
+O launcher grava guest.bgra bruto e display.bgra após DAC; os fades são
+calculados pelo próprio sample recompilado, sem reconhecimento de título.
+
 Estado vigente do [ADR-0065](../adr/0065-consumidor-pushbuffer.md): PFIFO consome
 comandos por PRAMIN/RAM e o triangle passa o polling por GET=PUT. BUS0 v8/PFFO v2;
 v7 preserva controles sem consumo. Sonda com 13 raízes/17997 blocos recebe NV097

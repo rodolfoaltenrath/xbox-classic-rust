@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Um comando por sample. Git Bash no Windows; --sem-janela também permite Linux.
 set -euo pipefail
-usage() { echo 'uso: run-alpha.sh <hello|triangle> [--xbe arquivo] [--projeto projeto] [--fatias N] [--sem-janela] [--continuo] [--carregar estado] [--salvar novo-estado]'; }
+usage() { echo 'uso: run-alpha.sh <hello|triangle|gamma-fade> [--xbe arquivo] [--projeto projeto] [--fatias N] [--sem-janela] [--continuo] [--carregar estado] [--salvar novo-estado]'; }
 if [[ "${1:-}" == --help || "${1:-}" == --ajuda ]]; then usage; exit 0; fi
 sample=${1:-}; shift || true
-case "$sample" in hello) slices=64 ;; triangle) slices=320 ;; *) usage >&2; exit 2 ;; esac
+case "$sample" in hello) slices=64 ;; triangle) slices=320 ;; gamma-fade) slices=128 ;; *) usage >&2; exit 2 ;; esac
 raiz="$(cd "$(dirname "$0")/.." && pwd -P)"
 xbe=''; supplied=''; window=1; continuous=0; load_state=''; save_state=''; seen=' '
 while [ "$#" -gt 0 ]; do
@@ -123,7 +123,7 @@ if [ "$windows" -eq 1 ]; then
     [ -z "$save_state" ] || args+=(-SaveState "$(cygpath -w "$save_state")")
     powershell.exe "${args[@]}" || status=$?
 else
-    args=(--fatias "$slices" --quadro "$run/guest.bgra")
+    args=(--fatias "$slices" --quadro "$run/guest.bgra" --quadro-apresentado "$run/display.bgra")
     [ -z "$load_state" ] || args+=(--carregar "$load_state")
     [ -z "$save_state" ] || args+=(--salvar "$save_state")
     "$binary" "${args[@]}" >"$run/stdout.log" 2>"$run/stderr.log" || status=$?

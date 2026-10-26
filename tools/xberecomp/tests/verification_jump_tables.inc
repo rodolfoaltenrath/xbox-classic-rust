@@ -5,6 +5,7 @@ mod jump_table_verification {
  use xbox_mem::GuestVirt;
  mod table {include!("jump_table_guest.rs");}
  mod callback {include!("callback_flow_guest.rs");}
+ mod callback_sse {include!("callback_sse_guest.rs");}
  fn loaded()->Session{Session::load(include_bytes!("jump_table_guest.xbe")).unwrap()}
  fn saved(s:&Session)->Vec<u8>{let mut w=SnapshotWriter::new();s.save(&mut w);w.finish()}
  #[test]
@@ -21,5 +22,19 @@ mod jump_table_verification {
   let mut initial=Session::load(include_bytes!("callback_flow_guest.xbe")).unwrap();assert_eq!(callback::run(&mut initial.state,&mut initial.bus,4).unwrap(),Exit::Budget);let checkpoint=saved(&initial);
   for (target,expected) in [(0x11040,11),(0x11050,22)] {let mut s=Session::load(include_bytes!("callback_flow_guest.xbe")).unwrap();s.load(&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();s.bus.escrever_u32(GuestVirt(0x12020),target).unwrap();assert_eq!(callback::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);assert_eq!(s.state.regs[0],expected);}
   initial.bus.escrever_u32(GuestVirt(0x12020),0x11060).unwrap();let cpu=initial.state.clone();assert!(matches!(callback::run(&mut initial.state,&mut initial.bus,100),Err(Error::UnknownTarget{target:0x11060,..})));assert_eq!(initial.state,cpu);
+ }
+ #[test]
+ fn callback_atravessa_movss_mas_chamada_nativa_usa_valor_dinamico_e_recusa_antes_de_efeitos(){
+  let mut initial=Session::load(include_bytes!("callback_sse_guest.xbe")).unwrap();
+  assert_eq!(callback_sse::run(&mut initial.state,&mut initial.bus,4).unwrap(),Exit::Budget);
+  let checkpoint=saved(&initial);
+  for (target,expected) in [(0x11040,11),(0x11050,22)] {
+   let mut s=Session::load(include_bytes!("callback_sse_guest.xbe")).unwrap();s.load(&mut SnapshotReader::new(&checkpoint).unwrap()).unwrap();
+   s.bus.escrever_u32(GuestVirt(0x12020),target).unwrap();assert_eq!(callback_sse::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);assert_eq!(s.state.regs[0],expected);
+  }
+  initial.bus.escrever_u32(GuestVirt(0x12020),0x11060).unwrap();
+  assert_eq!(callback_sse::run(&mut initial.state,&mut initial.bus,5).unwrap(),Exit::Budget);
+  let before=saved(&initial);assert!(matches!(callback_sse::run(&mut initial.state,&mut initial.bus,100),Err(Error::UnknownTarget{target:0x11060,..})));
+  assert!(saved(&initial)==before);
  }
 }

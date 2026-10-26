@@ -16,6 +16,7 @@ if mode != 'missing-metrics':
     print('Kernel: 42 chamadas atendidas, 0 recusadas; instruções=123, EIP=0x10000')
     print('Framebuffer guest: saída habilitada, 12 pixels coloridos em 4 linhas')
     print('GPU raster: chamadas=1 triângulos=1 fragmentos=12')
+    print('DAC gamma: perfil=PublicReferenceV1 cursor=0 entradas_nao_identidade=Some(255)')
     print('  regiões de cor dos vértices: R=1 G=1 B=1')
 message = 'execução interrompida após 320 blocos; 42 chamadas atendidas, 0 recusadas;'
 print('Error: ' + ('"' + message + '"' if mode == 'quoted-budget' else message))
@@ -116,6 +117,17 @@ class SampleToolsTest(unittest.TestCase):
         result = self.run_tool(SONDA_PROJETO=project)
         self.assertEqual(result.returncode, 2)
         self.assertIn('XBE diferente', result.stderr)
+
+    def test_gamma_fade_prepares_without_manual_roots_and_reports_dac(self):
+        result = self.run_tool('prepare-sample.sh', ('gamma-fade', str(self.xbe)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        project = Path(result.stdout.strip())
+        self.assertTrue(project.name.startswith('gamma-fade-'))
+        self.assertNotIn('--entry', (project / 'args.txt').read_text())
+        result = self.run_tool(args=('gamma-fade', '64'), SONDA_PROJETO=str(project))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('gamma: DAC gamma:', result.stdout)
+        self.assertIn('entradas_nao_identidade=Some(255)', result.stdout)
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 # Executa um sample já traduzido em release e resume o resultado em linhas fixas,
 # para que critérios de aceite possam ser conferidos sem ler o log inteiro.
 #
-# Uso: bash scripts/sonda.sh <hello|triangle> [fatias]
+# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade> [fatias]
 #
 # Sem SONDA_PROJETO, prepare-sample.sh retraduz o XBE com o emissor atual.
 # SONDA_XBE seleciona outra entrada; SONDA_PROJETO reutiliza um projeto explícito.
@@ -29,8 +29,11 @@ hello)
 triangle)
     fatias="${2:-4000}"
     ;;
+gamma-fade)
+    fatias="${2:-128}"
+    ;;
 *)
-    echo "uso: $0 <hello|triangle> [fatias]" >&2
+    echo "uso: $0 <hello|triangle|gamma-fade> [fatias]" >&2
     exit 2
     ;;
 esac
@@ -91,6 +94,7 @@ vigiados="0xFD800040 0xFD800044"
     echo "recusadas: $(grep -oE '[0-9]+ recusadas' "$log" | tail -1 | grep -oE '^[0-9]+')"
     echo "framebuffer: $(grep -E '^Framebuffer guest:' "$log" | tail -1)"
     echo "raster: $(grep -E '^GPU raster:' "$log" | tail -1)"
+    echo "gamma: $(grep -E '^DAC gamma:' "$log" | tail -1)"
     echo "cores: $(grep -E '^  regiões de cor dos vértices' "$log" | tail -1)"
     echo "mmio_sem_modelo: $(grep -E 'fis:0x[0-9A-F]+ .*(não implementado|sem modelo)' "$log" |
         grep -oE 'fis:0x[0-9A-F]+' | sort -u | wc -l)"
