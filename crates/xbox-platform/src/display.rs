@@ -7,18 +7,18 @@
 //!
 //! ## O que a imagem apresentada **é**, e o que **não é**
 //!
-//! É a cópia fiel dos bytes `B,G,R,A` que o guest escreveu no framebuffer. **Não é** a
-//! saída analógica do console. Três efeitos reais do hardware não são aplicados, e a
-//! apresentação os ignora de propósito:
+//! O chamador copia os bytes `B,G,R,A` do framebuffer e aplica a paleta RGB8 do
+//! DAC quando o perfil da sessão a modela (ADRs 0079–0080). Snapshots legados
+//! conservam a apresentação bruta. A imagem não é a saída analógica do console:
 //!
 //! | Efeito | Estado |
 //! |---|---|
-//! | rampa de gamma do DAC | o guest a escreve em MMIO; hoje só é registrada pela telemetria (ADR-0051) |
+//! | rampa de gamma do DAC | RGB8 aplicado à cópia; limites do perfil público em P21 |
 //! | filtro de flicker / soften do encoder | só pedidos lógicos registrados (ADR-0050) |
 //! | entrelaçamento, overscan e proporção de pixel do sinal de TV | não modelados |
 //!
 //! Isto é **provisório e declarado**. Um título que dependa desses efeitos para a imagem
-//! correta — fade por gamma, por exemplo, que é comum — vai aparecer diferente aqui. A
+//! correta — filtros do encoder, por exemplo — vai aparecer diferente aqui. A
 //! pendência está no ROADMAP com a condição de saída; ela não é resolvida escondendo-a
 //! atrás de uma imagem que parece certa.
 //!
@@ -81,6 +81,16 @@ impl Quadro {
     /// Todos os bytes, `B,G,R,A`, linha a linha, sem padding.
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    /// Aplica a tabela RGB à cópia BGRA; alfa e memória de origem são preservados.
+    /// A plataforma não conhece o dispositivo nem toma emprestada a arena guest.
+    pub fn aplicar_rampa_rgb(&mut self, palette: &[[u8; 3]; 256]) {
+        for pixel in self.bytes.as_chunks_mut::<BYTES_POR_PIXEL>().0 {
+            pixel[0] = palette[usize::from(pixel[0])][2];
+            pixel[1] = palette[usize::from(pixel[1])][1];
+            pixel[2] = palette[usize::from(pixel[2])][0];
+        }
     }
 
     /// Os quatro bytes `B,G,R,A` de um pixel, ou `None` fora do quadro.
@@ -210,6 +220,30 @@ mod tests {
             vec![preenchimento; (largura * altura * 4) as usize],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn rampa_rgb_preserva_identidade_e_alfa_e_seleciona_canais_independentes() {
+        let bytes: Vec<u8> = (0..=255u8)
+            .flat_map(|v| [v, 255 - v, v / 2, v ^ 0xA5])
+            .collect();
+        let mut q = Quadro::novo(256, 1, bytes.clone()).unwrap();
+        q.aplicar_rampa_rgb(&std::array::from_fn(|i| [i as u8; 3]));
+        assert_eq!(q.bytes(), bytes);
+        q.aplicar_rampa_rgb(&std::array::from_fn(|i| {
+            [255 - i as u8, i as u8 / 2, i as u8 ^ 0x55]
+        }));
+        for (source, result) in bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(q.bytes().as_chunks::<4>().0)
+        {
+            assert_eq!(
+                result,
+                &[source[0] ^ 0x55, source[1] / 2, 255 - source[2], source[3]]
+            );
+        }
     }
 
     #[test]

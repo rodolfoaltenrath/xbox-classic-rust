@@ -27,7 +27,32 @@ pub(super) fn sources(output: &Path) -> String {
     )
     .unwrap();
     std::fs::write(output.join("src/kernel_display.xbe"), image).unwrap();
-    include_str!("../verification_display.inc").to_owned()
+    code.pop(); // Variante independente: programa DAC em x86 depois de habilitar vídeo.
+    for index in [0u8, 0x33, 0x55, 0xAA, 0xCC] {
+        for (address, value) in [
+            (0xFD6813C8u32, index),
+            (0xFD6813C9, 255 - index),
+            (0xFD6813C9, index / 2),
+            (0xFD6813C9, index ^ 0x55),
+        ] {
+            code.extend([0xC6, 0x05]);
+            code.extend(address.to_le_bytes());
+            code.push(value);
+        }
+    }
+    code.push(0xC3);
+    let image = xbe_com_imports(&code, &[166, 3, 2]).unwrap();
+    std::fs::write(
+        output.join("src/kernel_gamma.rs"),
+        emit::rust_source(&analysis::analyze(&image).unwrap()),
+    )
+    .unwrap();
+    std::fs::write(output.join("src/kernel_gamma.xbe"), image).unwrap();
+    [
+        include_str!("../verification_display.inc"),
+        include_str!("../verification_gamma.inc"),
+    ]
+    .concat()
 }
 fn push(code: &mut Vec<u8>, arg: u32) {
     code.push(0x68);

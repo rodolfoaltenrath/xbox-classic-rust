@@ -135,7 +135,53 @@ fn check_generated_mains(cli: &str, output: &Path, cargo: &std::ffi::OsStr, targ
     check_stopped_main(cli, output, cargo, target);
     check_thread_main(cli, output, cargo, target);
     check_frame_export(cli, output, cargo, target);
+    check_gamma_export(cli, output, cargo, target);
     check_state_file(cli, output, cargo, target);
+}
+
+fn check_gamma_export(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
+    let project = output.join("gamma-export");
+    check(
+        Command::new(cli)
+            .arg("translate")
+            .arg(output.join("src/kernel_gamma.xbe"))
+            .arg("--out")
+            .arg(&project),
+    );
+    let raw = project.join("raw with spaces.bgra");
+    let dac = project.join("dac with spaces.bgra");
+    let run = |raw_path: &Path, dac_path: &Path| {
+        Command::new(cargo)
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(project.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target)
+            .arg("--")
+            .arg("--quadro")
+            .arg(raw_path)
+            .arg("--quadro-apresentado")
+            .arg(dac_path)
+            .output()
+            .unwrap()
+    };
+    let first = run(&raw, &dac);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let raw_bytes = std::fs::read(&raw).unwrap();
+    let dac_bytes = std::fs::read(&dac).unwrap();
+    assert_eq!(raw_bytes.len(), 640 * 480 * 4);
+    assert_eq!(dac_bytes.len(), raw_bytes.len());
+    assert_eq!(&raw_bytes[..4], &[0xCC, 0x33, 0, 0xFF]);
+    assert_eq!(&raw_bytes[2560..2564], &[0, 0x55, 0xAA, 0xFF]);
+    assert_eq!(&dac_bytes[..4], &[0x99, 0x19, 0xFF, 0xFF]);
+    assert_eq!(&dac_bytes[2560..2564], &[0x55, 0x2A, 0x55, 0xFF]);
+    assert!(!run(&project.join("second-raw.bgra"), &dac).status.success());
+    assert_eq!(std::fs::read(&dac).unwrap(), dac_bytes);
+    assert!(!run(&raw, &project.join("second-dac.bgra")).status.success());
+    assert_eq!(std::fs::read(&raw).unwrap(), raw_bytes);
 }
 
 fn check_state_file(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target: &Path) {
@@ -312,9 +358,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "261 passed"
+        "265 passed"
     } else {
-        "245 passed"
+        "249 passed"
     }
 }
 

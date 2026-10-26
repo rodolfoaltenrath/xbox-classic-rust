@@ -8,7 +8,7 @@ estado completos. Leia CONTINUIDADE_ALPHA.md para o estado técnico
 completo; os relatos por ADR mais abaixo são históricos.
 
 Requisitos: Rust fixado 1.98.1, linker compatível, Cargo/dependências disponíveis
-offline, Git Bash no Windows e os dois XBEs homebrew locais. Para gerar entradas,
+offline, Git Bash no Windows e os XBEs homebrew locais. Para gerar entradas,
 usar o nxdk público fixado e [os scripts de build](homebrew.md); o launcher não
 baixa jogos/SDK nem usa BIOS. Sem entrada, ele informa o caminho ausente.
 
@@ -16,6 +16,7 @@ baixa jogos/SDK nem usa BIOS. Sem entrada, ele informa o caminho ausente.
 # Git Bash, raiz do repositório
 bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
+bash scripts/run-alpha.sh gamma-fade --continuo
 ```
 
 PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
@@ -37,6 +38,14 @@ O modo contínuo exige janela; `--fatias` define o trecho repetido, não um limi
 total. Apenas orçamento autoriza continuar. HLT, INT3, serviço recusado, memória
 e demais falhas continuam encerrando o guest com diagnóstico. Sem pacing por
 relógio real: não é promessa de FPS ou velocidade igual ao console.
+
+A janela aplica a rampa RGB8 escrita pelo guest no DAC (ADRs 0079–0080), sem
+alterar a RAM. No executável gerado, `--quadro ram.bgra` exporta o framebuffer
+bruto e `--quadro-apresentado tela.bgra` exporta a cópia usada na janela;
+as duas opções podem coexistir e exigem nomes novos. O formato é BGRA 640×480,
+sem padding, alfa preservado. Estados BUS0 v1–v9 restauram apresentação bruta
+e continuam assim ao regravar; a restauração não ativa gamma implicitamente.
+Não há filtros flicker/soften nem simulação do sinal analógico/monitor.
 `final.obsstate` é salvo ao fechar uma rodada contínua; `--salvar "novo caminho"`
 seleciona outro destino (também disponível em modo finito). Diretório de destino
 explícito deve existir. Nunca sobrescreve estado ou o arquivo carregado.

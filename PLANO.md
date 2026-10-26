@@ -405,7 +405,7 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   conferem LegacyUnmodeled; fixtures legadas nativas preservam seus contratos.
   Teste histórico de MMIO sem modelo mantém asserções em portas vizinhas.
   BUS0 v10/GAMM v1, ADR-0079; fontes fixadas e incertezas registradas em P21.
-- [ ] 6.2 Aplicar a rampa à apresentação, preservando a memória guest. Manter
+- [x] 6.2 Aplicar a rampa à apresentação, preservando a memória guest. Manter
   --quadro como BGRA bruto e oferecer exportação separada da saída apresentada.
   Nenhum título ou shader reconhecido por nome/hash; nenhum empréstimo da arena
   ao backend de janela. Snapshot antigo continua com a apresentação legada.
@@ -416,6 +416,13 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   imagens de hello/triangle; testes de opções/exportação passam. ADR, CHANGELOG,
   docs/dev/alpha.md e continuidade explicam captura bruta versus saída do DAC.
 
+  Evidência: `GATE OK: 593 testes`, target/gate/20261026-105644-WDLEgZ1e.log;
+  265 casos gerados/249 fora de x86-64. `gamma_verification` comprova transformação,
+  RAM/alfa intactos, replay parcial e restore BUS0 v9; `check_gamma_export`
+  executa main emitido e verifica os dois arquivos e recusa de sobrescrita.
+  Quadro testa identidade em todos os 256 níveis de cada canal: conserva cada
+  byte RGB das imagens de referência; revalidação dos homebrews reais na 6.3.
+  Opções de saída independentes/repetidas/incompletas cobertas; ADR-0080.
 - [ ] 6.3 Entregar gamma-fade como terceiro homebrew reproduzível. Integrar
   preparo/sonda/launcher, com build nxdk fixado e fontes fora do Git. Resolver
   somente bloqueios concretos de tradução/kernel encontrados no alvo, sem

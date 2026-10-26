@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
 Atualizado em **2026-10-26**, com base no commit **`c9c7220`** e implementação local
-do ADR **0079** (DAC gamma; PLANO Fase 6 em execução).
+dos ADRs **0079–0080** (DAC gamma e aplicação; PLANO Fase 6 em execução).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P21), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0079) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0080) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,9 +46,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (592 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (593 testes Windows; última referência Linux 576; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `261 passed` em x86-64 e `245` fora dele —
+   confere o **contador de casos gerados**, hoje `265 passed` em x86-64 e `249` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
@@ -127,7 +127,7 @@ aproximadamente 68 MB e são ignoradas pelo Git. Em ambos, outro processo
 carregou os mesmos CPU/Clock e continuou. A tentativa interrompida do triangle
 em 23/10 não foi usada como aceite; em 26/10, executar depois do gate com
 -TimeoutSeconds 300 para progresso. WM_CLOSE continua limitado a cinco segundos.
-Gate atual 592/261 gerados debug e 19 ferramentas; release 261 validado em 23/10.
+Gate atual 593/265 gerados debug e 19 ferramentas; release 261 validado em 23/10.
 Sondas de 26/10 preservam 45/0/302 pixels no hello e 278/0/305922 no triangle.
 Readback Win32 também preserva zero diferenças RGB: pastas
 session-hello-frame-phase5/ e session-triangle-frame-phase5-20261026/.
@@ -140,8 +140,10 @@ hello-LAfc6doM (target/alpha-live-smoke-hello/runs) e triangle-LqNrxSMj
 - **BUS0 v10/GAMM v1 (ADR-0079)**: RGB8 com índice/cursor de componente,
   identidade e wrap do perfil público. BUS0 v1–v9 migra sem modelo e sem gamma
   na imagem; regravar mantém isso. Apenas os dois bytes observados são modelados;
-  outras larguras/leitura de dados recusam. Incertezas físicas em P21. PLANO 6.2
-  aplica a paleta à apresentação; 6.1 só entrega o dispositivo.
+  outras larguras/leitura de dados recusam. Incertezas físicas em P21.
+  ADR-0080 aplica a paleta à cópia apresentada sem alterar RAM/alfa. --quadro
+  continua bruto, --quadro-apresentado exporta a saída digital usada na janela;
+  ambos exigem arquivo novo. Flicker/soften/sinal analógico seguem pendentes.
 - **Controle host (ADR-0077)**: --continuo exige --janela; Espaço pausa,
   F5 salva em --estados, F9 restaura última geração desta execução. Apenas
   orçamento vira próximo trecho. Pausa/fila de teclas não são estado guest;

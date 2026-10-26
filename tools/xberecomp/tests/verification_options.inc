@@ -46,4 +46,15 @@ mod options_verification {
         let options=parse(&["--continuo","--estados","meus estados","--janela"]).unwrap();
         assert!(options.continuo); assert_eq!(options.estados.unwrap(),std::path::PathBuf::from("meus estados"));
     }
+    #[test]
+    fn saida_do_dac_tem_caminho_independente_e_recusa_opcao_invalida() {
+        let o=parse(&["--quadro-apresentado","cores finais.bgra","--quadro","ram.bgra"]).unwrap();
+        assert_eq!(o.quadro_apresentado.unwrap(),std::path::PathBuf::from("cores finais.bgra"));
+        assert_eq!(o.quadro.unwrap(),std::path::PathBuf::from("ram.bgra"));
+        assert_eq!(parse(&[]).unwrap().quadro_apresentado,None);
+        for args in [vec!["--quadro-apresentado"],vec!["--quadro-apresentado","--janela"],
+            vec!["--quadro-apresentado",""],vec!["--quadro-apresentado","a","--quadro-apresentado","b"]] {
+            assert!(parse(&args).is_err(),"{args:?}");
+        }
+    }
 }

@@ -12,6 +12,7 @@ struct Opcoes {
     fatias: u32,
     janela: bool,
     quadro: Option<std::path::PathBuf>,
+    quadro_apresentado: Option<std::path::PathBuf>,
     salvar: Option<std::path::PathBuf>,
     carregar: Option<std::path::PathBuf>,
     continuo: bool,
@@ -21,7 +22,7 @@ struct Opcoes {
 /// Valida toda a linha de comando antes de executar o guest.
 fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> {
     let mut args = args.into_iter();
-    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None, salvar: None, carregar: None, continuo: false, estados: None };
+    let mut opcoes = Opcoes { fatias: FATIAS_PADRAO, janela: false, quadro: None, quadro_apresentado: None, salvar: None, carregar: None, continuo: false, estados: None };
     let mut fatias_definidas = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -37,6 +38,11 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
                 let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
                     .ok_or("--quadro exige caminho para BGRA bruto")?;
                 opcoes.quadro = Some(valor.into());
+            }
+            "--quadro-apresentado" if opcoes.quadro_apresentado.is_none() => {
+                let valor = args.next().filter(|s| !s.is_empty() && !s.starts_with("--"))
+                    .ok_or("--quadro-apresentado exige caminho para BGRA após DAC")?;
+                opcoes.quadro_apresentado = Some(valor.into());
             }
             "--salvar" | "--carregar" | "--estados" => {
                 let campo = match arg.as_str() { "--salvar" => &mut opcoes.salvar, "--carregar" => &mut opcoes.carregar, _ => &mut opcoes.estados };
@@ -58,6 +64,9 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
 /// É a lista exata de registradores que o título usa: sem ela, um acesso que não parou a
 /// execução ficaria invisível, e um que parou só diria o endereço do primeiro.
 fn relatar_mmio(session: &xbox_recomp::runtime::Session) {
+    let gamma = session.bus.nv2a_gamma();
+    let different = gamma.palette().map(|p| p.iter().enumerate().filter(|(i, rgb)| **rgb != [*i as u8;3]).count());
+    eprintln!("DAC gamma: perfil={:?} cursor={} entradas_nao_identidade={:?}", gamma.profile(), gamma.cursor(), different);
     let clears = session.bus.nv2a_pgraph().stats();
     eprintln!("GPU clear: chamadas={} pixels={} primeira_cor={:?}", clears.calls, clears.pixels, clears.first_color);
     let draws = session.bus.nv2a_pgraph().draw_stats();
@@ -173,6 +182,15 @@ fn capturar_quadro(
     .ok()
 }
 
+/// Mesma cópia usada pela janela e pela exportação do DAC. Sem efeito na sessão.
+fn capturar_saida(session: &xbox_recomp::runtime::Session) -> Option<xbox_platform::display::Quadro> {
+    let mut quadro = capturar_quadro(session)?;
+    if let Some(palette) = session.bus.nv2a_gamma().palette() {
+        quadro.aplicar_rampa_rgb(palette);
+    }
+    Some(quadro)
+}
+
 /// Apresenta o quadro atual e processa a janela. `true` = o usuário pediu para fechar.
 ///
 /// Não apresenta antes de existir um modo de vídeo: a janela só é criada quando há o que
@@ -194,7 +212,7 @@ fn apresentar_eventos(
     if !abrir {
         return Ok(Evento::Nenhum);
     }
-    if let Some(quadro) = capturar_quadro(session) {
+    if let Some(quadro) = capturar_saida(session) {
         if janela.is_none() {
             *janela = Some(xbox_platform::criar_janela("Obsidian — Xbox", quadro.largura(), quadro.altura())?);
         }
@@ -206,12 +224,13 @@ fn apresentar_eventos(
     Ok(Evento::Nenhum)
 }
 
-fn exportar_quadro(session: &xbox_recomp::runtime::Session, caminho: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn exportar_quadro(session: &xbox_recomp::runtime::Session, caminho: &std::path::Path, apresentado: bool) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
-    let quadro = capturar_quadro(session).ok_or("framebuffer indisponível para --quadro")?;
+    let quadro = if apresentado { capturar_saida(session) } else { capturar_quadro(session) }
+        .ok_or("framebuffer indisponível para exportação")?;
     let mut arquivo = std::fs::OpenOptions::new().write(true).create_new(true).open(caminho)?;
     arquivo.write_all(quadro.bytes())?;
-    eprintln!("Quadro BGRA: {}x{}, {} bytes -> {}", quadro.largura(), quadro.altura(), quadro.bytes().len(), caminho.display());
+    eprintln!("Quadro BGRA {}: {}x{}, {} bytes -> {}", if apresentado { "apresentado" } else { "bruto" }, quadro.largura(), quadro.altura(), quadro.bytes().len(), caminho.display());
     Ok(())
 }
 
@@ -242,12 +261,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Estado salvo: {} (instruções={}, ciclos={}, EIP=0x{:08X})", path.display(), session.state.retired, session.state.clock.cycles(), session.state.eip);
         }
     }
-    if let Some(caminho) = opcoes.quadro {
-        if let Err(erro) = exportar_quadro(&session, &caminho) {
+    for (caminho, apresentado) in [(opcoes.quadro, false), (opcoes.quadro_apresentado, true)] {
+        if let Some(caminho) = caminho {
+        if let Err(erro) = exportar_quadro(&session, &caminho, apresentado) {
             eprintln!("Falha ao exportar quadro: {erro}");
             // Uma falha de captura não pode esconder HLT, falta de memória ou
             // serviço recusado. Quando o guest teve sucesso, a captura decide o erro.
             if resultado.is_ok() { return Err(erro); }
+        }
         }
     }
 
