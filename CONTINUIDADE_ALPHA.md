@@ -101,7 +101,8 @@ Sondas headless no código final preservam CPU/pixels do ADR-0073. Gate Windows
 580 e 257 gerados debug/release, snapshots/replay passando, formatos mantidos.
 Hello histórico 1208/48/47 chamadas usava outro ponto de execução; não é a
 medição atual de 64 fatias. Cobertura segue 38/69 hello e 42/75 triangle.
-Apresentação Linux continua P6. Dezesseis testes Python atuais de ferramentas
+Apresentação Linux: X11/Xwayland desde o ADR-0086 (PLANO 8.1/8.2), com captura
+externa sem diferença RGB; Wayland nativo/KMS continuam P6. Dezesseis testes Python atuais de ferramentas
 passaram no WSL (6 launcher, 6 preparo/sonda, 4 gate); os sete testes anteriores
 de busca de raízes não foram repetidos.
 Não existe evidência para prometer jogos comerciais por estes números.
@@ -391,10 +392,12 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
-As fases **0–7 do PLANO estão concluídas**. A Fase 7 entregou leitura síncrona
+As fases **0–7 do PLANO estão concluídas**; a Fase 8 (janela X11 no Linux,
+ADR-0086) também. No Fedora: `bash scripts/run-alpha.sh triangle` abre a janela pelo
+Xwayland e `target/release/verificar-janela apos|durante|continuo <bin> <saida-nova>`
+confere a janela de fora. Seguem as Fases 9 (mesh) e 10 (led/winapi) do PLANO. A Fase 7 entregou leitura síncrona
 do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
-e homebrew próprio file-read/launcher/sondas. Não há tarefa aberta nesse plano.
-O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.
+e homebrew próprio file-read/launcher/sondas. O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.
 Não reabrir tarefas históricas. Continuam os provisórios
 P1/P2/P4/P6/P8/P9/P12–P22 e as fases maiores do ROADMAP.
 Cada tarefa futura exige evidência, ADR quando estrutural e gate.

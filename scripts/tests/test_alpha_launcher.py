@@ -147,6 +147,18 @@ if os.environ.get('TEST_ARGS_FILE'):
         self.assertIn('Espaço pausa', result.stdout)
         self.assertEqual(saved.read_bytes(), b'state fixture')
 
+    def test_linux_window_reaches_native_arguments_with_continuous_states(self):
+        recorded = self.root / 'linux-window-arguments.json'
+        result = self.run_alpha('--continuo', headless=False, DISPLAY=':0',
+                                TEST_ARGS_FILE=str(recorded))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        folder = self.runs()[-1]
+        args = json.loads(recorded.read_text())
+        self.assertIn('--janela', args)
+        self.assertEqual(args[args.index('--estados') + 1], str(folder / 'states'))
+        self.assertEqual(args[args.index('--salvar') + 1], str(folder / 'final.obsstate'))
+        self.assertFalse((folder / 'powershell-args.json').exists())
+
     def test_explicit_state_paths_and_invalid_combinations_are_checked_before_build(self):
         saved = self.root / 'previous.obsstate'
         saved.write_bytes(b'original')
@@ -182,7 +194,7 @@ if os.environ.get('TEST_ARGS_FILE'):
         for args in [('--fatias', '0'), ('--fatias', '4294967296'), ('--fatias',),
                      ('--unknown',), ('--fatias', '1', '--fatias', '2'), ('--projeto', str(self.root / 'missing'))]:
             self.assertEqual(self.run_alpha(*args).returncode, 2)
-        self.assertEqual(self.run_alpha(headless=False).returncode, 2)
+        self.assertEqual(self.run_alpha(headless=False, DISPLAY='').returncode, 2)
         self.xbe.unlink()
         self.assertEqual(self.run_alpha().returncode, 2)
         self.assertFalse(self.state.exists())

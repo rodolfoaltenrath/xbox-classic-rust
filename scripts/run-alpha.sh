@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Um comando por sample. Git Bash no Windows; --sem-janela também permite Linux.
+# Um comando por sample. Janela no Windows (Git Bash) e no Linux com servidor X (DISPLAY).
 set -euo pipefail
 usage() { echo 'uso: run-alpha.sh <hello|triangle|gamma-fade|file-read> [--xbe arquivo] [--projeto projeto] [--fatias N] [--sem-janela] [--continuo] [--carregar estado] [--salvar novo-estado]'; }
 if [[ "${1:-}" == --help || "${1:-}" == --ajuda ]]; then usage; exit 0; fi
@@ -48,8 +48,8 @@ if [ -n "$save_state" ]; then
 fi
 windows=0
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) windows=1 ;; esac
-if [ "$window" -eq 1 ] && [ "$windows" -eq 0 ]; then
-    echo 'Janela disponível no Windows/Git Bash; neste sistema use --sem-janela.' >&2; exit 2
+if [ "$window" -eq 1 ] && [ "$windows" -eq 0 ] && [ -z "${DISPLAY:-}" ]; then
+    echo 'Janela exige servidor X (DISPLAY vazio); use --sem-janela.' >&2; exit 2
 fi
 cd "$raiz"
 echo "Preparo: traduzindo $sample com o emissor atual..."
@@ -124,6 +124,8 @@ if [ "$windows" -eq 1 ]; then
     powershell.exe "${args[@]}" || status=$?
 else
     args=(--fatias "$slices" --quadro "$run/guest.bgra" --quadro-apresentado "$run/display.bgra")
+    [ "$window" -eq 0 ] || args+=(--janela)
+    [ "$continuous" -eq 0 ] || args+=(--continuo --estados "$run/states")
     [ -z "$load_state" ] || args+=(--carregar "$load_state")
     [ -z "$save_state" ] || args+=(--salvar "$save_state")
     "$binary" "${args[@]}" >"$run/stdout.log" 2>"$run/stderr.log" || status=$?

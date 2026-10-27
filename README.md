@@ -5,13 +5,13 @@ estática: **XBE → análise x86 → Rust gerado → executável nativo**, acom
 camada de compatibilidade Xbox. O objetivo é uma experiência de mini console,
 navegável por controle, com Windows/Linux e futuramente Linux direto em KMS/DRM.
 
-**O alpha executa homebrews do nxdk em janela Win32.** Hello e triangle apresentam
+**O alpha executa homebrews do nxdk em janela Win32 ou X11 (Linux).** Hello e triangle apresentam
 texto/triângulos; gamma-fade exercita a rampa de cores do DAC. O teste próprio
 file-read abre e lê o XBE original como arquivo guest e calcula seu checksum.
 Há kernel HLE,
 duas threads cooperativas, interrupções e rasterização
-software parcial. **Jogos comerciais ainda não executam**; áudio, controles, Linux
-gráfico e compatibilidade geral continuam pendentes. O projeto não inclui jogos,
+software parcial. **Jogos comerciais ainda não executam**; áudio, controles, Wayland
+nativo/KMS e compatibilidade geral continuam pendentes. O projeto não inclui jogos,
 BIOS ou bibliotecas proprietárias.
 
 ## Rodar o alpha no Windows
@@ -46,6 +46,26 @@ o status 1 de orçamento é preservado e explicado. Fechar durante a execução 
 parada pelo host/status 0. Logs de cada rodada ficam em `target/alpha/runs/`,
 com `guest.bgra` (RAM bruta) e `display.bgra` (cópia após a rampa RGB8 do DAC).
 Opções, caminhos com espaços e verificação visual em [alpha](docs/dev/alpha.md).
+
+### No Linux
+
+Numa sessão gráfica (Xorg, ou Wayland com Xwayland, como o GNOME do Fedora), o
+mesmo comando abre a janela pelo protocolo X11, sem bibliotecas extras:
+
+```bash
+bash scripts/run-alpha.sh triangle
+bash scripts/run-alpha.sh hello --continuo
+```
+
+Sem `DISPLAY` o launcher recusa a janela; use `--sem-janela`. Para conferir a
+janela de fora, como o `verify-window.ps1` faz no Windows:
+
+```bash
+cargo build --release -p verificar-janela
+target/release/verificar-janela apos <obsidian-native> target/visual-linux-nova 320
+```
+
+Os modos são `apos`, `durante` e `continuo`. Detalhes em [ADR-0086](docs/adr/0086-apresentacao-x11-linux.md).
 
 Para continuar até fechar, com pausa e estados completos:
 

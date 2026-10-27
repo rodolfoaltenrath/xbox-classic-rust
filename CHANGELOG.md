@@ -27,6 +27,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
   Wayland. `xbox_platform::verificacao_x11` captura a janela por outra conexão.
   Captura real no Fedora 44 sem diferença RGB (ADR-0086, PLANO 8.1, P6).
 
+- `tools/verificar-janela` (modos apos/durante/continuo) e `run-alpha.sh` com
+  janela no Linux. Hello e triangle: captura X11 idêntica à exportação
+  (302/12 e 305922/479 pixels/linhas), fechamento em < 35 ms, atalhos do modo
+  contínuo verificados (ADR-0086, PLANO 8.2).
+
 - Quarto alvo file-read, com fonte guest própria, build isolado no nxdk fixado
   e integração ao preparo/sonda/launcher. Calcula comprimento/FNV-1a32 do XBE
   lido por APIs públicas e mantém arquivo aberto para testar snapshots

@@ -556,7 +556,7 @@ janela só existe no Windows. A Fase 10 (DRM/KMS) continua fora deste recorte.
   diferentes; Espaço/F5/F9 em ordem; WM_DELETE_WINDOW -> Fechar. ADR-0086; P6
   reescrito; teste "Fases 8 e 10" restrito a sistemas sem backend.
 
-- [ ] 8.2 Verificação visual real no Linux, equivalente ao `verify-window.ps1`.
+- [x] 8.2 Verificação visual real no Linux, equivalente ao `verify-window.ps1`.
   Ferramenta que localiza a janela do Obsidian por outra conexão X, captura o
   conteúdo com GetImage, compara com a exportação `--quadro-apresentado` e
   envia WM_DELETE_WINDOW medindo o tempo até o processo sair.
@@ -571,6 +571,20 @@ janela só existe no Windows. A Fase 10 (DRM/KMS) continua fora deste recorte.
     pausa/salvar/restaurar no log;
   - capturas PNG/PPM e logs em `target/visual-linux-*`; README e CONTINUIDADE
     com o comando Linux.
+
+  Evidência: `GATE OK: 624 testes`, target/gate/20261026-214442-4B9op0iB.log;
+  `TOOLS OK` (27 testes Python, incluindo janela Linux no launcher).
+  `tools/verificar-janela` no Xwayland/Fedora 44: hello/64 e triangle/320 com
+  **0 diferenças RGB** entre captura GetImage e `--quadro-apresentado`;
+  302/12 e 305922/479 pixels/linhas, iguais às sondas. Fechamento após o
+  orçamento 33,0/18,6 ms (status 1; o guest já parou e a linha de orçamento é
+  preservada, não há execução para o host interromper); durante a execução
+  6,3/31,0 ms com "interrompida pelo host", status 0. Contínuo (hello): Espaço
+  pausa/retoma no mesmo contador, F5 salvou checkpoint-000001, F9 restaurou,
+  fechou em 20,6 ms com parada pelo host. Capturas e logs em
+  target/visual-linux-{hello,triangle}-{apos,durante} e
+  target/visual-linux-hello-continuo; PNG do triangle inspecionado (triângulo
+  RGB e texto Triangle Demo). README, ADR-0086 e CONTINUIDADE com o comando Linux.
 
 ## Fase 9 — Sample `mesh` (textura, depth e matrizes)
 

@@ -78,6 +78,32 @@ como o `verify-window.ps1` prova o DC do Win32.
   especificação define esse erro para janela ainda não visível. A verificação
   repete a captura, em vez de tratar a janela como pronta.
 
+## Validação com os samples (PLANO 8.2)
+
+`tools/verificar-janela` executa o binário gerado e verifica a janela por outra
+conexão. Fedora 44, Xwayland, binários release traduzidos com o emissor atual
+(`target/samples/hello-KIVd2QrP`, `target/samples/triangle-Jn3L0uSF`):
+
+| Prova | Hello | Triangle |
+|---|---|---|
+| Captura × `--quadro-apresentado` | 0 diferenças RGB | 0 diferenças RGB |
+| Pixels/linhas na captura | 302/12 (igual à sonda) | 305922/479 (igual à sonda) |
+| Fechar após o orçamento | 33,0 ms, status 1 | 18,6 ms, status 1 |
+| Fechar durante a execução | 6,3 ms, status 0, parada pelo host | 31,0 ms, status 0, parada pelo host |
+| `--continuo` com Espaço/Espaço/F5/F9 | pausa e retomada no mesmo contador de instruções; checkpoint salvo e restaurado; fechou em 20,6 ms, status 0 | — |
+
+Depois do orçamento, o guest já parou: fechar só encerra o laço que mantém a
+janela, e o processo sai com o status 1 do orçamento, cuja linha é preservada.
+"Interrompida pelo host" aparece quando o fechamento interrompe a execução
+(modos durante e contínuo). A captura do triangle mostra o triângulo RGB, o
+fundo interpolado e o texto "Triangle Demo / Frames: 8", como a referência do
+ADR-0069. As capturas ficam em `target/visual-linux-*/display.{bgra,ppm,png}`
+junto com `guest.bgra`, os logs e o `resultado.txt` de cada modo.
+
+`run-alpha.sh` passa a abrir a janela no Linux quando há `DISPLAY` (repassa
+`--janela` e, no contínuo, `--estados` da rodada); sem `DISPLAY` continua
+recusando antes do build.
+
 ## Consequências
 
 P6 deixa de ser "apresentação só no Windows": o Linux desktop tem janela por
