@@ -1,0 +1,9 @@
+P3
+# Depth LEQUAL: quad vermelho (z=10), azul (z=5, colunas 0-1), verde (z=20) por ultimo.
+# Valor analitico: azul vence a esquerda, vermelho a direita, verde perde em toda parte.
+4 4
+255
+0 0 255 0 0 255 255 0 0 255 0 0
+0 0 255 0 0 255 255 0 0 255 0 0
+0 0 255 0 0 255 255 0 0 255 0 0
+0 0 255 0 0 255 255 0 0 255 0 0

@@ -604,7 +604,7 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   SSE coberto, sem MXCSR/FLDCW; kernel a observar; PGRAPH: TX_*, INDEX_DATA,
   VP 44 instruções, combiner tex0×col0, depth. Nenhuma emulação nova.
 
-- [~] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
+- [x] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
   oráculo ou referência para cada instrução, o que 9.1 listar (x87/SSE de P8/P9,
   serviços de kernel). Cada recorte com teste próprio.
   **Aceite:** `GATE OK`; sonda mesh com `recusadas: 0` e `GPU raster` com
@@ -616,7 +616,16 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   e o pipeline do mesh (textura, combiner, VP) é recusado pelo SoftwareV1. O
   critério de triângulos > 0 depende do PGRAPH, trabalhado em seguida.
 
-- [ ] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
+  Evidência: `GATE OK: 658 testes`, target/gate/20261026-230330-mTdAKvod.log.
+  Sonda mesh/320 (target/sonda/mesh-20261026-224137-aMy2E7hf.log): 281
+  chamadas, `recusadas: 0`, `GPU raster: chamadas=54 triângulos=3888
+  fragmentos=179834`. CPU: x87 do ADR-0088 (P9 reescrito; P8 não é usado pelo
+  mesh, sem MXCSR/FLDCW no binário). Para os triângulos aparecerem foi preciso o
+  desenho indexado e o pipeline do ADR-0089 (índices, VP, combiner, textura,
+  depth W), que também adianta a 9.3. Triangle/320 sem regressão: PPM com SHA
+  1c2d8fc5…7c280c, igual ao ADR-0069.
+
+- [~] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
   usa, endereçamento/wrap/filtro configurados, teste de profundidade e
   combiner com textura. Nada reconhecido por título ou hash.
   **Aceite:** `GATE OK`; testes golden sintéticos (textura 4×4, depth com dois

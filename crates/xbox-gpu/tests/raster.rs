@@ -305,7 +305,9 @@ fn overflow_estatisticas_raster_recusa_sem_publicar_pixels() {
     let before = m.words.clone();
     for pixel_counter in [false, true] {
         let mut bytes = original.clone();
-        let end = bytes.len();
+        // PRND v2: as estatísticas precedem o contador de índices pendentes (u32 = 0).
+        let end = bytes.len() - 4;
+        assert_eq!(bytes[end..], [0; 4]);
         let count = if pixel_counter { 1u64 } else { u64::MAX };
         bytes[end - 24..end - 16].copy_from_slice(&count.to_le_bytes());
         bytes[end - 16..end - 8].copy_from_slice(&count.to_le_bytes());

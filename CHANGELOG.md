@@ -21,6 +21,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- PGRAPH para o mesh: desenho por INDEX_DATA (PRND v2 com índices pendentes),
+  VP com DP3/MIN/MAX/RSQ/LIT e saída TEX0, register combiners gerais, textura
+  LU_IMAGE com convolução gaussiana e profundidade W com Z_PERSPECTIVE, segundo o
+  xemu fixado. O mesh desenha 3888 triângulos com zero recusas; o PPM do triangle
+  continua idêntico (ADR-0089, PLANO 9.2/9.3).
+
 - x87 aritmético do mesh: FMULP/FDIVRP/FSQRT exatos em 80 bits e FSIN/FCOS com a
   redução por π de 66 bits do hardware. Oráculo `xbox-cpu::oracle::x87` na FPU
   física: 30000 casos idênticos nos 80 bits e 40000 de FSIN/FCOS a ≤ 1 ulp de f64

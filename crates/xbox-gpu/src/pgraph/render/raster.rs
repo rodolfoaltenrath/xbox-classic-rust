@@ -1,5 +1,10 @@
 //! Raster próprio: amostras no centro, arestas top/left e precisão declarada no ADR.
-use super::{Render, vertex::Vertex};
+use super::{
+    Render,
+    combiner::{Combiner, Entradas},
+    texture::Textura,
+    vertex::Vertex,
+};
 use crate::pgraph::{Memory, Surface, clear};
 struct Target {
     base: u32,
@@ -75,14 +80,28 @@ fn color_mask(raw: u32) -> u32 {
 fn channel(x: f64) -> u32 {
     u32::try_from((x.clamp(0.0, 1.0) * 255.0).round() as i64).expect("canal 0..255")
 }
+/// Estado de fragmento decodificado no início do draw (ADR-0089).
+pub(super) struct Pipeline {
+    pub combiner: Combiner,
+    /// Textura do estágio 0 em PROJECT2D, com os texels já copiados.
+    pub textura: Option<Textura>,
+}
+
 struct Draw<'a> {
     state: &'a Render,
+    pipeline: &'a Pipeline,
     color: Target,
     depth: Option<Target>,
     mask: u32,
     pixels: u64,
     capacity: u64,
+    /// Pixels de caixa envolvente já percorridos neste draw (orçamento de trabalho).
+    area: u64,
 }
+
+/// Orçamento de pixels percorridos por draw (soma das caixas envolventes recortadas
+/// ao alvo): protege contra pushbuffer que pediria trabalho ilimitado (ADR-0089).
+const ORCAMENTO_AREA: u64 = 64 * 1024 * 1024;
 impl Draw<'_> {
     #[allow(clippy::cast_precision_loss)] // Pesos f64 aproximam a divisão das arestas i64; precisão software declarada (ADR-0068).
     fn triangle(&mut self, mut v: [Vertex; 3]) -> Result<(), &'static str> {
@@ -129,6 +148,12 @@ impl Draw<'_> {
                 .min(i64::from(self.color.height - 1)),
         )
         .expect("altura limitada");
+        if min_x <= max_x && min_y <= max_y {
+            self.area += u64::from(max_x - min_x + 1) * u64::from(max_y - min_y + 1);
+            if self.area > ORCAMENTO_AREA {
+                return Err("draw excede orcamento de raster");
+            }
+        }
         for y in min_y..=max_y {
             for x in min_x..=max_x {
                 if !self.window(x, y) {
@@ -163,6 +188,40 @@ impl Draw<'_> {
             x >= h & 0xFFF && x <= (h >> 16) & 0xFFF && y >= v & 0xFFF && y <= (v >> 16) & 0xFFF
         })
     }
+    /// Cor do fragmento: V0 e coordenadas de textura com perspectiva, amostra do
+    /// estágio 0 e combiners (ADR-0089).
+    fn sombrear(
+        &self,
+        vertices: &[Vertex; 3],
+        pesos: [f64; 3],
+        divisor: f64,
+    ) -> Result<[u32; 4], &'static str> {
+        let perspectiva = |valor: &dyn Fn(usize) -> f64| {
+            (0..3)
+                .map(|i| pesos[i] * valor(i) / f64::from(vertices[i].position[3]))
+                .sum::<f64>()
+                / divisor
+        };
+        // V0 chega ao combiner com clamp por vértice (`vtxD0` do xemu).
+        let v0: [f64; 4] = std::array::from_fn(|lane| {
+            perspectiva(&|i| f64::from(vertices[i].color[lane]).clamp(0.0, 1.0))
+        });
+        let mut texturas = [[0.0, 0.0, 0.0, 1.0]; 4];
+        if let Some(textura) = &self.pipeline.textura {
+            let homogenea = perspectiva(&|i| f64::from(vertices[i].texcoord[3]));
+            if homogenea == 0.0 || !homogenea.is_finite() {
+                return Err("coordenada de textura projetiva com q nulo");
+            }
+            let coord_s = perspectiva(&|i| f64::from(vertices[i].texcoord[0])) / homogenea;
+            let coord_t = perspectiva(&|i| f64::from(vertices[i].texcoord[1])) / homogenea;
+            texturas[0] = textura.amostrar(coord_s, coord_t);
+        }
+        let rgba = self
+            .pipeline
+            .combiner
+            .avaliar(&Entradas { v0, t: texturas });
+        Ok(rgba.map(channel))
+    }
     fn fragment(
         &mut self,
         x: u32,
@@ -171,9 +230,21 @@ impl Draw<'_> {
         weights: [f64; 3],
     ) -> Result<(), &'static str> {
         let index = (y * self.color.width + x) as usize;
-        let z = (0..3)
-            .map(|i| weights[i] * f64::from(v[i].position[2]))
+        let divisor = (0..3)
+            .map(|i| weights[i] / f64::from(v[i].position[3]))
             .sum::<f64>();
+        if !divisor.is_finite() || divisor <= 0.0 {
+            return Err("interpolacao perspectiva invalida");
+        }
+        // Z_PERSPECTIVE (SET_CONTROL0 bit 16): a profundidade é o W do fragmento com
+        // interpolação de perspectiva, 1/Σ(bᵢ/wᵢ), como no xemu (`psh.c`, ADR-0089).
+        let z = if self.state.reg(0x290) & 0x10000 != 0 {
+            1.0 / divisor
+        } else {
+            (0..3)
+                .map(|i| weights[i] * f64::from(v[i].position[2]))
+                .sum::<f64>()
+        };
         let min_z = f64::from(f32::from_bits(self.state.reg(0x394)));
         let max_z = f64::from(f32::from_bits(self.state.reg(0x398)));
         if !min_z.is_finite() || !max_z.is_finite() || min_z > max_z {
@@ -198,20 +269,7 @@ impl Draw<'_> {
                 target.words[index] = (depth << 8) | (target.words[index] & 255);
             }
         }
-        let divisor = (0..3)
-            .map(|i| weights[i] / f64::from(v[i].position[3]))
-            .sum::<f64>();
-        if !divisor.is_finite() || divisor <= 0.0 {
-            return Err("interpolacao perspectiva invalida");
-        }
-        let channels: [u32; 4] = std::array::from_fn(|lane| {
-            channel(
-                (0..3)
-                    .map(|i| weights[i] * f64::from(v[i].color[lane]) / f64::from(v[i].position[3]))
-                    .sum::<f64>()
-                    / divisor,
-            )
-        });
+        let channels = self.sombrear(&v, weights, divisor)?;
         let rgba = (channels[3] << 24) | (channels[0] << 16) | (channels[1] << 8) | channels[2];
         self.color.words[index] = (self.color.words[index] & !self.mask) | (rgba & self.mask);
         self.pixels = self
@@ -224,6 +282,7 @@ impl Draw<'_> {
 }
 pub(super) fn draw(
     state: &Render,
+    pipeline: &Pipeline,
     vertices: &[Vertex],
     mem: &mut impl Memory,
     surface: Surface,
@@ -233,11 +292,6 @@ pub(super) fn draw(
         return Err("window clip exclusivo sem modelo");
     }
     let color = Target::read(surface, false, mem)?;
-    if u64::from(color.width) * u64::from(color.height) * (vertices.len() as u64 / 3)
-        > 16 * 1024 * 1024
-    {
-        return Err("draw excede orcamento de raster");
-    }
     let depth = if state.reg(0x30C) != 0 {
         Some(Target::read(surface, true, mem)?)
     } else {
@@ -245,11 +299,13 @@ pub(super) fn draw(
     };
     let mut draw = Draw {
         state,
+        pipeline,
         color,
         depth,
         mask: color_mask(state.reg(0x358)),
         pixels: 0,
         capacity,
+        area: 0,
     };
     for triangle in vertices.as_chunks::<3>().0 {
         draw.triangle(*triangle)?;
