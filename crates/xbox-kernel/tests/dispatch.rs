@@ -44,8 +44,8 @@ fn chamada(ordinal: u32, argumentos: &[u32]) -> (Bus, u32, [u32; 8]) {
 
 #[test]
 fn ordinal_sem_servico_recusa_com_nome_ordinal_chamador_e_argumentos() {
-    // `MmAllocateContiguousMemory` (165) é stdcall/4: um argumento declarado.
-    let (mut bus, pc, regs) = chamada(165, &[0x1000]);
+    // `MmQueryStatistics` (181) é stdcall/4: um argumento declarado.
+    let (mut bus, pc, regs) = chamada(181, &[0x1000]);
     let mut d = Dispatcher::new();
 
     let erro = d.atender(&mut bus, pc, &regs).unwrap_err();
@@ -54,8 +54,8 @@ fn ordinal_sem_servico_recusa_com_nome_ordinal_chamador_e_argumentos() {
         matches!(erro, Erro::NaoImplementado { .. }),
         "veio {erro:?}"
     );
-    assert!(texto.contains("MmAllocateContiguousMemory"), "{texto}");
-    assert!(texto.contains("165"), "{texto}");
+    assert!(texto.contains("MmQueryStatistics"), "{texto}");
+    assert!(texto.contains("181"), "{texto}");
     assert!(texto.contains("0x00011234"), "falta o chamador: {texto}");
     assert!(texto.contains("0x00001000"), "falta o argumento: {texto}");
 
@@ -67,7 +67,7 @@ fn ordinal_sem_servico_recusa_com_nome_ordinal_chamador_e_argumentos() {
 fn recusa_nao_altera_a_cpu_nem_a_memoria_do_guest() {
     // O contrato de retomada depende disso: um serviço faltante pode ser implementado
     // e a execução continuar do mesmo ponto.
-    let (mut bus, pc, regs) = chamada(165, &[0x1000]);
+    let (mut bus, pc, regs) = chamada(181, &[0x1000]);
     let antes = bus.ler_u32(GuestVirt(regs[4])).unwrap();
     let regs_antes = regs;
 

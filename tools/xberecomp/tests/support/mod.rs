@@ -45,6 +45,7 @@ mod scan;
 mod scheduler;
 mod sha;
 mod shifts;
+mod simple_contiguous;
 mod sse;
 mod strings;
 mod system_time;
@@ -99,6 +100,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&virtual_memory::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
+    main.push_str(&simple_contiguous::sources(output));
     main.push_str(&files::sources(output));
     main.push_str(&directories::sources(output));
     main.push_str(&gpu_instance::sources(output));

@@ -17,7 +17,7 @@ pub(super) fn sources(output: &Path) -> String {
         0x64, 0x8D, 0x70, 8, // LEA ignores FS base
         0xC3,
     ];
-    let mut image = xbe_com_imports(code, &[165, 8, 21]).unwrap();
+    let mut image = xbe_com_imports(code, &[181, 8, 21]).unwrap();
     image[0x12C..0x130].copy_from_slice(&0x103C0u32.to_le_bytes());
     for (index, value) in [0x12020u32, 0x12024, 0x12010, 0, 13, 0x00300000]
         .into_iter()

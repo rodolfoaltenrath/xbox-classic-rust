@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-27**, com base no commit **`f62d3af`** e implementação local
-do ADR **0093** (Fases 0–11 do PLANO concluídas).
+Atualizado em **2026-10-27**, com base no commit **`d9b6fe2`** e implementação local
+do ADR **0094** (Fases 0–11 concluídas; marco hello na Fase 12).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,9 +29,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P23), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0093) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0094) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,12 +46,23 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (653 testes Windows; última referência Linux 662; o teste
+   `cargo test --workspace --offline --no-fail-fast` (657 testes Windows; última referência Linux 662; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `273 passed` em x86-64 e `257` fora dele —
+   confere o **contador de casos gerados**, hoje `275 passed` em x86-64 e `259` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
+
+**Marco hello/Fase 12 iniciado:** concentrar nas 27 importações pendentes.
+ADR-0094 implementa 165 e 180, levando o inventário a 44/69 (25 pendentes),
+com CMEM real e ABI stdcall/4. Sem mudar KRNL v15/CMEM v1. Consulta aceita base
+exata de recurso contíguo; demais variantes recusam (P23). O hello original
+já rodava: testes próprios exercitam os novos serviços. PLANO 12 é o trabalho
+vigente; as referências das fases 0–11 abaixo permanecem históricas.
+
+12.1 concluída: GATE OK 657, target/gate/20261027-112914-p7peJ6YP.log;
+275 casos gerados e quatro testes novos de kernel. Inventário executado:
+hello 44/69 e triangle 48/75. Próxima tarefa: NtFreeVirtualMemory/NtQueryVirtualMemory.
 
 **Atualização de 27/10:** as fases 8–10 entregaram X11/Linux, mesh com textura,
 depth e desenho indexado, aritmética x87 e LED/SMC (ADRs 0086–0090). O HD sem

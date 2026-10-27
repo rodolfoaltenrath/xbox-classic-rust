@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn report_distingue_abi_dados_desconhecidos_e_nao_confunde_resolucao_com_servico() {
         let mut bytes = xbox_formats::fixtures::xbe_com_codigo(&[0xC3]).unwrap();
-        for (i, ordinal) in [8u32, 165, 322, 500].into_iter().enumerate() {
+        for (i, ordinal) in [8u32, 181, 322, 500].into_iter().enumerate() {
             bytes[0x2000 + i * 4..0x2004 + i * 4]
                 .copy_from_slice(&(0x80000000 | ordinal).to_le_bytes());
         }

@@ -1,4 +1,4 @@
-# Plano: leitura síncrona do executável pela mídia guest
+# Plano: cobertura das importações do hello
 
 Modo: autônomo
 
@@ -18,9 +18,11 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 11 concluída**, acrescentada em 2026-10-27 ao pedido de avaliação
-e prosseguimento. As fases 0–10 estão concluídas. Foco novo: enumerar a mídia
-de CD já declarada sem fabricar disco rígido; os bloqueios do ADR-0091 permanecem.
+Bloco vigente: **Fase 12**, autorizada em 2026-10-27: concentrar a implementação
+nas 27 funções importadas pelo hello ainda pendentes. Commits automáticos por
+entrega, sem coautor, nenhum push. As fases 0–11 estão concluídas. O marco é
+cobertura testada das APIs, não só aumentar o contador: o hello já executa no
+caminho exercitado. Variantes sem contrato/evidência continuam recusadas.
 
 Referência histórica da Fase 7, acrescentada em 2026-10-26:
 As fases 0–6 preservam as entregas concluídas e suas evidências. Meta: o guest
@@ -727,3 +729,50 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   Logs hello-20261027-095630-K1GyPAov, triangle-20261027-095630-5kzvCPav,
   file-read-20261027-095630-GXEHE2Tz. ADR-0093/README/continuidade atualizados;
   HD do ADR-0091 continua recusado. Fases 0–11 do PLANO concluídas; sem push.
+
+## Fase 12 — Importações restantes do hello
+
+- [x] 12.1 MmAllocateContiguousMemory (165) e MmQueryAllocationSize (180).
+  Reutilizar posse, liberação e backing reais; consulta somente de recursos
+  contíguos conhecidos, sem confundir RAM mapeada com alocação.
+
+  **Aceite:** GATE OK; testes de arredondamento, falha de alocação, consulta,
+  base inválida, integridade e liberação; Rust gerado chama ambas as APIs pela
+  ABI e reproduz alocação/consulta/liberação após snapshot. ADR, CHANGELOG,
+  ROADMAP §16.1 e passagem de bastão atualizados; contador derivado do dispatcher.
+
+  Evidência: GATE OK: 657 testes, target/gate/20261027-112914-p7peJ6YP.log;
+  quatro testes simple_contiguous.rs e 275 casos emitidos. Snapshot integral
+  de 165/180/171 reproduz bytes, ABI e liberação; recusa de ponteiro interior
+  preserva CPU/recursos. Relatório real: hello 44/69, triangle 48/75. ADR-0094.
+
+- [ ] 12.2 NtFreeVirtualMemory (199) e NtQueryVirtualMemory (217).
+
+  **Aceite:** GATE OK; liberação real e consulta das regiões suportadas, ABI Xbox,
+  saídas preflighted e falhas sem efeitos parciais; proteger imagem, pilhas e TIBs
+  de threads; Rust gerado e snapshot/replay. ADR e documentos vigentes atualizados.
+
+- [ ] 12.3 Objetos/namespace e semáforos: ordinais 69, 193, 201, 208, 222, 246, 250.
+
+  **Aceite:** GATE OK; operações com efeito verificável, contagem/posse/ciclo de
+  vida e erros testados; objetos convidados reais e integração com waits/handles;
+  ABI emitida, snapshots versionados com migração quando o layout mudar; ADR e docs.
+
+- [ ] 12.4 Threads e esperas: ordinais 143, 224, 231, 234, 235, 238.
+
+  **Aceite:** GATE OK; prioridades/suspensão/retomada/yield e waits suportados
+  afetam o scheduler real, sem sucesso artificial; testes guest da ABI,
+  escalonamento e replay; perfil e limites explícitos em ADR/ROADMAP/continuidade.
+
+- [ ] 12.5 Arquivos/volume: ordinais 210, 218, 226, 236.
+
+  **Aceite:** GATE OK; metadados e posições coerentes com mídia declarada;
+  escrita somente com backing gravável explícito, preservando mídia readonly;
+  ABI emitida, erros/aliases e replay; nenhuma partição fictícia; ADR e docs.
+
+- [ ] 12.6 Vídeo/sistema e persistência: ordinais 4, 8, 49, 178, 301, 302.
+
+  **Aceite:** GATE OK; endereço salvo, diagnóstico, status, exceções e firmware
+  com efeitos observáveis e contrato declarado; persistência significa preservação
+  no ciclo de reinício suportado, não apenas um booleano; ABI emitida e replay;
+  sonda hello sem recusas, docs/ADR e inventário final das 69 importações.

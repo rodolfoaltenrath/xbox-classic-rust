@@ -82,6 +82,8 @@ pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
 pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
+pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY: u32 = 165;
+pub const ORDINAL_MM_QUERY_ALLOCATION_SIZE: u32 = 180;
 pub const ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY: u32 = 168;
 pub const ORDINAL_MM_FREE_CONTIGUOUS_MEMORY: u32 = 171;
 pub const ORDINAL_HAL_WRITE_SMBUS_VALUE: u32 = 50;
@@ -146,6 +148,8 @@ pub const STATUS_WAIT_0: u32 = 0;
 /// ordinais consultam esta lista, e um teste exige que ela case exatamente com o que
 /// [`Dispatcher::atender`] sabe atender.
 pub const IMPLEMENTADOS: &[u32] = &[
+    ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY,
+    ORDINAL_MM_QUERY_ALLOCATION_SIZE,
     ORDINAL_AV_SET_DISPLAY_MODE,
     ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
     ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY,
@@ -552,6 +556,10 @@ impl Dispatcher {
             ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX => {
                 self.contiguous.allocate(bus, &call, self.irql)
             }
+            ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY => {
+                self.contiguous.allocate_simple(bus, &call, self.irql)
+            }
+            ORDINAL_MM_QUERY_ALLOCATION_SIZE => self.contiguous.query_size(bus, &call, self.irql),
             ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY => {
                 self.gpu_instance
                     .query(bus, &call, self.irql, &mut self.contiguous)

@@ -25,6 +25,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- MmAllocateContiguousMemory e MmQueryAllocationSize sobre os recursos CMEM
+  reais, com ABI emitida, validação de posse e replay. Hello 44/69, sem mudar
+  o layout de snapshots; bases fora do perfil recusam (ADR-0094, PLANO 12.1).
+
 - Homebrew próprio file-enum, com build nxdk isolado e integração ao
   preparo/sonda/launcher. Confere nome/tamanho pelo arquivo aberto, fim da
   busca e reinício com diretório preservado nos estados (ADR-0093, PLANO 11.2).

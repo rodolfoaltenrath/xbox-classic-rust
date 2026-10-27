@@ -15,13 +15,13 @@ mod kernel_verification {
         let mut session = Session::load(include_bytes!("kernel_abi.xbe")).unwrap();
         let initial_esp = session.state.regs[ESP];
         assert_eq!(abi::run(&mut session.state, &mut session.bus, 0).unwrap(), Exit::Budget);
-        assert_eq!(abi::run(&mut session.state, &mut session.bus, 100).unwrap(), Exit::KernelCall { ordinal: 165 });
+        assert_eq!(abi::run(&mut session.state, &mut session.bus, 100).unwrap(), Exit::KernelCall { ordinal: 181 });
         let call = session.kernel_call().unwrap();
         assert_eq!(call.argument(&session.bus, 0).unwrap(), 0x1122);
         let before = session.state.clone();
         assert!(session.complete_kernel_call(8, 0).is_err());
         assert_eq!(session.state, before);
-        session.complete_kernel_call(165, 0xA0).unwrap();
+        session.complete_kernel_call(181, 0xA0).unwrap();
         assert_eq!(session.state.regs[ESP], initial_esp);
         assert_eq!(abi::run(&mut session.state, &mut session.bus, 100).unwrap(), Exit::KernelCall { ordinal: 8 });
         assert_eq!(session.bus.ler_u32(GuestVirt(0x12030)).unwrap(), 0xA0);
@@ -122,12 +122,12 @@ mod kernel_verification {
         let mut s = Session::load(include_bytes!("kernel_abi.xbe")).unwrap();
         assert_eq!(
             abi::run(&mut s.state, &mut s.bus, 100).unwrap(),
-            Exit::KernelCall { ordinal: 165 }
+            Exit::KernelCall { ordinal: 181 }
         );
         let antes = s.state.clone();
         let erro = s.atender_kernel().unwrap_err().to_string();
-        assert!(erro.contains("MmAllocateContiguousMemory"), "{erro}");
-        assert!(erro.contains("165"), "{erro}");
+        assert!(erro.contains("MmQueryStatistics"), "{erro}");
+        assert!(erro.contains("181"), "{erro}");
         assert!(erro.contains("0x00001122"), "argumento no relato: {erro}");
         assert_eq!(s.state, antes, "CPU alterada por uma recusa");
         assert_eq!(s.kernel.recusadas(), 1);

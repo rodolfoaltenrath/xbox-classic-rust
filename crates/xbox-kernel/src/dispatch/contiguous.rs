@@ -110,7 +110,49 @@ impl ContiguousMemory {
         for (i, arg) in args.iter_mut().enumerate() {
             *arg = call.argument(bus, i as u32)?;
         }
-        let [requested, low, high, alignment, protect] = args;
+        self.allocate_args(bus, call, irql, args)
+    }
+
+    pub(super) fn allocate_simple(&mut self, bus: &mut Bus, call: &Call, irql: Irql) -> Resultado {
+        let size = call.argument(bus, 0)?;
+        // ABI Xbox: um único argumento (não a assinatura de dois argumentos do NT).
+        self.allocate_args(bus, call, irql, [size, 0, u32::MAX, PAGE, 4])
+    }
+
+    pub(super) fn query_size(&self, bus: &Bus, call: &Call, irql: Irql) -> Resultado {
+        let address = call.argument(bus, 0)?;
+        if irql != Irql::Passive {
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "consulta contígua exige Passive neste perfil",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        }
+        self.validate_bus(bus).map_err(Erro::MemoriaContigua)?;
+        let allocation = self.allocations.iter().find(|a| a.address().0 == address);
+        let Some(allocation) = allocation else {
+            return Err(Erro::VarianteNaoImplementada {
+                nome: call.export.name,
+                ordinal: call.export.ordinal,
+                chamador: call.return_pc,
+                detalhe: "consulta exige base exata de recurso contíguo conhecido",
+                argumentos: descrever_argumentos(bus, call),
+            });
+        };
+        Ok(Atendimento {
+            eax: allocation.size,
+        })
+    }
+
+    fn allocate_args(
+        &mut self,
+        bus: &mut Bus,
+        call: &Call,
+        irql: Irql,
+        [requested, low, high, alignment, protect]: [u32; 5],
+    ) -> Resultado {
         // Alinhamento 0 é "sem exigência": o nxdk o passa (alocação de 0x20 bytes na
         // inicialização de vídeo do `triangle`) e o piso é a página. Só o zero é
         // promovido; 16, 0x3000 e outros valores abaixo de uma página ou que não são

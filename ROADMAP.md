@@ -1144,6 +1144,13 @@ isso documenta um perfil de emulador, não medição de console. Nenhum valor no
 foi adotado no runtime; P1/P5/P12 permanecem abertos. Scripts de build/raízes
 preservam manifesto, tentativas e logs para reproduzir a próxima entrega.
 
+P23 — **Consultas de memória e alocação simples do hello** (ADR-0094): 165 usa
+o perfil contíguo RW/Passive existente; 180 só conhece a base exata de recursos
+CMEM e seu tamanho em páginas. Não cobre pool, heap ou ponteiros interiores;
+variante fora do contrato recusa. Condição de saída: consumidores reais e
+evidência para ampliar a consulta, cache/proteções e IRQL, com testes e migração
+se os metadados mudarem.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.
