@@ -395,7 +395,11 @@ na tarefa 0.0).
 As fases **0–7 do PLANO estão concluídas**; a Fase 8 (janela X11 no Linux,
 ADR-0086) também. No Fedora: `bash scripts/run-alpha.sh triangle` abre a janela pelo
 Xwayland e `target/release/verificar-janela apos|durante|continuo <bin> <saida-nova>`
-confere a janela de fora. Seguem as Fases 9 (mesh) e 10 (led/winapi) do PLANO. A Fase 7 entregou leitura síncrona
+confere a janela de fora. A Fase 9 entregou o `mesh` (x87 aritmético no
+ADR-0088; índices, VP, combiners, textura e depth W no ADR-0089), cuja silhueta
+coincide com o `screenshot.png` do SDK (IoU 0,956 em t = 9063 ms). Segue a Fase 10
+(led/winapi) do PLANO. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
+no PATH (`docs/dev/homebrew.md`), `bash scripts/build-nxdk-sample.sh mesh homebrew-mesh`. A Fase 7 entregou leitura síncrona
 do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
 e homebrew próprio file-read/launcher/sondas. O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.
 Não reabrir tarefas históricas. Continuam os provisórios

@@ -94,6 +94,38 @@ Contextos DMA de textura 0x184/0x188 são resolvidos como os de vértices.
   combiner (passthrough, mesh, mapeamentos, recusas), textura (nearest, linear,
   gaussiano) e LIT/pow.
 
+## Comparação com a referência pública (PLANO 9.3)
+
+`samples/mesh/screenshot.png` é uma captura de janela do macOS: o quadro 640×480
+ocupa a área (66,5; 65,5)–(832,5; 638,5), em escala de ~1,2×, e passou por
+gerenciamento de cor (o fundo `0x202020` aparece como 43). Cores absolutas não
+são comparáveis. **Métrica declarada** (`scripts/comparar-referencia.py`): a
+referência é reamostrada para 640×480 (BOX); em cada imagem, a máscara do objeto
+são os pixels cuja luminância difere da mediana do fundo por mais de 10, fora do
+texto (x < 260, y < 100) e de uma margem de 8 px (cantos da janela). Medem-se o
+IoU das máscaras, a caixa envolvente, o centroide e o brilho relativo
+(luminância média do objeto menos a do fundo).
+
+O ângulo do objeto depende do tempo (`−π/4 · t`), e a referência não informa t.
+Foram exportados quadros em quatro tempos de guest:
+
+| Fatias | t guest | IoU | Caixa (referência 144,190–492,300) | Centroide (ref. 317,9; 254,1) | Brilho rel. (ref. 30,7) |
+|---|---|---|---|---|---|
+| 5000 | 8228 ms | 0,684 | 167,178–473,300 | 324,3; 252,6 | −2,3 |
+| 5280 | 8696 ms | 0,767 | 153,182–484,300 | 320,0; 253,7 | 19,5 |
+| **5500** | **9063 ms** | **0,956** | **144,190–491,300** | **317,2; 254,6** | **28,4** |
+| 5800 | 9563 ms | 0,695 | 137,205–496,290 | 307,4; 251,0 | 24,4 |
+
+Em t = 9063 ms a silhueta coincide com a referência: IoU 0,956, caixa a 1 px e
+centroide a 0,7 px. O brilho relativo fica 2,3 níveis abaixo, compatível com a
+curva de cor aplicada à captura, que clareia o fundo de 32 para 43. Inspeção
+visual lado a lado (`target/mesh-phase9/comparacao-f5500.png`): mesma geometria,
+textura, iluminação de cima e faces laterais escuras; mudam só o contador de
+quadros/FPS do texto e o tom do fundo. Na execução longa (5800 fatias) foram
+6035 chamadas, zero recusas e 122256 triângulos. Na janela X11 do Linux
+(`tools/verificar-janela apos`, 5500 fatias) a captura tem zero diferenças RGB
+em relação à exportação.
+
 ## Consequências
 
 P17/P18 crescem: combiners gerais e textura linear entram no perfil software,

@@ -6,7 +6,7 @@ camada de compatibilidade Xbox. O objetivo é uma experiência de mini console,
 navegável por controle, com Windows/Linux e futuramente Linux direto em KMS/DRM.
 
 **O alpha executa homebrews do nxdk em janela Win32 ou X11 (Linux).** Hello e triangle apresentam
-texto/triângulos; gamma-fade exercita a rampa de cores do DAC. O teste próprio
+texto/triângulos; mesh desenha uma malha 3D com textura e iluminação; gamma-fade exercita a rampa de cores do DAC. O teste próprio
 file-read abre e lê o XBE original como arquivo guest e calcula seu checksum.
 Há kernel HLE,
 duas threads cooperativas, interrupções e rasterização

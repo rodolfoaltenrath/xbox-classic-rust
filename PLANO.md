@@ -625,13 +625,25 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   depth W), que também adianta a 9.3. Triangle/320 sem regressão: PPM com SHA
   1c2d8fc5…7c280c, igual ao ADR-0069.
 
-- [~] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
+- [x] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
   usa, endereçamento/wrap/filtro configurados, teste de profundidade e
   combiner com textura. Nada reconhecido por título ou hash.
   **Aceite:** `GATE OK`; testes golden sintéticos (textura 4×4, depth com dois
   triângulos sobrepostos); sonda mesh com framebuffer comparado ao
   `screenshot.png` por métrica declarada no ADR (silhueta/cobertura e cor média por
   região), com a diferença anotada na Evidência; snapshots versionados.
+
+  Evidência: `GATE OK: 658 testes`, target/gate/20261026-232224-5ajdRMmY.log;
+  `TOOLS OK`. Golden sintéticas em crates/xbox-gpu/tests/mesh.rs: textura 4×4
+  (`reference/texture-4x4.ppm`) e depth LEQUAL com quads sobrepostos
+  (`reference/depth-overlap-4x4.ppm`), PPMs calculados à mão. Snapshot PRND v2
+  com índices pendentes e migração v1 testada. Métrica declarada no ADR-0089
+  (`scripts/comparar-referencia.py`): mesh/5500 (t = 9063 ms) contra o
+  `screenshot.png` com IoU de silhueta 0,956, caixa (144,190–491,300) × ref.
+  (144,190–492,300), centroide (317,2; 254,6) × (317,9; 254,1) e brilho relativo
+  28,4 × 30,7; diferença de brilho atribuída à curva de cor da captura (fundo 32
+  → 43). Tabela com 8228/8696/9063/9563 ms no ADR. Janela X11 com o mesh: 0
+  diferenças RGB (target/visual-linux-mesh-apos). Nada reconhecido por título ou hash.
 
 ## Fase 10 — Kernel e HAL em samples pequenos
 

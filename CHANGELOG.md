@@ -21,6 +21,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Comparação do mesh com o `screenshot.png` do SDK por métrica declarada
+  (`scripts/comparar-referencia.py`: silhueta, caixa, centroide, brilho relativo):
+  IoU 0,956 em t = 9063 ms, caixa a 1 px e centroide a 0,7 px; janela X11 com zero
+  diferenças RGB (ADR-0089, PLANO 9.3).
+
 - PGRAPH para o mesh: desenho por INDEX_DATA (PRND v2 com índices pendentes),
   VP com DP3/MIN/MAX/RSQ/LIT e saída TEX0, register combiners gerais, textura
   LU_IMAGE com convolução gaussiana e profundidade W com Z_PERSPECTIVE, segundo o
