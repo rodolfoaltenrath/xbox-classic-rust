@@ -208,8 +208,10 @@ fn snapshot_guarda_namespace_handles_e_migra_v7_sem_herdar_destino() {
         STATUS_OBJECT_NAME_NOT_FOUND
     );
     let mut bad = checkpoint;
-    let last = bad.len() - 4;
-    bad[last..].copy_from_slice(&0xFFFFFFFCu32.to_le_bytes());
+    // Corromper o handle de SYML, independentemente das seções posteriores.
+    let name_len = u64::from_le_bytes(bad[at + 8..at + 16].try_into().unwrap()) as usize;
+    let handle_at = at + 16 + name_len + 4;
+    bad[handle_at..handle_at + 4].copy_from_slice(&0xFFFFFFFCu32.to_le_bytes());
     assert!(Snapshot::load(&mut restored, &mut SnapshotReader::new(&bad).unwrap()).is_err());
 }
 #[test]

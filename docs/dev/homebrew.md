@@ -1,5 +1,10 @@
 # Homebrew nxdk e fronteira do kernel
 
+Sonda de referência do namespace: `homebrew/object-directory-probe/README.md`
+(ADR-0097) documenta build e medição de NtQueryDirectoryObject em referência
+externa. O build foi verificado no WSL; não há execução em hardware registrada
+e o Obsidian ainda recusa essas APIs. Não confundir com o file-enum suportado.
+
 ## Comandos vigentes — 2026-10-27
 
 Consultar CONTINUIDADE_ALPHA.md para o estado atual; as seções por ADR abaixo

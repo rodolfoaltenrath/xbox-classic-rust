@@ -170,6 +170,9 @@ impl super::Dispatcher {
         if self.files.close(handle) {
             return Ok(Atendimento { eax: 0 });
         }
+        if self.semaphores.close(handle) {
+            return Ok(Atendimento { eax: 0 });
+        }
         Ok(self.links.close(handle))
     }
 }

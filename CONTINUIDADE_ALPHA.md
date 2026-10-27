@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-27**, com base no commit **`d9b6fe2`** e implementação local
-do ADR **0095** (Fases 0–11 concluídas; marco hello na Fase 12).
+Atualizado em **2026-10-27**, com base no commit **`6c04771`** e implementação local
+dos ADRs **0096–0097** (Fase 12.3a entregue; 12.3b bloqueada por evidência).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,15 +29,15 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P24), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P25), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0095) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0097) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v2/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v15/`SMBC` v1/`CDFS` v2/`DIRE` v1/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v2/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v16/`SEMA` v1/`SMBC` v1/`CDFS` v2/`DIRE` v1/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v10/`IRQL` v2, `AOTS` v4/`SCHD` v1/`TCTX` v2/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -46,12 +46,31 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (663 testes Windows; última referência Linux 662; o teste
+   `cargo test --workspace --offline --no-fail-fast` (667 testes Windows; última referência Linux 662; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `277 passed` em x86-64 e `261` fora dele —
+   confere o **contador de casos gerados**, hoje `279 passed` em x86-64 e `263` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
+
+**BLOQUEADO em 12.3b (ADR-0097):** falta contrato verificado para ULONG Type
+de NtQueryDirectoryObject do Xbox. Nxdk dá layout de 12 bytes/ABI de seis
+argumentos, mas não semântica do campo; GetLogicalDrives ignora Type, Cxbx
+fixado é stub e a documentação NT usa estrutura diferente. Não preencher com
+valor suposto. Sonda MIT em homebrew/object-directory-probe, build WSL verificado
+com XBE SHA 29fc0c3a...5295d852. Precisa resultado externo identificado, não do
+próprio HLE. PLANO 12.3 continua [~]/BLOQUEADO, 12.4–12.6 abertas. Hello 48/69,
+21 pendentes; o sample original já rodava. Não apresentar o marco como concluído.
+
+**Subentrega 12.3a/ADR-0096:** NtCreateSemaphore (193) e NtReleaseSemaphore (222),
+contagem real, limite, contagem anterior opcional e integração com espera pelo
+scheduler/NtClose. KRNL v16 acrescenta SEMA v1 depois de SMBC; v1–v15 migram para
+tabela vazia. Referências Ob* e namespace ainda são o restante da tarefa 12.3.
+GATE OK 667, target/gate/20261027-121229-3BnVpOCJ.log; quatro testes novos,
+279 casos emitidos. Snapshot bloqueado reproduz pai/filha e consumo/fechamento.
+Validação de relações no candidato preserva Dispatcher em load inválido. Relatório
+real: hello 48/69, triangle 52/75. As sondas visuais das fases anteriores não
+foram repetidas nesta entrega; as evidências novas são as APIs e o Rust emitido.
 
 **Fase 12.2/ADR-0095:** NtFreeVirtualMemory (199) e NtQueryVirtualMemory (217)
 atuam em recursos VMEM conhecidos, com proteção de stacks/TLS/TIB e preflight
@@ -452,6 +471,10 @@ na tarefa 0.0).
 
 ### Próximo trabalho e cuidados
 
+Marco vigente: PLANO 12, foco nas importações do hello. 12.1 e 12.2 concluídas;
+12.3a implementada; 12.3b bloqueada conforme ADR-0097. Resolver a evidência do
+namespace antes de retomar o ciclo autônomo. Não reabrir as entregas históricas.
+
 As fases **0–7 do PLANO estão concluídas**; a Fase 8 (janela X11 no Linux,
 ADR-0086) também. No Fedora: `bash scripts/run-alpha.sh triangle` abre a janela pelo
 Xwayland e `target/release/verificar-janela apos|durante|continuo <bin> <saida-nova>`
@@ -461,7 +484,7 @@ coincide com o `screenshot.png` do SDK (IoU 0,956 em t = 9063 ms). A Fase 10
 entregou o LED do SMC (ADR-0090) e documentou o bloqueio dos samples winapi no
 disco rígido sem imagem (ADR-0091). A Fase 11 entregou diretório da mídia
 declarada e file-enum, com replay/Win32 (ADRs 0092–0093). As fases 0–11 do PLANO
-estão concluídas, sem tarefa aberta. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
+estão concluídas; o marco 12 acima é o trabalho posterior. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
 no PATH (`docs/dev/homebrew.md`), `bash scripts/build-nxdk-sample.sh mesh homebrew-mesh`. A Fase 7 entregou leitura síncrona
 do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
 e homebrew próprio file-read/launcher/sondas. O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.

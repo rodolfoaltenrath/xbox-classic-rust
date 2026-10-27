@@ -23,6 +23,13 @@ const FLAGS: u32 = FlagsDeVideo::WIDESCREEN
     | 0x0040_0000
     | 0x0080_0000;
 
+pub(super) fn snapshot_error(what: &'static str) -> SnapshotError {
+    SnapshotError::BadValue {
+        section: "AVST",
+        what,
+    }
+}
+
 /// Perfil de cabo padrão e cold boot, inicialmente sem saída habilitada.
 /// Modo e RAM de scanout são explícitos; vblank/apresentação não são executados.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

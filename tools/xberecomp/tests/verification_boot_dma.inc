@@ -23,7 +23,11 @@ mod boot_dma_verification {
             let dirs=u32::from_le_bytes(bytes[end+9..end+13].try_into().unwrap())as usize;end+=13;
             for _ in 0..dirs {let pattern=bytes[end+9];end+=10;if pattern==1{let n=u16::from_le_bytes(bytes[end..end+2].try_into().unwrap())as usize;end+=2+n;}else{assert_eq!(pattern,0);}}
         }
-        let end=if bytes[end..].starts_with(b"SMBC"){end+SMBC_BYTES}else{end};
+        let mut end=if bytes[end..].starts_with(b"SMBC"){end+SMBC_BYTES}else{end};
+        if bytes[end..].starts_with(b"SEMA") {
+            assert_eq!(&bytes[end+4..end+8],&1u32.to_le_bytes());
+            let count=u32::from_le_bytes(bytes[end+8..end+12].try_into().unwrap())as usize;end+=12+count*12;
+        }
         bytes.drain(at..end);
     }
     /// Seção SMBC v1: tag, versão, dois pares presença/valor e o contador u64.
@@ -31,8 +35,11 @@ mod boot_dma_verification {
     pub(super) fn legacy_file_media(bytes:&[u8])->Vec<u8>{
         let mut result=bytes.to_vec();let at=result.windows(4).rposition(|v|v==b"CDFS").unwrap();
         let smbc=result.windows(4).rposition(|v|v==b"SMBC").map(|s|result[s..s+SMBC_BYTES].to_vec()).unwrap_or_default();
+        let sema=result.windows(4).rposition(|v|v==b"SEMA").map(|s|{
+            let n=u32::from_le_bytes(result[s+8..s+12].try_into().unwrap())as usize;result[s..s+12+n*12].to_vec()
+        }).unwrap_or_else(||b"SEMA\x01\0\0\0\0\0\0\0".to_vec());
         strip_file_media(&mut result);let empty=[b'C',b'D',b'F',b'S',2,0,0,0,0,0,0,0,0,b'D',b'I',b'R',b'E',1,0,0,0,0,0,0,0,0];
-        result.splice(at..at,empty.into_iter().chain(smbc));result
+        result.splice(at..at,empty.into_iter().chain(smbc).chain(sema));result
     }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
     fn finish(s:&mut Session){s.atender_kernel().unwrap();assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);}

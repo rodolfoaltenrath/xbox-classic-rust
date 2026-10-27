@@ -37,6 +37,7 @@ mod links;
 mod mutants;
 mod nvram;
 mod pci;
+mod semaphores;
 mod sha;
 mod smbus;
 mod system_time;
@@ -101,6 +102,8 @@ pub const ORDINAL_RTL_LEAVE_CRITICAL_SECTION: u32 = 294;
 pub const ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION: u32 = 306;
 /// Ordinal de `NtCreateMutant` (stdcall/12, sem `DesiredAccess` no Xbox).
 pub const ORDINAL_NT_CREATE_MUTANT: u32 = 192;
+pub const ORDINAL_NT_CREATE_SEMAPHORE: u32 = 193;
+pub const ORDINAL_NT_RELEASE_SEMAPHORE: u32 = 222;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
 pub const ORDINAL_HAL_GET_INTERRUPT_VECTOR: u32 = 44;
 pub const ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION: u32 = 47;
@@ -177,6 +180,8 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_FREE_VIRTUAL_MEMORY,
     ORDINAL_NT_QUERY_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
+    ORDINAL_NT_CREATE_SEMAPHORE,
+    ORDINAL_NT_RELEASE_SEMAPHORE,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_HAL_GET_INTERRUPT_VECTOR,
     ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION,
@@ -305,6 +310,7 @@ pub struct Dispatcher {
     files: files::Files,
     // LED do SMC escrito por HalWriteSMBusValue (ADR-0090).
     smbus: smbus::Smbus,
+    semaphores: semaphores::Semaphores,
     // Pedido de avanço de tempo deixado pelo último serviço; só a sessão consome.
     // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
     // ponto de salvamento (ver `Session::atender_kernel`).
@@ -478,6 +484,10 @@ impl Dispatcher {
         self.mutants.get(handle)
     }
 
+    pub fn semaphore(&self, handle: u32) -> Option<(u32, u32)> {
+        self.semaphores.get(handle)
+    }
+
     /// Atende a chamada de kernel em `pc`, sem contexto temporal.
     /// `KeQuerySystemTime` exige `atender_com_clock` e recusa esta entrada.
     ///
@@ -641,6 +651,8 @@ impl Dispatcher {
             ),
             ORDINAL_NT_QUERY_VIRTUAL_MEMORY => self.virtual_memory.query(bus, &call, self.irql),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
+            ORDINAL_NT_CREATE_SEMAPHORE => self.create_semaphore(bus, &call),
+            ORDINAL_NT_RELEASE_SEMAPHORE => self.release_semaphore(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_CREATE_EVENT
             | ORDINAL_NT_SET_EVENT
@@ -758,6 +770,19 @@ impl Dispatcher {
         }
         if self.links.contains(handle) {
             return variante("link simbólico não é objeto aguardável");
+        }
+        if self.semaphores.get(handle).is_some() {
+            if self.irql != Irql::Passive {
+                return variante("espera de semáforo exige Passive");
+            }
+            if self.semaphores.acquire(handle) == Some(true) {
+                return Ok(Atendimento { eax: STATUS_WAIT_0 });
+            }
+            if scheduled || self.interrupt_can_signal(bus) {
+                self.pending_block = true;
+                return Ok(Atendimento { eax: STATUS_WAIT_0 });
+            }
+            return variante("espera de semáforo sem sinal exige scheduler ou interrupção");
         }
         if let Some(espera) = self.events.wait(handle) {
             return match espera {
@@ -898,7 +923,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 15);
+        out.section("KRNL", 16);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -916,10 +941,11 @@ impl Snapshot for Dispatcher {
         self.gpu_instance.save(out);
         self.files.save(out);
         self.smbus.save(out);
+        self.semaphores.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 15)?;
+        let version = inp.section("KRNL", 16)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -960,12 +986,10 @@ impl Snapshot for Dispatcher {
         if version >= 7 {
             threads.load(inp)?;
         }
-        threads.validate(&mutants, &virtual_memory, None)?;
         let mut links = links::Links::default();
         if version >= 8 {
             links.load(inp)?;
         }
-        links.validate(&mutants, threads.child)?;
         let mut video = VideoState::default();
         if version >= 9 {
             video.load(inp)?;
@@ -979,7 +1003,6 @@ impl Snapshot for Dispatcher {
         if version >= 11 {
             events.load(inp)?;
         }
-        events.validate(&mutants, &links, threads.child)?;
         // v1–v11 não tinham interrupções nem DPCs: migram para listas vazias. A conferência
         // contra a memória guest acontece em `restore_memory_context`, quando o Bus já
         // foi restaurado.
@@ -991,7 +1014,6 @@ impl Snapshot for Dispatcher {
         if version >= 13 {
             gpu_instance.load(inp)?;
         }
-        gpu_instance.validate(&contiguous, None)?;
         let mut files = files::Files::default();
         if version >= 14 {
             files.load(inp)?;
@@ -1001,13 +1023,11 @@ impl Snapshot for Dispatcher {
         if version >= 15 {
             smbus.load(inp)?;
         }
+        let semaphores = semaphores::load_kernel_version(inp, version)?;
         video
             .validate_memory(&contiguous, &eeprom)
-            .map_err(|what| SnapshotError::BadValue {
-                section: "AVST",
-                what,
-            })?;
-        *self = Self {
+            .map_err(video::snapshot_error)?;
+        let candidate = Self {
             atendidas,
             recusadas,
             mutants,
@@ -1025,6 +1045,7 @@ impl Snapshot for Dispatcher {
             gpu_instance,
             files,
             smbus,
+            semaphores,
             // Deliberadamente `None`: o pedido de tempo vive só entre o atendimento e a
             // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço
@@ -1032,8 +1053,24 @@ impl Snapshot for Dispatcher {
             pending_time: None,
             pending_block: false,
         };
-        self.files.validate(self)?;
+        candidate.validate_objects()?;
+        *self = candidate;
         Ok(())
+    }
+}
+
+impl Dispatcher {
+    // Relações entre tabelas são conferidas no candidato inteiro, antes de load
+    // publicar qualquer objeto. Validação contra RAM continua em restore_memory_context.
+    fn validate_objects(&self) -> Result<(), SnapshotError> {
+        self.threads
+            .validate(&self.mutants, &self.virtual_memory, None)?;
+        self.links.validate(&self.mutants, self.threads.child)?;
+        self.events
+            .validate(&self.mutants, &self.links, self.threads.child)?;
+        self.gpu_instance.validate(&self.contiguous, None)?;
+        self.files.validate(self)?;
+        self.semaphores.validate(self)
     }
 }
 

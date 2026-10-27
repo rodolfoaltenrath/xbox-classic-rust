@@ -25,6 +25,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Semáforos anônimos com contagem/limite, NtCreateSemaphore/NtReleaseSemaphore,
+  espera real pelo scheduler e fechamento. KRNL v16/SEMA v1, migração vazia de
+  legados e replay integral de duas threads (ADR-0096, PLANO 12.3a).
+
 - NtFreeVirtualMemory libera regiões privadas integrais e NtQueryVirtualMemory
   consulta seu estado real pelo layout Xbox de 28 bytes. Proteção de recursos
   de thread/saídas e preflight sem MMIO/A/D; replay sem alterar formato de estado

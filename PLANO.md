@@ -757,11 +757,28 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   sete ULONGs, release stdcall/12, snapshot integral e recusa/retomada testados.
   CMEM/VMEM/KRNL sem mudança de layout. ADR-0095/P24; hello 46/69 por dispatcher.
 
-- [ ] 12.3 Objetos/namespace e semáforos: ordinais 69, 193, 201, 208, 222, 246, 250.
+- [~] 12.3 Objetos/namespace e semáforos: ordinais 69, 193, 201, 208, 222, 246, 250.
 
   **Aceite:** GATE OK; operações com efeito verificável, contagem/posse/ciclo de
   vida e erros testados; objetos convidados reais e integração com waits/handles;
   ABI emitida, snapshots versionados com migração quando o layout mudar; ADR e docs.
+
+  Subentregas: 12.3a semáforos e espera real; 12.3b namespace e referências.
+  Commits intermediários somente com gate verde; o aceite acima permanece integral.
+
+  Evidência (12.3a): GATE OK: 667 testes, target/gate/20261027-121229-3BnVpOCJ.log;
+  quatro testes semaphores.rs e 279 casos gerados. Pai bloqueado, filha libera,
+  pai consome/fecha; snapshot integral e migração KRNL v15 sem herdar objetos.
+  KRNL v16/SEMA v1; corrupção e colisões verificadas sem publicar candidato
+  inválido. ADR-0096/P25. Hello 48/69, triangle 52/75, medidos no ordinal-report.
+
+  BLOQUEADO: 12.3b exige contrato verificável do campo ULONG Type retornado por
+  NtQueryDirectoryObject no Xbox. Nxdk confirma ABI/layout mas não significado;
+  consumidor GetLogicalDrives só lê nome; Cxbx fixado tem stub sem preencher o
+  buffer; docs NT têm estrutura diferente. Não inventar índice/tag/ponteiro/zero.
+  Sonda própria object-directory-probe compilada no WSL, pronta para referência
+  externa, sem execução de hardware nesta sessão. Evidências/tentativas/saída no
+  ADR-0097. Manter 12.3 em andamento e 12.4–12.6 pendentes; não alegar 69/69.
 
 - [ ] 12.4 Threads e esperas: ordinais 143, 224, 231, 234, 235, 238.
 

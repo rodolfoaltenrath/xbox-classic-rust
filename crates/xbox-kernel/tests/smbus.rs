@@ -117,8 +117,8 @@ fn snapshot_guarda_o_led_e_krnl_v14_migra_sem_estado() {
     assert_eq!(migrado.smbus(), &Smbus::default());
     // Estado incoerente é recusado: modo presente com contador zerado.
     let mut ruim = atual.clone();
-    let fim = ruim.len();
-    ruim[fim - 8..].copy_from_slice(&0u64.to_le_bytes());
+    // O contador pertence a SMBC, mesmo quando novas seções seguem no kernel.
+    ruim[at + 12..at + 20].copy_from_slice(&0u64.to_le_bytes());
     assert!(
         Snapshot::load(
             &mut Dispatcher::new(),

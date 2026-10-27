@@ -1158,6 +1158,12 @@ pela própria chamada. Sem MEM_DECOMMIT, consulta geral de imagem/reserva/livre 
 teardown da filha. Condição de saída: consumidor e contrato para novas variantes,
 com teste pela ABI, sem perder posse de frames nem reinterpretar VMEM v1.
 
+P25 — **Semáforos anônimos** (ADR-0096): 4096 objetos no contador global,
+contagem LONG/máximo, Passive e waits do scheduler TwoThreadV1. Sem nomes,
+prioridades/filas gerais, APC, timeout ou ObReferenceObjectByHandle para semáforo.
+Condição de saída: consumidores reais para novas variantes, com objeto guest,
+ciclo de vida e migração/replay; nunca satisfazer wait sem consumir contagem.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.
@@ -1259,9 +1265,16 @@ Uma linha por marco concluído. Append-only.
 
 ### Próxima ação
 
-PLANO fases **0–11 concluído**: execução AOT, scheduler/IRQ, alpha Win32/X11,
+Marco hello em **PLANO 12**: 165/180, 199/217 e 193/222 entregues nos ADRs
+0094–0096; hello 48/69, triangle 52/75. KRNL v16/SEMA v1, gate Windows 667 e
+279 casos gerados. **Bloqueio real em 12.3b**, ADR-0097: não foi verificado o
+contrato do campo Type na enumeração de objetos Xbox. Sonda própria compilada
+em homebrew/object-directory-probe prepara medição externa; não executada em
+hardware nesta sessão. 12.3 integral e 12.4–12.6 seguem pendentes, sem stubs.
+
+Referência anterior, PLANO fases **0–11 concluído**: execução AOT, scheduler/IRQ, alpha Win32/X11,
 mesh com textura/depth, gamma/SMC e leitura/enumeração da mídia de executável
-declarada (ADRs 0069–0093). Não há tarefa aberta nesse plano.
+declarada (ADRs 0069–0093). O trabalho vigente é o marco hello descrito acima.
 `bash scripts/run-alpha.sh file-enum --continuo` mantém a mesma sessão até X;
 Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
 Gate Windows 653, 273 casos gerados debug/release e 29 ferramentas Python.
