@@ -25,6 +25,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Homebrew próprio file-enum, com build nxdk isolado e integração ao
+  preparo/sonda/launcher. Confere nome/tamanho pelo arquivo aberto, fim da
+  busca e reinício com diretório preservado nos estados (ADR-0093, PLANO 11.2).
+
 - Enumeração síncrona do diretório da mídia de executável declarada:
   NtOpenFile/NtQueryDirectoryFile, nomes ANSI, filtro/cursor por handle e
   fechamento; CDFS v2/DIRE v1 com migração legada sem ativação implícita.

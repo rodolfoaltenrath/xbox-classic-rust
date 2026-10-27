@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [ValidateSet('hello','triangle','gamma-fade','file-read')][string]$Sample,
+    [ValidateSet('hello','triangle','gamma-fade','file-read','file-enum')][string]$Sample,
     [ValidateRange(10,600)][int]$TimeoutSeconds = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -11,7 +11,7 @@ $exe = (Resolve-Path -LiteralPath $Executable).Path
 $folder = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $folder) { throw "Output directory must be new: $folder" }
 [IO.Directory]::CreateDirectory($folder) | Out-Null
-$slices = switch ($Sample) { 'triangle' { 320 } 'gamma-fade' { 128 } 'file-read' { 512 } default { 64 } }
+$slices = switch ($Sample) { 'triangle' { 320 } 'gamma-fade' { 128 } 'file-read' { 512 } 'file-enum' { 128 } default { 64 } }
 $states = Join-Path $folder 'states'
 $final = Join-Path $folder 'final.obsstate'
 $log = Join-Path $folder 'stderr.log'

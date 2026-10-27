@@ -1235,27 +1235,28 @@ Uma linha por marco concluído. Append-only.
 | 2026-10-26 | Alpha / vídeo | Gamma-fade e callbacks MOVSS (ADRs 0081–0082, PLANO 6.3) | — | 13255 blocos sem --entry, 161 chamadas/zero recusadas e gamma não identidade; readback Win32 sem diferenças e distinto da RAM; pausa/save/restore/replay integral, 595 testes/266 gerados debug e release/21 ferramentas; hello/triangle preservados, fases 0–6 concluídas |
 | 2026-10-26 | Kernel / I/O | Arquivo imutável e leitura síncrona (ADR-0083, PLANO 7.1) | — | NtCreateFile/NtReadFile/NtQueryInformationFile e close, KRNL v14/CDFS v1, 11 testes novos e gate 606/266; integração à sessão e produtor real pendentes |
 | 2026-10-26 | Alpha / I/O | Mídia original na sessão AOT (ADR-0084, PLANO 7.2) | — | Session publica default.xbe original; SAVE confere identidade da mídia; Rust emitido abre/lê/consulta/fecha e reproduz handle aberto; kernels legados continuam sem mídia |
-| 2026-10-27 | Kernel / I/O | Diretório da mídia declarada (ADR-0092, PLANO 11.1) | — | NtOpenFile/NtQueryDirectoryFile ANSI, filtros/cursor/restart; CDFS v2/DIRE v1, migração sem promoção; 8 testes novos e 273 casos gerados debug/release; gate Windows653; HD sem imagem continua recusado; referência matemática x87 corrigida sem mudar runtime |
 | 2026-10-26 | Alpha / I/O | Quarto homebrew file-read e replay (ADR-0085, PLANO 7.3) | — | 12982 blocos sem --entry; 493 chamadas/zero recusas e checksum real 102400/9C261314; Win32 coincide com 1810 pixels/39 linhas; handle/cursor/mídia e estado integral reproduzíveis; gate 607/269 gerados debug+release/26 Python+3 PowerShell; sondas anteriores preservadas, fases 0–7 do PLANO concluídas |
+| 2026-10-26 | Linux / GPU / HAL | X11, mesh e SMC no outro computador (ADRs 0086–0091, PLANO 8–10) | — | Janela Linux com captura externa; mesh com índices/textura/depth/x87 e IoU 0,956; LED do SMC; gate Linux 662; samples WinAPI bloqueados por HD sem imagem, recusa documentada |
+| 2026-10-27 | Kernel / I/O | Diretório da mídia declarada (ADR-0092, PLANO 11.1) | — | NtOpenFile/NtQueryDirectoryFile ANSI, filtros/cursor/restart; CDFS v2/DIRE v1, migração sem promoção; 8 testes novos e 273 casos gerados debug/release; gate Windows 653; HD sem imagem continua recusado; referência matemática x87 corrigida sem mudar runtime |
+| 2026-10-27 | Alpha / I/O | File-enum e replay do diretório (ADR-0093, PLANO 11.2) | — | 13135 blocos, 109 chamadas/zero recusas e tamanho real 102400; Win32 sem diferenças RGB; pausa/restore/replay integral e filtro preservados; 653 testes Windows, 273 gerados, 29 ferramentas; hello/triangle/file-read preservados; fases 0–11 concluídas |
 
 
 ---
 
 ### Próxima ação
 
-PLANO fases **0–7 concluído**: análise/scheduler/tick/IRQ, alpha visual Windows,
-sessões contínuas, gamma do DAC e leitura do próprio executável por arquivo
-guest, com quarto homebrew (ADRs 0069–0085).
-`bash scripts/run-alpha.sh triangle --continuo` mantém a mesma sessão até X;
+PLANO fases **0–11 concluído**: execução AOT, scheduler/IRQ, alpha Win32/X11,
+mesh com textura/depth, gamma/SMC e leitura/enumeração da mídia de executável
+declarada (ADRs 0069–0093). Não há tarefa aberta nesse plano.
+`bash scripts/run-alpha.sh file-enum --continuo` mantém a mesma sessão até X;
 Espaço pausa, F5 salva, F9 restaura. --carregar retoma em outro processo.
-Gate Windows 607, 269 casos gerados debug/release, 26 Python e 3 PowerShell de ferramentas.
-Hello/triangle preservam CPU/pixels e zero recusas; gamma-fade mostra rampa
-não identidade com janela igual ao DAC e distinta da RAM. Restore integral e
-fechamento com save final em até 5 s comprovados. Limites em §16.1 e passagem
-de bastão. Fase 7 concluída: arquivo original de mídia, I/O síncrona,
-persistência dos handles e homebrew file-read próprio. Sem tarefa aberta no PLANO.
-Linux gráfico, controles guest/áudio, filtros e compatibilidade comercial
-permanecem pendentes.
+Gate Windows 653, 273 casos gerados debug/release e 29 ferramentas Python.
+File-enum confere nome/tamanho do arquivo, fim/restart e replay com filtro;
+Win32 coincide com o framebuffer. Hello/triangle/file-read preservam os
+resultados. Evidências Linux/mesh do outro computador constam do PLANO 8–10.
+Limites em §16.1: um default.xbe declarado, sem HD fictício ou filesystem
+completo. HD/mídia/VFS gerais, controles guest/áudio, filtros, Wayland nativo/
+KMS e compatibilidade comercial permanecem pendentes.
 Não repetir os bloqueios históricos abaixo como se fossem o estado vigente.
 
 #### Histórico das ações anteriores

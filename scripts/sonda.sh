@@ -2,7 +2,7 @@
 # Executa um sample já traduzido em release e resume o resultado em linhas fixas,
 # para que critérios de aceite possam ser conferidos sem ler o log inteiro.
 #
-# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade|file-read|mesh|led|winapi_filefind|winapi_drivelist> [fatias]
+# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade|file-read|file-enum|mesh|led|winapi_filefind|winapi_drivelist> [fatias]
 #
 # Sem SONDA_PROJETO, prepare-sample.sh retraduz o XBE com o emissor atual.
 # SONDA_XBE seleciona outra entrada; SONDA_PROJETO reutiliza um projeto explícito.
@@ -34,6 +34,9 @@ triangle)
 gamma-fade)
     fatias="${2:-128}"
     ;;
+file-enum)
+    fatias="${2:-128}"
+    ;;
 file-read)
     fatias="${2:-512}"
     ;;
@@ -48,7 +51,7 @@ winapi_filefind|winapi_drivelist)
     fatias="${2:-128}"
     ;;
 *)
-    echo "uso: $0 <hello|triangle|gamma-fade|file-read|mesh|led|winapi_filefind|winapi_drivelist> [fatias]" >&2
+    echo "uso: $0 <hello|triangle|gamma-fade|file-read|file-enum|mesh|led|winapi_filefind|winapi_drivelist> [fatias]" >&2
     exit 2
     ;;
 esac

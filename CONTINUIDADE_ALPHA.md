@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-27**, com base no commit **`fe807ff`** e implementação local
-do ADR **0092** (Fases 0–10 do PLANO concluídas; Fase 11 em andamento).
+Atualizado em **2026-10-27**, com base no commit **`f62d3af`** e implementação local
+do ADR **0093** (Fases 0–11 do PLANO concluídas).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0092) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0093) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -55,15 +55,44 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 **Atualização de 27/10:** as fases 8–10 entregaram X11/Linux, mesh com textura,
 depth e desenho indexado, aritmética x87 e LED/SMC (ADRs 0086–0090). O HD sem
-imagem permanece recusado no ADR-0091. O próximo bloco é PLANO 11: enumeração
+imagem permanece recusado no ADR-0091. O PLANO 11 entregou enumeração
 do diretório da mídia ImageFile já declarada, sem criar HD fictício. NtOpenFile
 e NtQueryDirectoryFile usam ABI ANSI do Xbox; CDFS v2/DIRE v1 guarda filtros e
 cursor por handle. CDFS v1 restaura sem ativar diretórios, inclusive ao regravar.
-Oito testes do kernel e dois casos emitidos novos; gate Windows653 e273 gerados
+Oito testes do kernel e dois casos emitidos novos; gate Windows 653 e 273 gerados
 debug/release em target/gate/20261027-101616-uePAQSmr.log e
 target/file-enum-phase11/native-release.log. Referência matemática do teste x87
-foi corrigida para independer da libm Windows; runtime inalterado (adendo0088).
-PLANO11.1 concluído; consumidor próprio e prova visual estão na11.2.
+foi corrigida para independer da libm Windows; runtime inalterado (adendo 0088).
+PLANO 11.1 concluído; consumidor próprio e prova visual concluídos na 11.2.
+
+**File-enum/PLANO 11 concluído:** fonte própria enumera D:, compara nome e
+tamanho com o arquivo aberto e exige fim da busca; depois mantém diretório
+aberto e reinicia. 13135 blocos sem --entry. Sonda/128: 109 atendidas/zero
+recusadas, 17788048 instruções/26417788036 ciclos (36024 ms sintéticos), 2692
+pixels/51 linhas e zero MMIO sem modelo. A captura Win32 mostra FILE ENUM OK,
+default.xbe e 102400 bytes, iguais ao XBE do build, com zero diferenças RGB.
+XBE SHA 495be3273f4d9fdf20174dfd5bd5a7b91acda8efb2d1302271aeb06cb1b077cd.
+Close 82,847 ms. BGRA SHA ecaaa9189cea09e216cc8340b1763c7684ec6d857ac74cbff0a1f0799e61f85b.
+
+Pausa/restauração integral idêntica, 18075469 -> 18299489 instruções antes de F9;
+restore inválido preserva a sessão e outro processo continua. Close com save
+pausado/executando 527,6366/524,676 ms. CDFS/DIRE contém mídia exata e handle 36,
+share 1/filtro *.xbe/cursor esgotado. Duas continuações/8 fatias preservam quadro
+de sucesso e snapshot SHA 349cb4090ed587ccd73fb6022f0a99ad7b9c6e1fd13d833e42b7d2ff863a0a22.
+Pastas target/file-enum-phase11/{visual,session,replay-g.*,replay-h.*};
+directory-proof.json registra mídia/filtro/cursor. Launcher público passou
+headless e contínuo/carregar: public/runs/file-enum-9jfjF6ja, host/status0,
+final salvo e close 590,7692 ms. Comandos e limites no ADR-0093.
+
+Gate final Windows 653: target/gate/20261027-102930-iyaGb0Oi.log; 273 gerados
+debug/release e 29 ferramentas. Inventário vigente: hello 42/69, triangle 46/75,
+file-read 42/69, gamma-fade 42/71, file-enum 43/70. São variantes disponíveis, não
+contagem de chamadas executadas ou percentual de compatibilidade. Sondas deste
+host preservam hello 45/0/302 pixels/12 linhas, triangle 278/0/305922/479 e cores,
+file-read 493/0/1810/39. Logs em target/sonda: hello-20261027-095630-K1GyPAov,
+triangle-20261027-095630-5kzvCPav e file-read-20261027-095630-GXEHE2Tz.log.
+Mesh/Linux conservam as evidências do outro computador, não foram repetidos
+visualmente neste host. O HD sem imagem continua bloqueado; P4/P22 abertos.
 Os números datados das fases anteriores abaixo continuam como referências.
 
 **Triangle produz triângulos de cor interpolada e texto na RAM guest.**
@@ -412,7 +441,9 @@ confere a janela de fora. A Fase 9 entregou o `mesh` (x87 aritmético no
 ADR-0088; índices, VP, combiners, textura e depth W no ADR-0089), cuja silhueta
 coincide com o `screenshot.png` do SDK (IoU 0,956 em t = 9063 ms). A Fase 10
 entregou o LED do SMC (ADR-0090) e documentou o bloqueio dos samples winapi no
-disco rígido sem imagem (ADR-0091). As fases 0–10 do PLANO estão concluídas. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
+disco rígido sem imagem (ADR-0091). A Fase 11 entregou diretório da mídia
+declarada e file-enum, com replay/Win32 (ADRs 0092–0093). As fases 0–11 do PLANO
+estão concluídas, sem tarefa aberta. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
 no PATH (`docs/dev/homebrew.md`), `bash scripts/build-nxdk-sample.sh mesh homebrew-mesh`. A Fase 7 entregou leitura síncrona
 do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
 e homebrew próprio file-read/launcher/sondas. O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.

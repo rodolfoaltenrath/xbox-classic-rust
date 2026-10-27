@@ -1,6 +1,6 @@
 # Primeiro alpha: homebrew real
 
-## Uso vigente — 2026-10-26
+## Uso vigente — 2026-10-27
 
 O bloco visual Windows reproduz hello/triangle, gamma-fade e file-read, apresenta seus
 frames reais e encerra pelo X. Fase 5: execução contínua, pausa e estados
@@ -18,6 +18,7 @@ bash scripts/run-alpha.sh hello
 bash scripts/run-alpha.sh triangle
 bash scripts/run-alpha.sh gamma-fade --continuo
 bash scripts/run-alpha.sh file-read --continuo
+bash scripts/run-alpha.sh file-enum --continuo
 ```
 
 PowerShell: `& "$env:ProgramFiles\Git\bin\bash.exe" scripts/run-alpha.sh triangle`.
@@ -64,6 +65,15 @@ FILE READ OK, comprimento e FNV-1a32 calculados do XBE exato. Um relatório
 sem recusas com framebuffer preto não basta: 128 fatias terminavam durante
 o checksum. Após validar tudo, o guest mantém um arquivo aberto e continua
 lendo entre esperas; F5/F9 preservam sua posição (ADR-0085).
+
+File-enum usa target/homebrew-file-enum/file-enum-raw.xbe e padrão de 128 fatias.
+Compile no WSL: `bash scripts/build-nxdk-sample.sh file-enum homebrew-file-enum`.
+O diagnóstico FILE ENUM OK deve mostrar default.xbe e o tamanho do XBE do
+build, igual ao observado por GetFileSizeEx. O loop conserva a busca aberta,
+confere fim e reinicia. Para a prova Win32, verify-session.ps1 aceita
+`-Sample file-enum`; verify-window.ps1 usa `-Slices 128 -Presented`.
+Diretórios da mídia ImageFile são preservados em CDFS v2/DIRE v1; estados CDFS
+v1 continuam sem esse recurso mesmo ao regravar. HD sem imagem segue recusado.
 
 Verificação Win32 do executável já compilado, com pasta de saída nova:
 
@@ -114,7 +124,7 @@ por progresso do sample; o prazo de fechamento continua sendo cinco segundos.
 
 Testes de ferramentas (Linux/WSL): `python3 scripts/test-tools.py`. O helper
 copia os mesmos scripts/testes para um Git fixture temporário em /tmp, confere
-bytes e registra SHA-256 antes de executar os 26 casos. Evita git diff repetido
+bytes e registra SHA-256 antes de executar os 29 casos. Evita git diff repetido
 pelo mount NTFS do WSL; não altera timeouts nem o índice do repositório real.
 No Windows, `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 scripts/tests/test-session-log.ps1` confere três casos de logs parciais na

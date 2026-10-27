@@ -18,7 +18,7 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 11**, acrescentada em 2026-10-27 ao pedido de avaliação
+Bloco vigente: **Fase 11 concluída**, acrescentada em 2026-10-27 ao pedido de avaliação
 e prosseguimento. As fases 0–10 estão concluídas. Foco novo: enumerar a mídia
 de CD já declarada sem fabricar disco rígido; os bloqueios do ADR-0091 permanecem.
 
@@ -698,9 +698,9 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   CDFS v2/DIRE v1, CDFS v1 migra sem ativação. ADR-0092/P22. O gate encontrou
   referência x87 dependente da libm do host: corrigida somente em #[cfg(test)]
   com seno matemático independente por Machin/120 dígitos, mesmas asserções e
-  limites (adendo ADR-0088). Sondas/consumidor visual seguem na tarefa11.2.
+  limites (adendo ADR-0088). Sondas/consumidor visual seguem na tarefa 11.2.
 
-- [~] 11.2 Homebrew próprio file-enum usa FindFirstFileA/FindNextFileA/FindClose
+- [x] 11.2 Homebrew próprio file-enum usa FindFirstFileA/FindNextFileA/FindClose
   em D:, compara nome/tamanho enumerados com o arquivo aberto e mostra resultado
   calculado. Integrar build/preparo/sonda/launcher com SDK fixado.
 
@@ -710,3 +710,20 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   da busca e reinício. Sondas hello/triangle/file-read preservadas. Documentar
   comandos/evidências/limites, manter recusa de Harddisk0 do ADR-0091; commit
   por tarefa, nenhum push.
+
+  Evidência: GATE OK: 653, target/gate/20261027-102930-iyaGb0Oi.log; 273 gerados
+  debug/release e 29 ferramentas/TOOLS OK. XBE 102400 bytes/SHA 495be327...077cd,
+  13135 blocos sem --entry. Sonda file-enum/128: 109 atendidas/zero recusadas,
+  2692 pixels/51 linhas, zero MMIO; file-enum-20261027-102715-De3Xwisy.log.
+  Captura Win32 mostra FILE ENUM OK/default.xbe/bytes 102400, zero diferenças RGB,
+  close 82,847 ms. Session/: pausa/F9 com estado integral idêntico, restore inválido
+  preservado e retomada em outro processo; close 527,6366/524,676 ms.
+  DIRE preserva handle 36/share 1/filtro *.xbe/cursor esgotado; replay-g/h/8 fatias
+  mantém estado SHA 349cb409...63a0a22 e framebuffer idênticos ao sucesso inicial.
+  Artefatos em target/file-enum-phase11/{visual,session,directory-proof.json}.
+  Launcher contínuo/carregar file-enum-9jfjF6ja: host/status0/final salvo,
+  close 590,7692 ms. Sondas hello/64: 45/0/302/12; triangle/320: 278/0/305922/479,
+  R4977/G4998/B4977/9 draws/27 triângulos; file-read/512: 493/0/1810/39.
+  Logs hello-20261027-095630-K1GyPAov, triangle-20261027-095630-5kzvCPav,
+  file-read-20261027-095630-GXEHE2Tz. ADR-0093/README/continuidade atualizados;
+  HD do ADR-0091 continua recusado. Fases 0–11 do PLANO concluídas; sem push.

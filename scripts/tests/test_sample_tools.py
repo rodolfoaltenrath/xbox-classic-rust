@@ -135,6 +135,16 @@ class SampleToolsTest(unittest.TestCase):
         self.assertIn('== RESUMO (file-read, --fatias 512', result.stdout)
         self.assertIn('recusadas: 0', result.stdout)
 
+    def test_file_enum_prepares_bound_image_and_uses_default_probe_budget(self):
+        result = self.run_tool('prepare-sample.sh', ('file-enum', str(self.xbe)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        project = Path(result.stdout.strip())
+        self.assertTrue(project.name.startswith('file-enum-'))
+        self.assertNotIn('--entry', (project / 'args.txt').read_text())
+        result = self.run_tool(args=('file-enum',), SONDA_PROJETO=str(project))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('== RESUMO (file-enum, --fatias 128', result.stdout)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

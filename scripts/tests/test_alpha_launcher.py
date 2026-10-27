@@ -95,6 +95,18 @@ if os.environ.get('TEST_ARGS_FILE'):
         self.assertTrue((first / 'build.log').is_file())
         self.assertTrue((first / 'stderr.log').is_file())
 
+    def test_file_enum_has_own_cache_and_keeps_the_input_image(self):
+        captured = self.root / 'enum-args.json'
+        result = self.run_alpha(sample='file-enum', TEST_ARGS_FILE=str(captured))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        folder = self.runs()[0]
+        self.assertTrue(folder.name.startswith('file-enum-'))
+        args = json.loads(captured.read_text())
+        self.assertEqual(args[args.index('--fatias') + 1], '128')
+        self.assertTrue(list((self.state / 'cache').glob('file-enum-*.project')))
+        project = Path((folder / 'project.txt').read_text().strip())
+        self.assertEqual((project / 'src/image.xbe').read_bytes(), self.xbe.read_bytes())
+
     def test_changed_cached_source_is_preserved_and_never_executed_as_current(self):
         self.assertEqual(self.run_alpha().returncode, 1)
         old = Path((self.runs()[0] / 'project.txt').read_text().strip())

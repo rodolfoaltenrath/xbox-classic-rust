@@ -1,6 +1,6 @@
 # Homebrew nxdk e fronteira do kernel
 
-## Comandos vigentes — 2026-10-26
+## Comandos vigentes — 2026-10-27
 
 Consultar CONTINUIDADE_ALPHA.md para o estado atual; as seções por ADR abaixo
 são históricas. Para o terceiro sample, após preparar o SDK público fixado
@@ -9,6 +9,7 @@ com build-homebrew.sh, no WSL:
 ```bash
 bash scripts/build-nxdk-sample.sh gamma-fade homebrew-gamma
 bash scripts/build-nxdk-sample.sh file-read homebrew-file-read
+bash scripts/build-nxdk-sample.sh file-enum homebrew-file-enum
 ```
 
 Depois, no Git Bash/Windows:
@@ -18,6 +19,8 @@ bash scripts/run-alpha.sh gamma-fade --continuo
 bash scripts/sonda.sh gamma-fade 128
 bash scripts/run-alpha.sh file-read --continuo
 bash scripts/sonda.sh file-read 512
+bash scripts/run-alpha.sh file-enum --continuo
+bash scripts/sonda.sh file-enum 128
 ```
 
 O SDK fica fora do Git; o script exige a revisão/submódulos fixados e árvore
@@ -34,6 +37,13 @@ O diagnóstico FILE READ OK deve coincidir com o XBE daquele build; depois
 há um handle aberto entre leituras/esperas para validar snapshots. P22 limita
 o perfil a esse arquivo somente leitura, sem ISO/escrita/async. Fontes próprias
 ficam no Git, SDK/PE/XBE/logs/estados continuam ignorados (ADR-0085).
+
+File-enum é outro consumidor próprio. Usa FindFirstFileA/FindNextFileA/
+FindClose em D:, exige default.xbe/readonly e compara o comprimento enumerado
+com GetFileSizeEx do arquivo aberto. A mensagem FILE ENUM OK só é exibida
+depois das conferências; o loop mantém diretório aberto e reinicia a busca.
+O perfil enumera somente o manifesto da mídia declarada, não um HD ou uma ISO
+completos. Os samples de C:/E: do ADR-0091 continuam recusados.
 
 Estado vigente do [ADR-0065](../adr/0065-consumidor-pushbuffer.md): PFIFO consome
 comandos por PRAMIN/RAM e o triangle passa o polling por GET=PUT. BUS0 v8/PFFO v2;
