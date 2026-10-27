@@ -38,6 +38,7 @@ mod mutants;
 mod nvram;
 mod pci;
 mod sha;
+mod smbus;
 mod system_time;
 mod threads;
 mod video;
@@ -59,6 +60,7 @@ pub use mutants::{Aquisicao, INITIAL_THREAD, Liberacao, MAX_MUTANTS, MAX_RECURSI
 pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, XC_MAX_ALL};
 pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
+pub use smbus::Smbus;
 pub use system_time::SystemTimeReference;
 pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
 pub use video::{
@@ -82,6 +84,7 @@ pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
 pub const ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY: u32 = 168;
 pub const ORDINAL_MM_FREE_CONTIGUOUS_MEMORY: u32 = 171;
+pub const ORDINAL_HAL_WRITE_SMBUS_VALUE: u32 = 50;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
@@ -145,6 +148,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX,
     ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY,
     ORDINAL_MM_FREE_CONTIGUOUS_MEMORY,
+    ORDINAL_HAL_WRITE_SMBUS_VALUE,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
@@ -287,6 +291,8 @@ pub struct Dispatcher {
     contiguous: ContiguousMemory,
     gpu_instance: GpuInstanceMemory,
     files: files::Files,
+    // LED do SMC escrito por HalWriteSMBusValue (ADR-0090).
+    smbus: smbus::Smbus,
     // Pedido de avanço de tempo deixado pelo último serviço; só a sessão consome.
     // Transiente: não entra em snapshot, porque a sessão o aplica antes de qualquer
     // ponto de salvamento (ver `Session::atender_kernel`).
@@ -445,6 +451,11 @@ impl Dispatcher {
         self.atendidas
     }
 
+    /// LED do SMC programado pelo guest (ADR-0090).
+    pub const fn smbus(&self) -> &Smbus {
+        &self.smbus
+    }
+
     /// Chamadas recusadas por falta de serviço.
     pub const fn recusadas(&self) -> u64 {
         self.recusadas
@@ -541,6 +552,7 @@ impl Dispatcher {
                 self.gpu_instance
                     .query(bus, &call, self.irql, &mut self.contiguous)
             }
+            ORDINAL_HAL_WRITE_SMBUS_VALUE => self.smbus.escrever(bus, &call),
             ORDINAL_MM_FREE_CONTIGUOUS_MEMORY => self.contiguous.free(
                 bus,
                 &call,
@@ -860,7 +872,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 14);
+        out.section("KRNL", 15);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -877,10 +889,11 @@ impl Snapshot for Dispatcher {
         self.interrupts.save(out);
         self.gpu_instance.save(out);
         self.files.save(out);
+        self.smbus.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 14)?;
+        let version = inp.section("KRNL", 15)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -957,6 +970,11 @@ impl Snapshot for Dispatcher {
         if version >= 14 {
             files.load(inp)?;
         }
+        // v1–v14 não tinham SMBus: nenhuma escrita de LED registrada.
+        let mut smbus = smbus::Smbus::default();
+        if version >= 15 {
+            smbus.load(inp)?;
+        }
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(|what| SnapshotError::BadValue {
@@ -980,6 +998,7 @@ impl Snapshot for Dispatcher {
             contiguous,
             gpu_instance,
             files,
+            smbus,
             // Deliberadamente `None`: o pedido de tempo vive só entre o atendimento e a
             // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço

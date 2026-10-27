@@ -21,6 +21,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- `HalWriteSMBusValue` (ordinal 50) para o LED do SMC: modo 0x07 e sequência
+  0x08 em escrita de byte, estado no snapshot (`SMBC` v1, KRNL v15) e relato
+  `SMC LED:` na execução. O sample `led` roda com zero recusas e mostra
+  `modo=manual sequência=0x48 (verde,vermelho,apagado,apagado)` (ADR-0090, PLANO 10.1).
+
 - Comparação do mesh com o `screenshot.png` do SDK por métrica declarada
   (`scripts/comparar-referencia.py`: silhueta, caixa, centroide, brilho relativo):
   IoU 0,956 em t = 9063 ms, caixa a 1 px e centroide a 0,7 px; janela X11 com zero

@@ -64,6 +64,12 @@ fn ler_opcoes(args: impl IntoIterator<Item = String>) -> Result<Opcoes, String> 
 /// É a lista exata de registradores que o título usa: sem ela, um acesso que não parou a
 /// execução ficaria invisível, e um que parou só diria o endereço do primeiro.
 fn relatar_mmio(session: &xbox_recomp::runtime::Session) {
+    let smc = session.kernel.smbus();
+    if smc.escritas() > 0 {
+        let modo = match smc.modo() { Some(0) => "automático", Some(_) => "manual", None => "não escrito" };
+        let sequencia = smc.sequencia().map_or_else(|| "não escrita".to_owned(), |s| format!("0x{s:02X} ({})", xbox_kernel::dispatch::Smbus::descrever_sequencia(s)));
+        eprintln!("SMC LED: modo={modo} sequência={sequencia} escritas={}", smc.escritas());
+    }
     let gamma = session.bus.nv2a_gamma();
     let different = gamma.palette().map(|p| p.iter().enumerate().filter(|(i, rgb)| **rgb != [*i as u8;3]).count());
     eprintln!("DAC gamma: perfil={:?} cursor={} entradas_nao_identidade={:?}", gamma.profile(), gamma.cursor(), different);

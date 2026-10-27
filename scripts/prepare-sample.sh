@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Traduz com o emissor atual para uma pasta nova; stdout contém só o projeto.
-# Uso: bash scripts/prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh> [arquivo.xbe]
+# Uso: bash scripts/prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led> [arquivo.xbe]
 set -euo pipefail
 raiz="$(cd "$(dirname "$0")/.." && pwd)"
 sample=${1:-}
@@ -10,7 +10,8 @@ case "$sample" in
     gamma-fade) padrao="$raiz/target/homebrew-gamma/gamma-fade-raw.xbe" ;;
     file-read) padrao="$raiz/target/homebrew-file-read/file-read-raw.xbe" ;;
     mesh) padrao="$raiz/target/homebrew-mesh/mesh-raw.xbe" ;;
-    *) echo 'uso: prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh> [arquivo.xbe]' >&2; exit 2 ;;
+    led) padrao="$raiz/target/homebrew-led/led-raw.xbe" ;;
+    *) echo 'uso: prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led> [arquivo.xbe]' >&2; exit 2 ;;
 esac
 [ "$#" -le 2 ] || { echo 'argumentos excedentes' >&2; exit 2; }
 xbe=${2:-$padrao}

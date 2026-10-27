@@ -16,12 +16,17 @@ mod boot_dma_verification {
         assert_eq!(&bytes[at+4..at+8],&1u32.to_le_bytes());
         let count_at=match bytes[at+8] {0=>at+9,1=>at+13+u32::from_le_bytes(bytes[at+9..at+13].try_into().unwrap()) as usize,_=>panic!("presence")};
         let count=u32::from_le_bytes(bytes[count_at..count_at+4].try_into().unwrap()) as usize;
-        bytes.drain(at..count_at+4+count*16);
+        // KRNL v15 (ADR-0090) grava SMBC logo depois de CDFS: abaixo de v14 nenhuma das duas existe.
+        let end=count_at+4+count*16;let end=if bytes[end..].starts_with(b"SMBC"){end+SMBC_BYTES}else{end};
+        bytes.drain(at..end);
     }
+    /// Seção SMBC v1: tag, versão, dois pares presença/valor e o contador u64.
+    pub(super) const SMBC_BYTES:usize=4+4+2+2+8;
     pub(super) fn legacy_file_media(bytes:&[u8])->Vec<u8>{
         let mut result=bytes.to_vec();let at=result.windows(4).rposition(|v|v==b"CDFS").unwrap();
+        let smbc=result.windows(4).rposition(|v|v==b"SMBC").map(|s|result[s..s+SMBC_BYTES].to_vec()).unwrap_or_default();
         strip_file_media(&mut result);let empty=[b'C',b'D',b'F',b'S',1,0,0,0,0,0,0,0,0];
-        result.splice(at..at,empty);result
+        result.splice(at..at,empty.into_iter().chain(smbc));result
     }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
     fn finish(s:&mut Session){s.atender_kernel().unwrap();assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::Returned);}

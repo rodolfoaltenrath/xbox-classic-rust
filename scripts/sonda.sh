@@ -2,7 +2,7 @@
 # Executa um sample já traduzido em release e resume o resultado em linhas fixas,
 # para que critérios de aceite possam ser conferidos sem ler o log inteiro.
 #
-# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade|file-read|mesh> [fatias]
+# Uso: bash scripts/sonda.sh <hello|triangle|gamma-fade|file-read|mesh|led> [fatias]
 #
 # Sem SONDA_PROJETO, prepare-sample.sh retraduz o XBE com o emissor atual.
 # SONDA_XBE seleciona outra entrada; SONDA_PROJETO reutiliza um projeto explícito.
@@ -22,6 +22,8 @@ raiz="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$raiz"
 
 sample="${1:-}"
+# Samples sem modo de vídeo (só LED/HAL) não produzem a linha do framebuffer.
+exige_framebuffer=1
 case "$sample" in
 hello)
     fatias="${2:-64}"
@@ -38,8 +40,12 @@ file-read)
 mesh)
     fatias="${2:-320}"
     ;;
+led)
+    fatias="${2:-64}"
+    exige_framebuffer=0
+    ;;
 *)
-    echo "uso: $0 <hello|triangle|gamma-fade|file-read|mesh> [fatias]" >&2
+    echo "uso: $0 <hello|triangle|gamma-fade|file-read|mesh|led> [fatias]" >&2
     exit 2
     ;;
 esac
@@ -85,7 +91,7 @@ if [ "$status" -ne 0 ]; then
     fi
 fi
 grep -q '^Kernel: [0-9].* chamadas atendidas, [0-9].* recusadas;' "$log" &&
-    grep -q '^Framebuffer guest:' "$log" || {
+    { [ "$exige_framebuffer" -eq 0 ] || grep -q '^Framebuffer guest:' "$log"; } || {
     echo "SONDA FALHOU: métricas obrigatórias ausentes (log: $log)" >&2; exit 1;
 }
 
@@ -102,6 +108,7 @@ vigiados="0xFD800040 0xFD800044"
     echo "raster: $(grep -E '^GPU raster:' "$log" | tail -1)"
     echo "gamma: $(grep -E '^DAC gamma:' "$log" | tail -1)"
     echo "cores: $(grep -E '^  regiões de cor dos vértices' "$log" | tail -1)"
+    echo "led: $(grep -E '^SMC LED:' "$log" | tail -1)"
     echo "mmio_sem_modelo: $(grep -E 'fis:0x[0-9A-F]+ .*(não implementado|sem modelo)' "$log" |
         grep -oE 'fis:0x[0-9A-F]+' | sort -u | wc -l)"
     for addr in $vigiados; do

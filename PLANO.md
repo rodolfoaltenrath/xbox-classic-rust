@@ -647,10 +647,17 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
 
 ## Fase 10 — Kernel e HAL em samples pequenos
 
-- [ ] 10.1 `led`: `XSetCustomLED` → SMBus/SMC com estado observável e
+- [x] 10.1 `led`: `XSetCustomLED` → SMBus/SMC com estado observável e
   snapshot; recusa para comandos não cobertos.
   **Aceite:** `GATE OK`; sonda led com `recusadas: 0`; estado do LED reportado no
   resumo da execução; ADR.
+
+  Evidência: `GATE OK: 662 testes`, target/gate/20261026-233821-E76KaE4S.log;
+  `TOOLS OK`. Sonda led/64 (target/sonda/led-20261026-233444-RXii1Eef.log): 62
+  chamadas, `recusadas: 0`, `led: SMC LED: modo=manual sequência=0x48
+  (verde,vermelho,apagado,apagado) escritas=2`, zero MMIO sem modelo. Testes em
+  crates/xbox-kernel/tests/smbus.rs (sequência, cinco recusas sem efeito,
+  snapshot, migração KRNL v14, estado incoerente). ADR-0090.
 
 - [ ] 10.2 `winapi_filefind` e `winapi_drivelist`: enumerar o que P22 permite
   (um `default.xbe`) e recusar o resto com variante explícita.

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Um comando por sample. Janela no Windows (Git Bash) e no Linux com servidor X (DISPLAY).
 set -euo pipefail
-usage() { echo 'uso: run-alpha.sh <hello|triangle|gamma-fade|file-read|mesh> [--xbe arquivo] [--projeto projeto] [--fatias N] [--sem-janela] [--continuo] [--carregar estado] [--salvar novo-estado]'; }
+usage() { echo 'uso: run-alpha.sh <hello|triangle|gamma-fade|file-read|mesh|led> [--xbe arquivo] [--projeto projeto] [--fatias N] [--sem-janela] [--continuo] [--carregar estado] [--salvar novo-estado]'; }
 if [[ "${1:-}" == --help || "${1:-}" == --ajuda ]]; then usage; exit 0; fi
 sample=${1:-}; shift || true
-case "$sample" in hello) slices=64 ;; triangle) slices=320 ;; gamma-fade) slices=128 ;; file-read) slices=512 ;; mesh) slices=320 ;; *) usage >&2; exit 2 ;; esac
+case "$sample" in hello) slices=64 ;; triangle) slices=320 ;; gamma-fade) slices=128 ;; file-read) slices=512 ;; mesh) slices=320 ;; led) slices=64 ;; *) usage >&2; exit 2 ;; esac
 raiz="$(cd "$(dirname "$0")/.." && pwd -P)"
 xbe=''; supplied=''; window=1; continuous=0; load_state=''; save_state=''; seen=' '
 while [ "$#" -gt 0 ]; do
