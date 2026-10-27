@@ -121,6 +121,8 @@ pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
 pub const ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 184;
+pub const ORDINAL_NT_FREE_VIRTUAL_MEMORY: u32 = 199;
+pub const ORDINAL_NT_QUERY_VIRTUAL_MEMORY: u32 = 217;
 pub const ORDINAL_KE_GET_CURRENT_THREAD: u32 = 104;
 pub const ORDINAL_PS_CREATE_SYSTEM_THREAD_EX: u32 = 255;
 pub const ORDINAL_PS_TERMINATE_SYSTEM_THREAD: u32 = 258;
@@ -172,6 +174,8 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_KE_GET_CURRENT_THREAD,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
     ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
+    ORDINAL_NT_FREE_VIRTUAL_MEMORY,
+    ORDINAL_NT_QUERY_VIRTUAL_MEMORY,
     ORDINAL_NT_CREATE_MUTANT,
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_HAL_GET_INTERRUPT_VECTOR,
@@ -628,6 +632,14 @@ impl Dispatcher {
             ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY => {
                 self.virtual_memory.allocate(bus, &call, self.irql)
             }
+            ORDINAL_NT_FREE_VIRTUAL_MEMORY => self.virtual_memory.free(
+                bus,
+                &call,
+                self.irql,
+                self.threads.child.map(|child| child.region),
+                regs[4],
+            ),
+            ORDINAL_NT_QUERY_VIRTUAL_MEMORY => self.virtual_memory.query(bus, &call, self.irql),
             ORDINAL_NT_CREATE_MUTANT => self.nt_create_mutant(bus, &call),
             ORDINAL_NT_RELEASE_MUTANT => self.nt_release_mutant(bus, &call),
             ORDINAL_NT_CREATE_EVENT

@@ -746,11 +746,16 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   de 165/180/171 reproduz bytes, ABI e liberação; recusa de ponteiro interior
   preserva CPU/recursos. Relatório real: hello 44/69, triangle 48/75. ADR-0094.
 
-- [ ] 12.2 NtFreeVirtualMemory (199) e NtQueryVirtualMemory (217).
+- [x] 12.2 NtFreeVirtualMemory (199) e NtQueryVirtualMemory (217).
 
   **Aceite:** GATE OK; liberação real e consulta das regiões suportadas, ABI Xbox,
   saídas preflighted e falhas sem efeitos parciais; proteger imagem, pilhas e TIBs
   de threads; Rust gerado e snapshot/replay. ADR e documentos vigentes atualizados.
+
+  Evidência: GATE OK: 663 testes, target/gate/20261027-113829-iU3mAGe4.log;
+  seis testes free_query_virtual.rs e 277 casos emitidos. Query stdcall/8 com
+  sete ULONGs, release stdcall/12, snapshot integral e recusa/retomada testados.
+  CMEM/VMEM/KRNL sem mudança de layout. ADR-0095/P24; hello 46/69 por dispatcher.
 
 - [ ] 12.3 Objetos/namespace e semáforos: ordinais 69, 193, 201, 208, 222, 246, 250.
 

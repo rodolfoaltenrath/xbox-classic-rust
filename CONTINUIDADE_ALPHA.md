@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
 Atualizado em **2026-10-27**, com base no commit **`d9b6fe2`** e implementação local
-do ADR **0094** (Fases 0–11 concluídas; marco hello na Fase 12).
+do ADR **0095** (Fases 0–11 concluídas; marco hello na Fase 12).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -29,9 +29,9 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 1. **Nada de hardware inventado.** Um registrador ou serviço sem evidência de que o caminho
    executado o usa fica como está: o `Bus` lê zero declarado e registra na telemetria
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
-2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P23), com condição de saída.
+2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P24), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0094) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0095) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -46,12 +46,19 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (657 testes Windows; última referência Linux 662; o teste
+   `cargo test --workspace --offline --no-fail-fast` (663 testes Windows; última referência Linux 662; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `275 passed` em x86-64 e `259` fora dele —
+   confere o **contador de casos gerados**, hoje `277 passed` em x86-64 e `261` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
+
+**Fase 12.2/ADR-0095:** NtFreeVirtualMemory (199) e NtQueryVirtualMemory (217)
+atuam em recursos VMEM conhecidos, com proteção de stacks/TLS/TIB e preflight
+sem MMIO/A/D. Query tem 28 bytes e dois argumentos; release integral usa tamanho
+zero e devolve tamanho real. Outros casos recusam (P24). Sem mudar snapshots.
+Concluída com GATE OK 663, target/gate/20261027-113829-iU3mAGe4.log; seis
+testes novos e 277 casos gerados. Hello 46/69; próxima tarefa 12.3 (objetos).
 
 **Marco hello/Fase 12 iniciado:** concentrar nas 27 importações pendentes.
 ADR-0094 implementa 165 e 180, levando o inventário a 44/69 (25 pendentes),

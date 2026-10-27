@@ -105,7 +105,7 @@ cargo run -p obsidian -- check-memory caminho/do/jogo.iso
 
 O estado vigente está no [guia do alpha](docs/dev/alpha.md) e na
 [passagem de bastão](CONTINUIDADE_ALPHA.md). Cobertura com variantes limitadas:
-**44/69 serviços do hello e 48/75 do triangle**. Ambos traduzem sem raízes manuais.
+**46/69 serviços do hello e 50/75 do triangle**. Ambos traduzem sem raízes manuais.
 O triangle passa por PFIFO/PRAMIN, ISR/DPC, vertex program e rasterização software.
 Gamma-fade importa 71 funções, das quais 42 possuem variantes implementadas;
 file-read importa 69, com 42 variantes implementadas. File-enum importa 70,

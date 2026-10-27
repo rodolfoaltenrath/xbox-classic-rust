@@ -25,6 +25,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- NtFreeVirtualMemory libera regiões privadas integrais e NtQueryVirtualMemory
+  consulta seu estado real pelo layout Xbox de 28 bytes. Proteção de recursos
+  de thread/saídas e preflight sem MMIO/A/D; replay sem alterar formato de estado
+  (ADR-0095, PLANO 12.2).
+
 - MmAllocateContiguousMemory e MmQueryAllocationSize sobre os recursos CMEM
   reais, com ABI emitida, validação de posse e replay. Hello 44/69, sem mudar
   o layout de snapshots; bases fora do perfil recusam (ADR-0094, PLANO 12.1).

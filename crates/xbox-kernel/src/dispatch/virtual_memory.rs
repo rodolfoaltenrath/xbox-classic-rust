@@ -1,4 +1,5 @@
 //! Reserva+commit privado em RAM guest, perfil AOT v1 (ADR-0043).
+mod operations;
 
 use super::{
     Atendimento, Erro, Irql, Resultado, STATUS_ACCESS_VIOLATION, STATUS_INSUFFICIENT_RESOURCES,

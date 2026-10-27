@@ -1151,6 +1151,13 @@ variante fora do contrato recusa. Condição de saída: consumidores reais e
 evidência para ampliar a consulta, cache/proteções e IRQL, com testes e migração
 se os metadados mudarem.
 
+P24 — **VMEM privado integral** (ADR-0095): consulta só de regiões committed
+registradas e liberação MEM_RELEASE/base exata/RegionSize zero, Passive. Stack,
+TLS/TIB/KTHREAD de filha e pilha ativa protegidos; saídas não podem ser desalocadas
+pela própria chamada. Sem MEM_DECOMMIT, consulta geral de imagem/reserva/livre ou
+teardown da filha. Condição de saída: consumidor e contrato para novas variantes,
+com teste pela ABI, sem perder posse de frames nem reinterpretar VMEM v1.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

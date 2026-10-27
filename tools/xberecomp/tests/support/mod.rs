@@ -21,6 +21,7 @@ mod encoder_filters;
 mod exchange;
 mod files;
 mod free_contiguous;
+mod free_query_virtual;
 mod gpu_instance;
 mod indirect;
 mod interlocked;
@@ -98,6 +99,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&interlocked::sources(output));
     main.push_str(&irql::sources(output));
     main.push_str(&virtual_memory::sources(output));
+    main.push_str(&free_query_virtual::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
     main.push_str(&simple_contiguous::sources(output));
