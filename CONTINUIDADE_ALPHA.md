@@ -31,7 +31,7 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0090) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0091) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
@@ -397,8 +397,9 @@ ADR-0086) também. No Fedora: `bash scripts/run-alpha.sh triangle` abre a janela
 Xwayland e `target/release/verificar-janela apos|durante|continuo <bin> <saida-nova>`
 confere a janela de fora. A Fase 9 entregou o `mesh` (x87 aritmético no
 ADR-0088; índices, VP, combiners, textura e depth W no ADR-0089), cuja silhueta
-coincide com o `screenshot.png` do SDK (IoU 0,956 em t = 9063 ms). Segue a Fase 10
-(led/winapi) do PLANO. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
+coincide com o `screenshot.png` do SDK (IoU 0,956 em t = 9063 ms). A Fase 10
+entregou o LED do SMC (ADR-0090) e documentou o bloqueio dos samples winapi no
+disco rígido sem imagem (ADR-0091). As fases 0–10 do PLANO estão concluídas. Build do mesh: toolchain em `~/.cache/obsidian/toolchain`
 no PATH (`docs/dev/homebrew.md`), `bash scripts/build-nxdk-sample.sh mesh homebrew-mesh`. A Fase 7 entregou leitura síncrona
 do executável original: kernel/handles/migração, montagem na sessão/Rust gerado
 e homebrew próprio file-read/launcher/sondas. O núcleo continua Rust; o C de homebrew/file-read é código guest de teste.

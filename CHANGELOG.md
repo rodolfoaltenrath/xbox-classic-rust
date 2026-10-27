@@ -21,6 +21,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Samples `winapi_filefind` e `winapi_drivelist` no preparo/sonda. Os dois
+  param com recusa explícita em IoCreateSymbolicLink ao montar
+  `\Device\Harddisk0\Partition2` como C:, porque não há imagem de disco;
+  bloqueio e condição de saída registrados em P4/P22 (ADR-0091, PLANO 10.2).
+
 - `HalWriteSMBusValue` (ordinal 50) para o LED do SMC: modo 0x07 e sequência
   0x08 em escrita de byte, estado no snapshot (`SMBC` v1, KRNL v15) e relato
   `SMC LED:` na execução. O sample `led` roda com zero recusas e mostra

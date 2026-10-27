@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Traduz com o emissor atual para uma pasta nova; stdout contém só o projeto.
-# Uso: bash scripts/prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led> [arquivo.xbe]
+# Uso: bash scripts/prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led|winapi_filefind|winapi_drivelist> [arquivo.xbe]
 set -euo pipefail
 raiz="$(cd "$(dirname "$0")/.." && pwd)"
 sample=${1:-}
@@ -11,7 +11,8 @@ case "$sample" in
     file-read) padrao="$raiz/target/homebrew-file-read/file-read-raw.xbe" ;;
     mesh) padrao="$raiz/target/homebrew-mesh/mesh-raw.xbe" ;;
     led) padrao="$raiz/target/homebrew-led/led-raw.xbe" ;;
-    *) echo 'uso: prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led> [arquivo.xbe]' >&2; exit 2 ;;
+    winapi_filefind|winapi_drivelist) padrao="$raiz/target/homebrew-$sample/$sample-raw.xbe" ;;
+    *) echo 'uso: prepare-sample.sh <hello|triangle|gamma-fade|file-read|mesh|led|winapi_filefind|winapi_drivelist> [arquivo.xbe]' >&2; exit 2 ;;
 esac
 [ "$#" -le 2 ] || { echo 'argumentos excedentes' >&2; exit 2; }
 xbe=${2:-$padrao}

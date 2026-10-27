@@ -659,7 +659,15 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   crates/xbox-kernel/tests/smbus.rs (sequência, cinco recusas sem efeito,
   snapshot, migração KRNL v14, estado incoerente). ADR-0090.
 
-- [ ] 10.2 `winapi_filefind` e `winapi_drivelist`: enumerar o que P22 permite
+- [x] 10.2 `winapi_filefind` e `winapi_drivelist`: enumerar o que P22 permite
   (um `default.xbe`) e recusar o resto com variante explícita.
   **Aceite:** `GATE OK`; sondas com `recusadas: 0` ou bloqueio documentado com
   o serviço exato; P4/P22 atualizados.
+
+  Evidência: `GATE OK: 662 testes`, target/gate/20261026-234817-OTVmWp92.log;
+  `TOOLS OK`. Bloqueio documentado com o serviço exato: as duas sondas atendem
+  46 chamadas e recusam `IoCreateSymbolicLink (ordinal 67)` ao montar C: em
+  `\Device\Harddisk0\Partition2\` (filefind em 0x141A8, drivelist em
+  0x15928; logs target/sonda/winapi_*-20261026-23*). Sem imagem de disco, a
+  recusa é mantida, em vez de inventar uma partição ou simular a ausência do
+  disco. ADR-0091; P4/P22 com os consumidores e a condição de saída.
