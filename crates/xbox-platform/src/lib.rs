@@ -1,6 +1,7 @@
 //! Traits de backend de SO: display, input, audio, timer, memoria virtual
 //!
-//! **Estado:** apresentação de quadros implementada para Windows (ADR-0052); o resto das
+//! **Estado:** apresentação de quadros implementada para Windows (ADR-0052) e para o
+//! Linux desktop via X11/Xwayland (ADR-0086); o resto das
 //! fronteiras (input, áudio, timer) continua esqueleto, na **Fase 0+** do
 //! [ROADMAP](../../../ROADMAP.md).
 //!
@@ -17,6 +18,13 @@ pub mod display;
 #[cfg(windows)]
 mod windows;
 
+#[cfg(target_os = "linux")]
+mod x11;
+
+/// Verificação externa da janela X11 (captura, fechar e atalhos por outra conexão).
+#[cfg(target_os = "linux")]
+pub use x11::verificacao as verificacao_x11;
+
 use xbox_core::Result;
 
 /// Fase do roadmap em que este subsistema é implementado.
@@ -24,10 +32,10 @@ pub const ROADMAP_PHASE: &str = "Fase 0+";
 
 /// Cria uma janela que apresenta quadros de `largura × altura`.
 ///
-/// Só existe implementação para **Windows**. Em outro sistema devolve erro dizendo qual é
-/// a lacuna, em vez de cair silenciosamente num apresentador que não mostra nada: um
-/// emulador que "apresenta" para lugar nenhum é pior que um que avisa. O Linux desktop e o
-/// modo appliance (DRM/KMS) são trabalho das Fases 8 e 10.
+/// Implementação Win32. Linux desktop usa X11 (abaixo); outros sistemas devolvem erro
+/// dizendo qual é a lacuna, em vez de cair silenciosamente num apresentador que não
+/// mostra nada: um emulador que "apresenta" para lugar nenhum é pior que um que avisa.
+/// O modo appliance (DRM/KMS) é trabalho da Fase 10.
 #[cfg(windows)]
 pub fn criar_janela(
     titulo: &str,
@@ -37,8 +45,21 @@ pub fn criar_janela(
     Ok(Box::new(windows::Janela::nova(titulo, largura, altura)?))
 }
 
+/// Cria uma janela X11 que apresenta quadros de `largura × altura`.
+///
+/// Conecta ao servidor de `DISPLAY` (Xorg, ou Xwayland numa sessão Wayland). Sem
+/// servidor X o erro diz qual variável falta; DRM/KMS sem servidor gráfico é a Fase 10.
+#[cfg(target_os = "linux")]
+pub fn criar_janela(
+    titulo: &str,
+    largura: u32,
+    altura: u32,
+) -> Result<Box<dyn display::Apresentador>> {
+    Ok(Box::new(x11::Janela::nova(titulo, largura, altura)?))
+}
+
 /// Cria uma janela que apresenta quadros de `largura × altura` (indisponível aqui).
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn criar_janela(
     _titulo: &str,
     _largura: u32,
@@ -52,7 +73,7 @@ pub fn criar_janela(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     #[test]
     fn fora_do_windows_a_janela_diz_que_nao_existe_em_vez_de_fingir() {
         let erro = super::criar_janela("x", 640, 480).unwrap_err().to_string();

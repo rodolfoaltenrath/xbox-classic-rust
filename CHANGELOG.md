@@ -21,6 +21,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Janela no Linux desktop: apresentador X11 em Rust puro sobre o socket Unix,
+  com autenticação por Xauthority, PutImage em faixas, WM_DELETE_WINDOW,
+  atalhos Espaço/F5/F9 e repinte por Expose; funciona no Xwayland das sessões
+  Wayland. `xbox_platform::verificacao_x11` captura a janela por outra conexão.
+  Captura real no Fedora 44 sem diferença RGB (ADR-0086, PLANO 8.1, P6).
+
 - Quarto alvo file-read, com fonte guest própria, build isolado no nxdk fixado
   e integração ao preparo/sonda/launcher. Calcula comprimento/FNV-1a32 do XBE
   lido por APIs públicas e mantém arquivo aberto para testar snapshots

@@ -524,3 +524,86 @@ este plano; outro bloco de compatibilidade depende de novo escopo.
   triangle-20261026-131338-HRtFMUsM e gamma-fade-20261026-131338-oZR5OYsA.
   ADR-0085 registra fontes/hashes/recortes e corrida corrigida no polling de logs.
   Fases 0–7 concluídas; três commits locais, sem push.
+
+## Fase 8 — Apresentação no Linux desktop (P6, parte desktop)
+
+Motivo: o mantenedor desenvolve no Fedora (GNOME/Wayland com XWayland) e hoje a
+janela só existe no Windows. A Fase 10 (DRM/KMS) continua fora deste recorte.
+
+- [x] 8.1 Backend X11 em `xbox-platform`, Rust puro sobre socket Unix (protocolo
+  core, autenticação MIT-MAGIC-COOKIE-1 do `XAUTHORITY`), atrás do mesmo
+  `Apresentador`. Sem dependência nova e sem `unsafe`. PutImage em faixas que
+  respeitam o tamanho máximo de requisição; WM_DELETE_WINDOW → `Fechar`;
+  Espaço/F5/F9 via mapa de teclado do servidor; Expose repinta o último quadro.
+  Sem DISPLAY ou sem servidor X: erro explicando a lacuna, nunca janela fictícia.
+  **Aceite:**
+  - `GATE OK`;
+  - testes unitários (sem servidor) para: parse de Xauthority, codificação das
+    requisições usadas, divisão de PutImage em faixas, decodificação de eventos
+    (ClientMessage, KeyPress com mapa sintético, Expose, erro do servidor);
+  - teste do `criar_janela` fora do Windows atualizado: sem `DISPLAY` o erro cita a
+    variável; o teste antigo "Fases 8 e 10" deixa de valer só onde há backend;
+  - ADR novo; P6 no ROADMAP §16.1 reescrito (desktop Linux via X11/XWayland
+    entregue; DRM/KMS e Wayland nativo continuam pendentes).
+
+  Evidência: `GATE OK: 621 testes` (baseline Linux 602 -> 621),
+  target/gate/20261026-212858-CgETsn5X.log. 21 testes de protocolo sem servidor
+  (Xauthority, setup aceito/recusado/truncado/visual, requisições, faixas de
+  PutImage 102 linhas, pacotes, mapa de teclado, autorrepetição, Expose, fila) e
+  3 de erro do `Janela::nova_em` (sem DISPLAY cita a variável e a Fase 10;
+  remoto; socket inexistente). Teste real opt-in `OBSIDIAN_X11_REAL=1` no
+  Xwayland do Fedora 44: GetImage de outra conexão com zero pixels RGB
+  diferentes; Espaço/F5/F9 em ordem; WM_DELETE_WINDOW -> Fechar. ADR-0086; P6
+  reescrito; teste "Fases 8 e 10" restrito a sistemas sem backend.
+
+- [ ] 8.2 Verificação visual real no Linux, equivalente ao `verify-window.ps1`.
+  Ferramenta que localiza a janela do Obsidian por outra conexão X, captura o
+  conteúdo com GetImage, compara com a exportação `--quadro-apresentado` e
+  envia WM_DELETE_WINDOW medindo o tempo até o processo sair.
+  **Aceite:**
+  - `GATE OK`;
+  - hello/64 e triangle/320 com `--janela`: **zero diferenças RGB** entre a captura
+    e a exportação; contagens de pixels iguais às sondas (hello 302/12, triangle
+    305922/479, salvo mudança documentada);
+  - fechamento durante a execução e após o orçamento: processo sai em < 5 s com
+    "interrompida pelo host";
+  - modo `--continuo`: Espaço/F5/F9 enviados por XSendEvent produzem as linhas de
+    pausa/salvar/restaurar no log;
+  - capturas PNG/PPM e logs em `target/visual-linux-*`; README e CONTINUIDADE
+    com o comando Linux.
+
+## Fase 9 — Sample `mesh` (textura, depth e matrizes)
+
+Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
+
+- [ ] 9.1 Inventário: compilar o sample com `build-nxdk-sample.sh`, integrar ao
+  `prepare-sample.sh`/`sonda.sh` e registrar o primeiro bloqueio (instrução
+  recusada na análise, serviço de kernel, método NV097 sem efeito).
+  **Aceite:** ADR novo com a lista ordenada de bloqueios observados (log da sonda
+  citado) e a fonte pública de cada recorte necessário; nenhuma emulação nova.
+
+- [ ] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
+  oráculo ou referência para cada instrução, o que 9.1 listar (x87/SSE de P8/P9,
+  serviços de kernel). Cada recorte com teste próprio.
+  **Aceite:** `GATE OK`; sonda mesh com `recusadas: 0` e `GPU raster` com
+  triângulos > 0; P8/P9 reescritos com o recorte entregue.
+
+- [ ] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
+  usa, endereçamento/wrap/filtro configurados, teste de profundidade e
+  combiner com textura. Nada reconhecido por título ou hash.
+  **Aceite:** `GATE OK`; testes golden sintéticos (textura 4×4, depth com dois
+  triângulos sobrepostos); sonda mesh com framebuffer comparado ao
+  `screenshot.png` por métrica declarada no ADR (silhueta/cobertura e cor média por
+  região), com a diferença anotada na Evidência; snapshots versionados.
+
+## Fase 10 — Kernel e HAL em samples pequenos
+
+- [ ] 10.1 `led`: `XSetCustomLED` → SMBus/SMC com estado observável e
+  snapshot; recusa para comandos não cobertos.
+  **Aceite:** `GATE OK`; sonda led com `recusadas: 0`; estado do LED reportado no
+  resumo da execução; ADR.
+
+- [ ] 10.2 `winapi_filefind` e `winapi_drivelist`: enumerar o que P22 permite
+  (um `default.xbe`) e recusar o resto com variante explícita.
+  **Aceite:** `GATE OK`; sondas com `recusadas: 0` ou bloqueio documentado com
+  o serviço exato; P4/P22 atualizados.
