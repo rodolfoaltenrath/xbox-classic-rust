@@ -358,9 +358,9 @@ fn check_stopped_main(cli: &str, output: &Path, cargo: &std::ffi::OsStr, target:
 
 fn native_test_summary() -> &'static str {
     if cfg!(target_arch = "x86_64") {
-        "269 passed"
+        "271 passed"
     } else {
-        "253 passed"
+        "255 passed"
     }
 }
 

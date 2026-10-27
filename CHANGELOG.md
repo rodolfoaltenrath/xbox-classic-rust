@@ -21,6 +21,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- x87 aritmético do mesh: FMULP/FDIVRP/FSQRT exatos em 80 bits e FSIN/FCOS com a
+  redução por π de 66 bits do hardware. Oráculo `xbox-cpu::oracle::x87` na FPU
+  física: 30000 casos idênticos nos 80 bits e 40000 de FSIN/FCOS a ≤ 1 ulp de f64
+  (39246/40000 idênticos). O mesh traduz e executa com zero recusas (ADR-0088, PLANO 9.2, P9).
+
 - Quinto alvo `mesh` (textura, depth e matrizes) no preparo/sonda/launcher.
   Inventário: primeiro bloqueio é x87 aritmético (`fmulp` em 0x1269E); faltam
   FMULP/FDIVRP/FSQRT/FSIN/FCOS, todo o SSE já é aceito, MXCSR não é usado;

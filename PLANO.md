@@ -604,11 +604,17 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   SSE coberto, sem MXCSR/FLDCW; kernel a observar; PGRAPH: TX_*, INDEX_DATA,
   VP 44 instruções, combiner tex0×col0, depth. Nenhuma emulação nova.
 
-- [ ] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
+- [~] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
   oráculo ou referência para cada instrução, o que 9.1 listar (x87/SSE de P8/P9,
   serviços de kernel). Cada recorte com teste próprio.
   **Aceite:** `GATE OK`; sonda mesh com `recusadas: 0` e `GPU raster` com
   triângulos > 0; P8/P9 reescritos com o recorte entregue.
+
+  Progresso (commit intermediário, gate 643): x87 do mesh entregue (ADR-0088,
+  P9); sonda mesh traduz e executa 320 fatias com 281 chamadas e `recusadas: 0`.
+  `GPU raster` ainda 0: os desenhos chegam por INDEX_DATA (0x1800), sem modelo,
+  e o pipeline do mesh (textura, combiner, VP) é recusado pelo SoftwareV1. O
+  critério de triângulos > 0 depende do PGRAPH, trabalhado em seguida.
 
 - [ ] 9.3 Texturas e depth no PGRAPH SoftwareV1: formato de textura que o mesh
   usa, endereçamento/wrap/filtro configurados, teste de profundidade e

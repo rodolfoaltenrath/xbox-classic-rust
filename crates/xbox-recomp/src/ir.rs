@@ -261,7 +261,8 @@ pub enum X87Constant {
     One,
 }
 
-/// x87: só carga e armazenamento (ADR-0053). Aritmética x87 é recusada na análise.
+/// x87: carga e armazenamento (ADR-0053) e a aritmética usada pelo mesh (ADR-0088).
+/// Outras instruções aritméticas x87 são recusadas na análise.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum X87 {
     /// `FILD m16/m32/m64`: inteiro com sinal → ST(0), exato.
@@ -272,6 +273,20 @@ pub enum X87 {
     LoadConstant(X87Constant),
     /// `FST`/`FSTP m32/m64/m80`: arredonda ao par mais próximo ao estreitar.
     Store { dst: Operand, bytes: u32, pop: bool },
+    /// `FMULP ST(i), ST(0)`: ST(i) ← ST(i) × ST(0) e retira ST(0).
+    MultiplyPop(u8),
+    /// `FDIVRP ST(i), ST(0)`: ST(i) ← ST(0) ÷ ST(i) e retira ST(0).
+    DivideReversePop(u8),
+    /// `FSQRT`, `FSIN`, `FCOS` sobre ST(0).
+    Unary(X87Unary),
+}
+
+/// Operações x87 de um operando sobre ST(0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum X87Unary {
+    SquareRoot,
+    Sine,
+    Cosine,
 }
 
 /// IR explícita; nenhuma instrução desconhecida vira NOP.

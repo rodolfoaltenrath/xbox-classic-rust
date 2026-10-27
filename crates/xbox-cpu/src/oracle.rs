@@ -1,6 +1,7 @@
 //! Referência independente na CPU host para o subconjunto inteiro comum a IA-32 e
 //! x86_64. Referências: Intel SDM vol. 2 e Rust Reference / inline assembly.
-//! Não serve como oráculo de x87, modos de CPU, segmentação ou temporização Xbox.
+//! O x87 tem referência própria em [`x87`] (aritmética usada pelos alvos, ADR-0088).
+//! Não serve como oráculo de modos de CPU, segmentação ou temporização Xbox.
 
 use core::arch::asm;
 
@@ -11,6 +12,7 @@ pub mod exchange;
 pub mod muldiv;
 pub mod scan;
 pub mod strings;
+pub mod x87;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alu {

@@ -92,6 +92,9 @@ pub enum Error {
     MisalignedSse { pc: u32, address: u32 },
     #[error("pilha x87: {0:?} (#IS)")]
     FpuStack(crate::runtime::x87::StackFault),
+    /// FSIN/FCOS com argumento fora do recorte de precisão declarado (ADR-0088, P9).
+    #[error("{instruction} em 0x{pc:08X}: |ST(0)| fora do recorte modelado (P9)")]
+    X87OutOfProfile { pc: u32, instruction: &'static str },
     #[error(
         "em 0x{pc:08X}: a espera só termina com tempo e interrupções, e este chamador não as entrega"
     )]

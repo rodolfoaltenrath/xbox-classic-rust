@@ -1,10 +1,11 @@
-//! Emissão de x87: carga e armazenamento sobre `s.fpu` (ADR-0053).
+//! Emissão de x87 sobre `s.fpu`: carga/armazenamento (ADR-0053) e aritmética (ADR-0088).
 //!
 //! A leitura de memória precede qualquer efeito na pilha, e a escrita precede o `pop`:
-//! uma falta de página ou um sobre/subfluxo não deixa efeito parcial.
+//! uma falta de página ou um sobre/subfluxo não deixa efeito parcial. Na aritmética,
+//! os operandos são lidos (e a recusa de FSIN/FCOS decidida) antes de qualquer escrita.
 
 use super::{address, line};
-use crate::ir::{X87, X87Constant};
+use crate::ir::{X87, X87Constant, X87Unary};
 
 pub(super) fn emit(out: &mut String, x87: &X87) {
     match x87 {
@@ -64,6 +65,43 @@ pub(super) fn emit(out: &mut String, x87: &X87) {
             if *pop {
                 line(out, "s.fpu.pop().map_err(Error::from)?;");
             }
+        }
+        X87::MultiplyPop(i) | X87::DivideReversePop(i) => {
+            line(
+                out,
+                &format!("let alvo = s.fpu.st({i}).map_err(Error::from)?;"),
+            );
+            line(out, "let topo = s.fpu.peek().map_err(Error::from)?;");
+            let valor = if matches!(x87, X87::MultiplyPop(_)) {
+                "alvo.multiply(topo)"
+            } else {
+                "topo.divide(alvo)"
+            };
+            line(
+                out,
+                &format!("s.fpu.set_st({i}, {valor}).map_err(Error::from)?;"),
+            );
+            line(out, "s.fpu.pop().map_err(Error::from)?;");
+        }
+        X87::Unary(op) => {
+            line(out, "let topo = s.fpu.peek().map_err(Error::from)?;");
+            let valor = match op {
+                X87Unary::SquareRoot => "topo.square_root()".to_owned(),
+                X87Unary::Sine | X87Unary::Cosine => {
+                    let (metodo, nome) = if *op == X87Unary::Sine {
+                        ("sine", "FSIN")
+                    } else {
+                        ("cosine", "FCOS")
+                    };
+                    format!(
+                        "topo.{metodo}().ok_or(Error::X87OutOfProfile {{ pc: s.eip, instruction: \"{nome}\" }})?"
+                    )
+                }
+            };
+            line(
+                out,
+                &format!("s.fpu.set_st(0, {valor}).map_err(Error::from)?;"),
+            );
         }
     }
 }

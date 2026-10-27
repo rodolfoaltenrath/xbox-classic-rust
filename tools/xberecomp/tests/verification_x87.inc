@@ -9,6 +9,38 @@ mod x87_verification {
     mod vazia { include!("x87_vazia.rs"); }
     mod cheia { include!("x87_cheia.rs"); }
     mod deixa { include!("x87_deixa.rs"); }
+    mod aritmetica { include!("x87_aritmetica.rs"); }
+    mod trig_fora { include!("x87_trig_fora.rs"); }
+
+    fn extended_at(s: &Session, at: u32) -> Extended {
+        let mut raw = [0u8; 10];
+        s.bus.ler_bytes(GuestVirt(at), &mut raw).unwrap();
+        Extended::from_bytes(raw)
+    }
+
+    #[test]
+    fn aritmetica_do_mesh_traduzida_e_executada() {
+        let mut s = Session::load(include_bytes!("x87_aritmetica.xbe")).unwrap();
+        assert_eq!(aritmetica::run(&mut s.state, &mut s.bus, 10_000).unwrap(), Exit::Returned);
+        assert_eq!(f64::from_bits(u64_at(&s, 0x12900)), 3.0, "fmulp");
+        let terco = extended_at(&s, 0x12910);
+        assert_eq!(terco.mantissa, 0xAAAA_AAAA_AAAA_AAAB, "fdivrp é ST(0)/ST(1)");
+        assert_eq!(terco.sign_exponent, 16383 - 2);
+        assert_eq!(extended_at(&s, 0x12920).mantissa, 0xB504_F333_F9DE_6484, "fsqrt");
+        let meio = Extended::from_f32_bits(0.5f32.to_bits());
+        assert_eq!(u64_at(&s, 0x12930), meio.sine().unwrap().to_f64_bits(), "fsin");
+        assert_eq!(u32_at(&s, 0x12938), meio.cosine().unwrap().to_f32_bits(), "fcos");
+        assert_eq!(s.state.fpu.depth(), 0, "pilha vazia ao final");
+    }
+
+    #[test]
+    fn fsin_fora_do_recorte_recusa_com_pc_e_pilha_intacta() {
+        let mut s = Session::load(include_bytes!("x87_trig_fora.xbe")).unwrap();
+        let erro = trig_fora::run(&mut s.state, &mut s.bus, 100).unwrap_err();
+        assert!(matches!(erro, Error::X87OutOfProfile { instruction: "FSIN", .. }), "{erro}");
+        assert_eq!(s.state.fpu.depth(), 1);
+        assert_eq!(s.state.fpu.peek().unwrap(), Extended::from_f64_bits(1e19f64.to_bits()));
+    }
 
     fn rodar() -> Session {
         let mut s = Session::load(include_bytes!("x87_ok.xbe")).unwrap();

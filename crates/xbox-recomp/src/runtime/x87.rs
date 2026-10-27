@@ -5,11 +5,19 @@
 //! mantissa de 64 bits e o par sinal/expoente como o hardware, e só a **saída** para
 //! 32/64 bits arredonda — uma vez, ao par mais próximo, como a palavra de controle de
 //! RESET manda. O que está implementado é o que alvos reais usaram: carga de inteiro e de
-//! ponto flutuante, `FLDZ`/`FLD1`, e `FST`/`FSTP`. Aritmética x87 não existe ainda e é
-//! recusada na análise com o nome da instrução.
+//! ponto flutuante, `FLDZ`/`FLD1`, `FST`/`FSTP` (ADR-0053) e, para o mesh, `FMULP`,
+//! `FDIVRP`, `FSQRT` exatos e `FSIN`/`FCOS` com precisão declarada (ADR-0088, módulos
+//! `arith` e `trig`). Outra aritmética x87 é recusada na análise com o nome da instrução.
 //!
-//! **Fora do modelo (ADR-0053, P9):** palavras de controle e de estado (`FLDCW`, `FNSTCW`,
-//! `FNSTSW`), exceções x87, precisão de 24/53 bits, não normais e pseudo-denormais.
+//! **Fora do modelo (P9):** palavras de controle e de estado (`FLDCW`, `FNSTCW`, `FNSTSW`),
+//! flags de exceção (as respostas mascaradas são produzidas, mas não registradas) e
+//! precisão de 24/53 bits.
+
+mod arith;
+mod trig;
+
+pub use arith::INDEFINITE;
+pub use trig::LIMITE as LIMITE_TRIGONOMETRICO;
 
 use xbox_core::snapshot::{SnapshotReader, SnapshotWriter};
 
@@ -255,6 +263,22 @@ impl Fpu {
         Ok(self.regs[usize::from(self.top)])
     }
 
+    /// ST(`i`), que precisa estar ocupado.
+    pub fn st(&self, i: u8) -> Result<Extended, StackFault> {
+        let fisico = (self.top + i) & 7;
+        if self.valid >> fisico & 1 == 0 {
+            return Err(StackFault::Underflow);
+        }
+        Ok(self.regs[usize::from(fisico)])
+    }
+
+    /// Substitui ST(`i`), que precisa estar ocupado.
+    pub fn set_st(&mut self, i: u8, value: Extended) -> Result<(), StackFault> {
+        self.st(i)?;
+        self.regs[usize::from((self.top + i) & 7)] = value;
+        Ok(())
+    }
+
     pub fn pop(&mut self) -> Result<Extended, StackFault> {
         let value = self.peek()?;
         self.valid &= !(1 << self.top);
@@ -431,6 +455,20 @@ mod tests {
             assert_eq!(fpu.pop().unwrap(), Extended::from_i64(i));
         }
         assert_eq!(fpu.depth(), 0);
+    }
+
+    #[test]
+    fn st_i_le_e_escreve_relativo_ao_topo() {
+        let mut fpu = Fpu::new();
+        fpu.push(Extended::from_i64(1)).unwrap();
+        fpu.push(Extended::from_i64(2)).unwrap();
+        assert_eq!(fpu.st(0).unwrap(), Extended::from_i64(2));
+        assert_eq!(fpu.st(1).unwrap(), Extended::from_i64(1));
+        assert_eq!(fpu.st(2), Err(StackFault::Underflow));
+        fpu.set_st(1, Extended::from_i64(7)).unwrap();
+        assert_eq!(fpu.set_st(5, Extended::ONE), Err(StackFault::Underflow));
+        fpu.pop().unwrap();
+        assert_eq!(fpu.peek().unwrap(), Extended::from_i64(7));
     }
 
     #[test]

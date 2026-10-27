@@ -10,7 +10,7 @@ use xbox_formats::{Xbe, xbe::SectionFlags};
 pub use crate::ir::{
     Binary, BitScan, BitTest, CarryOp, Condition, CountBranch, DoubleShift, Operand, Operation,
     Repeat, Rotate, Shift, Sse, SseArith, SseLogic, StringOp, Unary, Width, X87, X87Constant,
-    XmmRm,
+    X87Unary, XmmRm,
 };
 use crate::{Error, Result};
 
@@ -473,6 +473,11 @@ fn lower_x87(i: &Instruction) -> Result<Option<Operation>> {
             let (source, bytes) = source(10)?;
             X87::LoadFloat { source, bytes }
         }
+        Code::Fmulp_sti_st0 => X87::MultiplyPop(stack_index(i)?),
+        Code::Fdivrp_sti_st0 => X87::DivideReversePop(stack_index(i)?),
+        Code::Fsqrt => X87::Unary(X87Unary::SquareRoot),
+        Code::Fsin => X87::Unary(X87Unary::Sine),
+        Code::Fcos => X87::Unary(X87Unary::Cosine),
         Code::Fldz => X87::LoadConstant(X87Constant::Zero),
         Code::Fld1 => X87::LoadConstant(X87Constant::One),
         Code::Fst_m32fp | Code::Fstp_m32fp => {
@@ -502,6 +507,19 @@ fn lower_x87(i: &Instruction) -> Result<Option<Operation>> {
         }
         _ => return Ok(None),
     })))
+}
+
+/// Índice `i` do operando `ST(i)` na forma `Fxxx ST(i), ST(0)`.
+fn stack_index(i: &Instruction) -> Result<u8> {
+    let register = i.op0_register();
+    let index = register.number().wrapping_sub(Register::ST0.number());
+    if index > 7 {
+        return Err(fail(
+            i.ip32(),
+            format!("operando x87 inesperado: {register:?}"),
+        ));
+    }
+    Ok(index as u8)
 }
 
 fn lower_exchange(i: &Instruction) -> Result<Option<Operation>> {

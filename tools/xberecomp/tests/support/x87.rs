@@ -85,5 +85,42 @@ pub(super) fn sources(output: &Path) -> String {
 
     // Deixa dois valores na pilha, para o snapshot.
     publish(output, "x87_deixa", &[0xD9, 0xE8, 0xD9, 0xEE, 0xC3]);
+
+    // Aritmética do mesh (ADR-0088): FMULP, FDIVRP, FSQRT, FSIN e FCOS.
+    let mut a = Vec::new();
+    imm(&mut a, 0x12800, 1.5f32.to_bits());
+    imm(&mut a, 0x12804, 2.0f32.to_bits());
+    imm(&mut a, 0x12808, 3.0f32.to_bits());
+    imm(&mut a, 0x1280C, 1.0f32.to_bits());
+    imm(&mut a, 0x12810, 0.5f32.to_bits());
+    mem(&mut a, 0xD9, 0, 0x12800); // fld 1,5 → ST(1)
+    mem(&mut a, 0xD9, 0, 0x12804); // fld 2 → ST(0)
+    a.extend([0xDE, 0xC9]); // fmulp st(1), st → 3
+    mem(&mut a, 0xDD, 3, 0x12900); // fstp qword
+    mem(&mut a, 0xD9, 0, 0x12808); // fld 3 → ST(1)
+    mem(&mut a, 0xD9, 0, 0x1280C); // fld 1 → ST(0)
+    a.extend([0xDE, 0xF1]); // fdivrp st(1), st → ST(0)/ST(1) = 1/3
+    mem(&mut a, 0xDB, 7, 0x12910); // fstp tbyte
+    mem(&mut a, 0xD9, 0, 0x12804); // fld 2
+    a.extend([0xD9, 0xFA]); // fsqrt
+    mem(&mut a, 0xDB, 7, 0x12920); // fstp tbyte
+    mem(&mut a, 0xD9, 0, 0x12810); // fld 0,5
+    a.extend([0xD9, 0xFE]); // fsin
+    mem(&mut a, 0xDD, 3, 0x12930); // fstp qword
+    mem(&mut a, 0xD9, 0, 0x12810); // fld 0,5
+    a.extend([0xD9, 0xFF]); // fcos
+    mem(&mut a, 0xD9, 3, 0x12938); // fstp dword
+    a.push(0xC3);
+    publish(output, "x87_aritmetica", &a);
+
+    // FSIN fora do recorte (|x| ≥ 2^62): recusa sem alterar a pilha.
+    let mut fora = Vec::new();
+    let enorme = 1e19f64.to_bits();
+    imm(&mut fora, 0x12A00, enorme as u32);
+    imm(&mut fora, 0x12A04, (enorme >> 32) as u32);
+    mem(&mut fora, 0xDD, 0, 0x12A00); // fld qword
+    fora.extend([0xD9, 0xFE]); // fsin
+    fora.push(0xC3);
+    publish(output, "x87_trig_fora", &fora);
     include_str!("../verification_x87.inc").to_owned()
 }

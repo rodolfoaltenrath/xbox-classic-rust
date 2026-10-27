@@ -573,6 +573,7 @@ dependencies = [
  "iced-x86",
  "thiserror",
  "xbox-core",
+ "xbox-cpu",
  "xbox-formats",
  "xbox-kernel",
  "xbox-mem",

@@ -15,5 +15,9 @@ xbox-kernel = { workspace = true }
 iced-x86 = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# Referência x87 na FPU física para os testes de x87_hardware (ADR-0088).
+xbox-cpu = { workspace = true, features = ["isa-oracle"] }
+
 [lints]
 workspace = true
