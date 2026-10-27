@@ -21,6 +21,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Quinto alvo `mesh` (textura, depth e matrizes) no preparo/sonda/launcher.
+  Inventário: primeiro bloqueio é x87 aritmético (`fmulp` em 0x1269E); faltam
+  FMULP/FDIVRP/FSQRT/FSIN/FCOS, todo o SSE já é aceito, MXCSR não é usado;
+  textura, INDEX_DATA, VP de 44 instruções e combiner listados (ADR-0087, PLANO 9.1).
+
 - Janela no Linux desktop: apresentador X11 em Rust puro sobre o socket Unix,
   com autenticação por Xauthority, PutImage em faixas, WM_DELETE_WINDOW,
   atalhos Espaço/F5/F9 e repinte por Expose; funciona no Xwayland das sessões

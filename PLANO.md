@@ -590,11 +590,19 @@ janela só existe no Windows. A Fase 10 (DRM/KMS) continua fora deste recorte.
 
 Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
 
-- [ ] 9.1 Inventário: compilar o sample com `build-nxdk-sample.sh`, integrar ao
+- [x] 9.1 Inventário: compilar o sample com `build-nxdk-sample.sh`, integrar ao
   `prepare-sample.sh`/`sonda.sh` e registrar o primeiro bloqueio (instrução
   recusada na análise, serviço de kernel, método NV097 sem efeito).
   **Aceite:** ADR novo com a lista ordenada de bloqueios observados (log da sonda
   citado) e a fonte pública de cada recorte necessário; nenhuma emulação nova.
+
+  Evidência: `GATE OK: 624 testes`, target/gate/20261026-214957-zmsBFH1V.log;
+  `TOOLS OK`. Build Fedora com toolchain local: target/homebrew-mesh/mesh-raw.xbe.
+  Sonda mesh para na tradução em 0x1269E `Fmulp_sti_st0`
+  (target/samples/mesh-Jk0wfCeX.translate.log); ordinal-report 45/75 serviços.
+  ADR-0087: x87 faltante = FMULP/FDIVRP/FSQRT/FSIN/FCOS (desmontagem completa),
+  SSE coberto, sem MXCSR/FLDCW; kernel a observar; PGRAPH: TX_*, INDEX_DATA,
+  VP 44 instruções, combiner tex0×col0, depth. Nenhuma emulação nova.
 
 - [ ] 9.2 Desbloquear CPU/kernel até o mesh submeter geometria: implementar, com
   oráculo ou referência para cada instrução, o que 9.1 listar (x87/SSE de P8/P9,
