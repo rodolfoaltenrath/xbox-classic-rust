@@ -1,7 +1,7 @@
 # Continuidade do alpha — guia para outra LLM
 
-Atualizado em **2026-10-26**, com base no commit **`9176bc0`** e implementação local
-dos ADRs **0083–0085** (Fases 0–7 do PLANO concluídas).
+Atualizado em **2026-10-27**, com base no commit **`fe807ff`** e implementação local
+do ADR **0092** (Fases 0–10 do PLANO concluídas; Fase 11 em andamento).
 Este documento registra o contexto necessário para continuar o projeto sem o histórico
 da conversa. Antes de trabalhar, confira `git status`, os commits posteriores e as
 instruções locais: o código pode ter evoluído depois desta referência.
@@ -13,7 +13,7 @@ instruções locais: o código pode ter evoluído depois desta referência.
 > reproduza com os comandos da passagem de bastão.
 
 
-## Passagem de bastão — estado em 2026-10-26
+## Passagem de bastão — estado em 2026-10-27
 
 O projeto Obsidian recompila XBE/x86 estaticamente para Rust nativo. A sessão
 reúne CPU guest, Clock determinístico, RAM/MMU/dispositivos e kernel HLE.
@@ -31,13 +31,13 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
    (`MMIO sem modelo tocado pelo guest`). Modele só o que um alvo real tocou.
 2. **Todo provisório é declarado** em `ROADMAP.md §16.1` (P1–P22), com condição de saída.
    Não promova um provisório a definitivo por omissão.
-3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0091) e cada
+3. **Cada decisão estrutural tem um ADR numerado** (`docs/adr/`, o último é o 0092) e cada
    entrega entra no `CHANGELOG.md`. Erros de método também são registrados no ADR.
    O ADR-0056 registra a investigação de fontes e as ferramentas de reprodução;
    não implementa hardware novo.
 4. **Recusa é melhor que suposição.** Variante não implementada devolve
    `VarianteNaoImplementada` com nome, ordinal, chamador e argumentos; nunca sucesso genérico.
-5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v2/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v15/`SMBC` v1/`CDFS` v1/`GINS` v1, `KEVT` v2,
+5. **Snapshots são versionados, com migração testada** (`BUS0` v10/`GAMM` v1/`PGRF` v2/`PRND` v2/`PFFO` v2/`BTPG` v1/`PRAM` v1/`NPLL` v1/`PFBM` v1, `KRNL` v15/`SMBC` v1/`CDFS` v2/`DIRE` v1/`GINS` v1, `KEVT` v2,
    `KINT` v2, `AOTC` v10/`IRQL` v2, `AOTS` v4/`SCHD` v1/`TCTX` v2/`THRD` v2...). Mudou o formato: suba a versão, migre as antigas e
    escreva o teste da migração.
 6. **Commits:** mensagem em inglês no estilo do repositório, **sem Co-Authored-By** nem
@@ -46,12 +46,25 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 7. **Gate antes de entregar** (tudo precisa estar limpo):
    `cargo fmt --all --check`,
    `cargo clippy --workspace --all-targets --offline -- -D warnings`,
-   `cargo test --workspace --offline --no-fail-fast` (607 testes Windows; última referência Linux 576; o teste
+   `cargo test --workspace --offline --no-fail-fast` (653 testes Windows; última referência Linux 662; o teste
    `tools/xberecomp/tests/native.rs` compila e executa o Rust gerado e leva ~80 s; ele
-   confere o **contador de casos gerados**, hoje `269 passed` em x86-64 e `253` fora dele —
+   confere o **contador de casos gerados**, hoje `273 passed` em x86-64 e `257` fora dele —
    some os testes novos ali).
 
 ### Estado executável vigente
+
+**Atualização de 27/10:** as fases 8–10 entregaram X11/Linux, mesh com textura,
+depth e desenho indexado, aritmética x87 e LED/SMC (ADRs 0086–0090). O HD sem
+imagem permanece recusado no ADR-0091. O próximo bloco é PLANO 11: enumeração
+do diretório da mídia ImageFile já declarada, sem criar HD fictício. NtOpenFile
+e NtQueryDirectoryFile usam ABI ANSI do Xbox; CDFS v2/DIRE v1 guarda filtros e
+cursor por handle. CDFS v1 restaura sem ativar diretórios, inclusive ao regravar.
+Oito testes do kernel e dois casos emitidos novos; gate Windows653 e273 gerados
+debug/release em target/gate/20261027-101616-uePAQSmr.log e
+target/file-enum-phase11/native-release.log. Referência matemática do teste x87
+foi corrigida para independer da libm Windows; runtime inalterado (adendo0088).
+PLANO11.1 concluído; consumidor próprio e prova visual estão na11.2.
+Os números datados das fases anteriores abaixo continuam como referências.
 
 **Triangle produz triângulos de cor interpolada e texto na RAM guest.**
 PGRAPH SoftwareV1 (ADR-0068) busca arrays F32 por DMA, executa o vertex program

@@ -9,6 +9,7 @@ use crate::imports::Call;
 use std::collections::BTreeMap;
 use xbox_core::{Snapshot, SnapshotReader, SnapshotWriter, error::SnapshotError};
 use xbox_mem::{Acesso, Bus, GuestVirt};
+mod directories;
 
 pub const MAX_MEDIA_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_FILE_HANDLES: usize = 256;
@@ -27,6 +28,7 @@ struct File {
 pub(super) struct Files {
     image: Option<Vec<u8>>,
     handles: BTreeMap<u32, File>,
+    directories: directories::Directories,
 }
 impl Files {
     pub(super) fn mount(&mut self, bytes: &[u8]) -> xbox_core::Result<()> {
@@ -36,18 +38,20 @@ impl Files {
             ));
         }
         self.image = Some(bytes.to_vec());
+        self.directories.enable();
         Ok(())
     }
     pub(super) fn image(&self) -> Option<&[u8]> {
         self.image.as_deref()
     }
     pub(super) fn close(&mut self, handle: u32) -> bool {
-        self.handles.remove(&handle).is_some()
+        self.handles.remove(&handle).is_some() || self.directories.close(handle)
     }
     pub(super) fn contains(&self, handle: u32) -> bool {
-        self.handles.contains_key(&handle)
+        self.handles.contains_key(&handle) || self.directories.contains(handle)
     }
     pub(super) fn validate(&self, d: &Dispatcher) -> Result<(), SnapshotError> {
+        self.directories.validate(self, d)?;
         if self.handles.len() > 1 && self.handles.values().any(|file| file.share & 1 == 0) {
             return Err(bad(
                 "handles simultâneos violam compartilhamento de leitura",
@@ -79,7 +83,7 @@ fn bad(what: &'static str) -> SnapshotError {
 }
 impl Snapshot for Files {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("CDFS", 1);
+        out.section("CDFS", 2);
         out.bool(self.image.is_some());
         if let Some(image) = &self.image {
             out.u32(image.len() as u32);
@@ -91,9 +95,11 @@ impl Snapshot for Files {
             out.u64(file.position);
             out.u32(file.share);
         }
+        self.directories.save(out);
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        if inp.section("CDFS", 1)? != 1 {
+        let version = inp.section("CDFS", 2)?;
+        if version == 0 {
             return Err(bad("versão desconhecida"));
         }
         let image = if inp.bool()? {
@@ -121,7 +127,15 @@ impl Snapshot for Files {
             handles.insert(handle, File { position, share });
             previous = handle;
         }
-        *self = Self { image, handles };
+        let mut directories = directories::Directories::default();
+        if version >= 2 {
+            directories.load(inp)?;
+        }
+        *self = Self {
+            image,
+            handles,
+            directories,
+        };
         Ok(())
     }
 }
@@ -228,6 +242,36 @@ impl Dispatcher {
             return Err(variant(bus, call, "sessão sem mídia de executável"));
         }
         validate_open_args(bus, call, &args)?;
+        let path = match self.file_name(bus, call, attributes)? {
+            Ok(path) => path,
+            Err(status) => {
+                if status == STATUS_OBJECT_NAME_NOT_FOUND {
+                    iosb(bus, io, status, 0)?;
+                }
+                return Ok(Atendimento { eax: status });
+            }
+        };
+        let flags = bus.ler_u32(GuestVirt(attributes + 8))?;
+        let matches = if flags == 0x40 {
+            path.eq_ignore_ascii_case(PATH)
+        } else {
+            path == PATH
+        };
+        if !matches {
+            iosb(bus, io, STATUS_OBJECT_NAME_NOT_FOUND, 0)?;
+            return Ok(Atendimento {
+                eax: STATUS_OBJECT_NAME_NOT_FOUND,
+            });
+        }
+        self.open_file_handle(bus, output, io, args[6])
+    }
+    // O resultado interno é NTSTATUS de memória/nome; o externo é variante sem modelo.
+    fn file_name(
+        &self,
+        bus: &Bus,
+        call: &Call,
+        attributes: u32,
+    ) -> Result<Result<Vec<u8>, u32>, Erro> {
         let root = bus.ler_u32(GuestVirt(attributes))?;
         let at = bus.ler_u32(GuestVirt(attributes + 4))?;
         let flags = bus.ler_u32(GuestVirt(attributes + 8))?;
@@ -239,9 +283,7 @@ impl Dispatcher {
             ));
         }
         let Some(mut path) = name(bus, at) else {
-            return Ok(Atendimento {
-                eax: STATUS_ACCESS_VIOLATION,
-            });
+            return Ok(Err(STATUS_ACCESS_VIOLATION));
         };
         if !path.is_ascii()
             || path.contains(&0)
@@ -267,10 +309,7 @@ impl Dispatcher {
                 return Err(variant(bus, call, "somente namespace D: montado"));
             }
             let Some(target) = self.links.target() else {
-                iosb(bus, io, STATUS_OBJECT_NAME_NOT_FOUND, 0)?;
-                return Ok(Atendimento {
-                    eax: STATUS_OBJECT_NAME_NOT_FOUND,
-                });
+                return Ok(Err(STATUS_OBJECT_NAME_NOT_FOUND));
             };
             let mut resolved = target.as_bytes().to_vec();
             resolved.extend(&relative[3..]);
@@ -279,9 +318,10 @@ impl Dispatcher {
             return Err(variant(bus, call, "nome relativo sem namespace suportado"));
         }
         let device = b"\\Device\\CdRom0\\";
-        if !path
-            .get(..device.len())
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(device))
+        if !path.eq_ignore_ascii_case(&device[..device.len() - 1])
+            && !path
+                .get(..device.len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(device))
         {
             return Err(variant(
                 bus,
@@ -289,18 +329,7 @@ impl Dispatcher {
                 "dispositivo fora da mídia CdRom0 modelada",
             ));
         }
-        let matches = if flags == 0x40 {
-            path.eq_ignore_ascii_case(PATH)
-        } else {
-            path == PATH
-        };
-        if !matches {
-            iosb(bus, io, STATUS_OBJECT_NAME_NOT_FOUND, 0)?;
-            return Ok(Atendimento {
-                eax: STATUS_OBJECT_NAME_NOT_FOUND,
-            });
-        }
-        self.open_file_handle(bus, output, io, args[6])
+        Ok(Ok(path))
     }
     fn open_file_handle(&mut self, bus: &mut Bus, output: u32, io: u32, share: u32) -> Resultado {
         if self
@@ -315,7 +344,7 @@ impl Dispatcher {
         let Some((handle, _)) = self
             .mutants
             .prepare(false)
-            .filter(|_| self.files.handles.len() < MAX_FILE_HANDLES)
+            .filter(|_| self.files.handles.len() + self.files.directories.len() < MAX_FILE_HANDLES)
         else {
             iosb(bus, io, STATUS_INSUFFICIENT_RESOURCES, 0)?;
             return Ok(Atendimento {
@@ -337,6 +366,13 @@ impl Dispatcher {
             .map(|i| call.argument(bus, i))
             .collect::<Result<_, _>>()?;
         let (handle, io, buffer, length, offset) = (args[0], args[4], args[5], args[6], args[7]);
+        if self.files.directories.contains(handle) {
+            return Err(variant(
+                bus,
+                call,
+                "leitura de diretório exige NtQueryDirectoryFile",
+            ));
+        }
         if args[1..4] != [0, 0, 0] || length == 0 || length > MAX_READ {
             return Err(variant(
                 bus,
@@ -398,6 +434,13 @@ impl Dispatcher {
         let args: Vec<u32> = (0..5)
             .map(|i| call.argument(bus, i))
             .collect::<Result<_, _>>()?;
+        if self.files.directories.contains(args[0]) {
+            return Err(variant(
+                bus,
+                call,
+                "informações de diretório fora do perfil",
+            ));
+        }
         let Some(file) = self.files.handles.get(&args[0]) else {
             return Ok(Atendimento {
                 eax: STATUS_INVALID_HANDLE,

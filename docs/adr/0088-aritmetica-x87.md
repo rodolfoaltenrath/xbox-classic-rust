@@ -68,3 +68,19 @@ P9 deixa de ser "só carga e armazenamento": as cinco instruções do mesh têm
 modelo verificado no hardware. Seguem pendentes palavras de controle/estado,
 flags de exceção, precisão 24/53 e o resto da aritmética x87. O próximo passo do
 mesh é o PGRAPH (desenho indexado, textura, opcodes de VP e combiner).
+
+## Adendo — referência matemática portátil (2026-10-27)
+
+O gate no Windows expôs uma premissa incorreta no teste perto de π:
+`PI.sin()` da biblioteca do host pode usar a própria instrução FSIN e sua
+redução π₆₆. Portanto não serve de referência independente do seno matemático.
+A asserção que exige grande diferença entre os dois valores foi preservada;
+agora usa o padrão f64 0x3CA1A62633145C07. Derivação independente: π pela
+fórmula de Machin em Decimal com 120 dígitos; δ=π−π_f64;
+sin(π_f64)=δ−δ³/6+δ⁵/120, arredondado uma vez para f64.
+
+O outro teste continua exigindo diferença de no máximo 1 ulp contra
+2259×2^-64 (π₆₆). Não foram ignorados casos nem relaxados limites. O runtime
+permanece idêntico; a alteração está somente em #[cfg(test)]. Reprodução e
+medição independentes em target/file-enum-phase11/{pi_reference.py,host_sin.rs}.
+As comparações com a FPU física permanecem no gate.

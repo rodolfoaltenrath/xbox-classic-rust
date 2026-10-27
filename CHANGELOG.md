@@ -10,6 +10,10 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Corrigido
 
+- Referência matemática do teste x87 perto de π independente da libm do host:
+  no Windows, sin pode usar a mesma redução FSIN/π₆₆. Mantidas as duas asserções
+  e os limites de precisão; runtime inalterado (adendo ao ADR-0088).
+
 - Verificação de sessão só considera linhas completas de stderr; evita capturar
   EIP parcial e relatar divergência falsa após F9. Três regressões PowerShell
   exercitam a função real com logs escritos em partes (ADR-0085).
@@ -20,6 +24,11 @@ o ADR correspondente em [docs/adr/](docs/adr/).
   fixado. Plano retomado em modo autônomo (tarefa 0.0).
 
 ### Adicionado
+
+- Enumeração síncrona do diretório da mídia de executável declarada:
+  NtOpenFile/NtQueryDirectoryFile, nomes ANSI, filtro/cursor por handle e
+  fechamento; CDFS v2/DIRE v1 com migração legada sem ativação implícita.
+  Disco rígido e demais variantes continuam recusados (ADR-0092, PLANO 11.1).
 
 - Samples `winapi_filefind` e `winapi_drivelist` no preparo/sonda. Os dois
   param com recusa explícita em IoCreateSymbolicLink ao montar

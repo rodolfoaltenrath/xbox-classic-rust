@@ -280,7 +280,7 @@ fn snapshot_corrompido_recusa_versao_tamanho_contagem_posicao_share_e_handles() 
     let at = source.windows(4).rposition(|v| v == b"CDFS").unwrap();
     let row = at + 17 + image.len();
     for (offset, bytes) in [
-        (at + 4, 2u32.to_le_bytes().to_vec()),
+        (at + 4, 3u32.to_le_bytes().to_vec()),
         (at + 9, 0xFFFFFFFFu32.to_le_bytes().to_vec()),
         (row - 4, 257u32.to_le_bytes().to_vec()),
         (row, 0u32.to_le_bytes().to_vec()),

@@ -89,6 +89,8 @@ pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
 pub const ORDINAL_NT_CREATE_FILE: u32 = 190;
+pub const ORDINAL_NT_OPEN_FILE: u32 = 202;
+pub const ORDINAL_NT_QUERY_DIRECTORY_FILE: u32 = 207;
 pub const ORDINAL_NT_QUERY_INFORMATION_FILE: u32 = 211;
 pub const ORDINAL_NT_READ_FILE: u32 = 219;
 pub const ORDINAL_RTL_ENTER_CRITICAL_SECTION: u32 = 277;
@@ -155,6 +157,8 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
     ORDINAL_NT_CLOSE,
     ORDINAL_NT_CREATE_FILE,
+    ORDINAL_NT_OPEN_FILE,
+    ORDINAL_NT_QUERY_DIRECTORY_FILE,
     ORDINAL_NT_QUERY_INFORMATION_FILE,
     ORDINAL_NT_READ_FILE,
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
@@ -573,6 +577,8 @@ impl Dispatcher {
             }
             ORDINAL_NT_CLOSE => self.nt_close(bus, &call, scheduled),
             ORDINAL_NT_CREATE_FILE => self.nt_create_file(bus, &call),
+            ORDINAL_NT_OPEN_FILE => self.nt_open_file(bus, &call),
+            ORDINAL_NT_QUERY_DIRECTORY_FILE => self.nt_query_directory_file(bus, &call),
             ORDINAL_NT_READ_FILE => self.nt_read_file(bus, &call),
             ORDINAL_NT_QUERY_INFORMATION_FILE => self.nt_query_information_file(bus, &call),
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(

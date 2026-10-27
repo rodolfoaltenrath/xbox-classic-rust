@@ -212,7 +212,11 @@ mod tests {
         // em …08D3, a diferença é exatamente 0x8D3·2^-64 = 1.2246063538e-16.
         let s = f64::from_bits(ext(std::f64::consts::PI).sine().unwrap().to_f64_bits());
         assert!(ulps(s, 2259.0 * 2f64.powi(-64)) <= 1, "{s:e}");
-        assert!(ulps(s, std::f64::consts::PI.sin()) > 1_000_000_000, "{s:e}");
+        // A libm do Windows pode usar FSIN, com a mesma redução por pi66.
+        // Referência matemática independente: Machin em 120 casas decimais,
+        // sin(pi_f64) = sin(pi - pi_f64), arredondado uma vez para f64.
+        let seno_matematico = f64::from_bits(0x3CA1_A626_3314_5C07);
+        assert!(ulps(s, seno_matematico) > 1_000_000_000, "{s:e}");
     }
 
     #[test]

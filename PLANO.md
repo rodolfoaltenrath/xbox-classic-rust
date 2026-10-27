@@ -18,7 +18,11 @@ Ferramentas de aceite:
 "Todo ADR" = próximo número livre em docs/adr/, no formato do ROADMAP §12.4.
 -->
 
-Bloco vigente: **Fase 7 concluída**, acrescentada em 2026-10-26 ao pedido de prosseguimento.
+Bloco vigente: **Fase 11**, acrescentada em 2026-10-27 ao pedido de avaliação
+e prosseguimento. As fases 0–10 estão concluídas. Foco novo: enumerar a mídia
+de CD já declarada sem fabricar disco rígido; os bloqueios do ADR-0091 permanecem.
+
+Referência histórica da Fase 7, acrescentada em 2026-10-26:
 As fases 0–6 preservam as entregas concluídas e suas evidências. Meta: o guest
 abrir e ler os bytes originais de D:\default.xbe por I/O síncrona, com handles,
 EOF e posições reproduzíveis. Validar com um homebrew próprio compilado pelo
@@ -671,3 +675,38 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   0x15928; logs target/sonda/winapi_*-20261026-23*). Sem imagem de disco, a
   recusa é mantida, em vez de inventar uma partição ou simular a ausência do
   disco. ADR-0091; P4/P22 com os consumidores e a condição de saída.
+
+## Fase 11 — Enumeração do volume de executável declarado
+
+- [x] 11.1 NtOpenFile do diretório CdRom0 e NtQueryDirectoryFile síncrono,
+  classe FileDirectoryInformation/ANSI do Xbox. Enumeração somente da mídia
+  ImageFile declarada: default.xbe, com tamanho real, filtro e cursor por handle.
+  Compartilhar alocador de handles e preflight com arquivos; recusar HD e variantes
+  não cobertas. Snapshot versionado; legados preservam ausência do recurso novo.
+
+  **Aceite:** GATE OK; testes de abertura/namespace, filtro/continuação/restart,
+  fim da busca, tamanho/ABI/cauda, handles independentes e fechamento; falhas
+  de memória/aliases/variantes sem publicar dados ou consumir cursor/handle.
+  Snapshot/replay e migração sem promoção implícita, corrupção e colisões.
+  Caso do Rust emitido executa ABI e replay de diretório aberto. ADR, CHANGELOG,
+  ROADMAP §16.1 e passagem de bastão atualizados; nenhum HD fictício.
+
+  Evidência: `GATE OK: 653 testes`, target/gate/20261027-101616-uePAQSmr.log;
+  oito testes directories.rs, onze files.rs preservados, 273 casos gerados
+  debug/release com -D warnings. Casos directories_verification conferem ABI,
+  dados e replay integral desde diretório aberto, e recusa com CPU intacta.
+  CDFS v2/DIRE v1, CDFS v1 migra sem ativação. ADR-0092/P22. O gate encontrou
+  referência x87 dependente da libm do host: corrigida somente em #[cfg(test)]
+  com seno matemático independente por Machin/120 dígitos, mesmas asserções e
+  limites (adendo ADR-0088). Sondas/consumidor visual seguem na tarefa11.2.
+
+- [~] 11.2 Homebrew próprio file-enum usa FindFirstFileA/FindNextFileA/FindClose
+  em D:, compara nome/tamanho enumerados com o arquivo aberto e mostra resultado
+  calculado. Integrar build/preparo/sonda/launcher com SDK fixado.
+
+  **Aceite:** GATE OK e testes de ferramentas; sonda file-enum sem recusas,
+  diagnóstico de sucesso no framebuffer real conferido contra o XBE. Captura
+  Win32 coincide com a exportação; snapshot com diretório aberto reproduz fim
+  da busca e reinício. Sondas hello/triangle/file-read preservadas. Documentar
+  comandos/evidências/limites, manter recusa de Harddisk0 do ADR-0091; commit
+  por tarefa, nenhum push.

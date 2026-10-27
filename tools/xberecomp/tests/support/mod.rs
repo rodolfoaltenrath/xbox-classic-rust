@@ -13,6 +13,7 @@ mod contiguous;
 mod control;
 mod critical;
 mod delay;
+mod directories;
 mod display;
 mod dma;
 mod double_shifts;
@@ -99,6 +100,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
     main.push_str(&files::sources(output));
+    main.push_str(&directories::sources(output));
     main.push_str(&gpu_instance::sources(output));
     main.push_str(&bit_test::sources(output));
     main.push_str(&delay::sources(output));

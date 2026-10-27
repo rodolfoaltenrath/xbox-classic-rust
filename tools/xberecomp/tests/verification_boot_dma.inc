@@ -13,11 +13,17 @@ mod boot_dma_verification {
     }
     pub(super) fn strip_file_media(bytes:&mut Vec<u8>){
         let at=bytes.windows(4).rposition(|v|v==b"CDFS").unwrap();
-        assert_eq!(&bytes[at+4..at+8],&1u32.to_le_bytes());
+        let version=u32::from_le_bytes(bytes[at+4..at+8].try_into().unwrap());assert!((1..=2).contains(&version));
         let count_at=match bytes[at+8] {0=>at+9,1=>at+13+u32::from_le_bytes(bytes[at+9..at+13].try_into().unwrap()) as usize,_=>panic!("presence")};
         let count=u32::from_le_bytes(bytes[count_at..count_at+4].try_into().unwrap()) as usize;
         // KRNL v15 (ADR-0090) grava SMBC logo depois de CDFS: abaixo de v14 nenhuma das duas existe.
-        let end=count_at+4+count*16;let end=if bytes[end..].starts_with(b"SMBC"){end+SMBC_BYTES}else{end};
+        let mut end=count_at+4+count*16;
+        if version>=2 {
+            assert_eq!(&bytes[end..end+8],b"DIRE\x01\0\0\0");
+            let dirs=u32::from_le_bytes(bytes[end+9..end+13].try_into().unwrap())as usize;end+=13;
+            for _ in 0..dirs {let pattern=bytes[end+9];end+=10;if pattern==1{let n=u16::from_le_bytes(bytes[end..end+2].try_into().unwrap())as usize;end+=2+n;}else{assert_eq!(pattern,0);}}
+        }
+        let end=if bytes[end..].starts_with(b"SMBC"){end+SMBC_BYTES}else{end};
         bytes.drain(at..end);
     }
     /// Seção SMBC v1: tag, versão, dois pares presença/valor e o contador u64.
@@ -25,7 +31,7 @@ mod boot_dma_verification {
     pub(super) fn legacy_file_media(bytes:&[u8])->Vec<u8>{
         let mut result=bytes.to_vec();let at=result.windows(4).rposition(|v|v==b"CDFS").unwrap();
         let smbc=result.windows(4).rposition(|v|v==b"SMBC").map(|s|result[s..s+SMBC_BYTES].to_vec()).unwrap_or_default();
-        strip_file_media(&mut result);let empty=[b'C',b'D',b'F',b'S',1,0,0,0,0,0,0,0,0];
+        strip_file_media(&mut result);let empty=[b'C',b'D',b'F',b'S',2,0,0,0,0,0,0,0,0,b'D',b'I',b'R',b'E',1,0,0,0,0,0,0,0,0];
         result.splice(at..at,empty.into_iter().chain(smbc));result
     }
     fn pending(s:&mut Session){assert_eq!(guest::run(&mut s.state,&mut s.bus,100).unwrap(),Exit::KernelCall{ordinal:1});}
