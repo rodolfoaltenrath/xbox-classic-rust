@@ -57,6 +57,7 @@ mod tick;
 mod timing;
 mod video;
 mod virtual_memory;
+mod waits;
 mod x87;
 
 fn image(output: &Path, name: &str, code: &[u8]) {
@@ -104,6 +105,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&free_query_virtual::sources(output));
     main.push_str(&semaphores::sources(output));
     main.push_str(&thread_control::sources(output));
+    main.push_str(&waits::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
     main.push_str(&simple_contiguous::sources(output));

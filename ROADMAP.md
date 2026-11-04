@@ -1168,9 +1168,16 @@ P26 — **Suspensão, retomada e cessão** (ADR-0098): uma filha com handle úni
 contagem de suspensão 0–127 (THRD v3) e yield entre as duas threads. Os valores
 STATUS_THREAD_IS_TERMINATING (0xC000004B) e o limite 127 são convenção pública do NT,
 não medidos no Xbox; o nxdk fixado só consome NO_YIELD e SUSPEND_COUNT_EXCEEDED.
-Sem pseudo-handle de thread atual, prioridades, timeouts, APC ou mais threads.
+Sem pseudo-handle de thread atual, prioridades, APC ou mais threads.
 Condição de saída: referência externa ou consumidor para esses valores e filas por
 thread; nunca iniciar ou rodar uma thread suspensa para satisfazer uma espera.
+
+P27 — **Esperas por objetos** (ADR-0099): uma espera pendente por sessão (P19),
+timeout só relativo ou zero, sem alertável (sem APC), sem handles repetidos nem
+objetos de arquivo. A ordem de preferência em WaitAny é o índice da lista. Condição de
+saída: consumidor ou referência para timeout absoluto e alertável, e filas por thread
+para mais de uma espera pendente; nunca satisfazer uma espera sem consumir o objeto.
+KeSetBasePriorityThread (143) segue sem implementação por falta de contrato (12.4b).
 
 ## 17. Log de progresso
 

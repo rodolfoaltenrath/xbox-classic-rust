@@ -800,6 +800,20 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   de rodar; deadlock identificável (WouldBlock). THRD v3 (v1–v2 migram para zero).
   ADR-0098/P26. Hello 51/69, triangle 55/75 pelo ordinal-report.
 
+  Evidência (12.4c): GATE OK: 685 testes, target/gate/20261104-142852-KZvBeRNh.log;
+  dez testes waits.rs e 287 casos emitidos (três novos). Timeout que expira,
+  WaitAny satisfeito por filha que dorme e sinaliza, WaitAll com timeout zero e
+  replay de snapshot a partir de toda fronteira de fatia, inclusive com o pai em
+  KernelWaitUntil. KRNL v17/WAIT v1, KEVT v3, SCHD tag 6. ADR-0099/P27.
+  Hello 53/69, triangle 57/75 pelo ordinal-report.
+
+  BLOQUEADO: 12.4b (KeSetBasePriorityThread, 143) exige contrato verificável do
+  valor devolvido, da aritmética de prioridade e da preempção. Nxdk só declara a
+  assinatura e descarta o retorno; o Cxbx fixado é um stub que devolve o valor novo;
+  não há página do WDK; a KTHREAD do pai não existe e Ob* (246) é do 12.3b também
+  bloqueado. Não inventar nada: o scheduler segue com prioridades fixas iguais.
+  Manter 12.4 em andamento; 12.5–12.6 são independentes. Não alegar 69/69.
+
 - [ ] 12.5 Arquivos/volume: ordinais 210, 218, 226, 236.
 
   **Aceite:** GATE OK; metadados e posições coerentes com mídia declarada;

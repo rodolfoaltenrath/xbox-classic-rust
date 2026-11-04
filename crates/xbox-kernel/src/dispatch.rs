@@ -45,6 +45,7 @@ mod thread_control;
 mod threads;
 mod video;
 mod virtual_memory;
+mod waits;
 pub use contiguous::{
     CONTIGUOUS_WINDOW, ContiguousAllocation, ContiguousMemory, MAX_CONTIGUOUS_ALLOCATIONS,
     PAGE_WRITECOMBINE,
@@ -77,6 +78,7 @@ pub use virtual_memory::{
     ImageRange, MAX_VIRTUAL_ALLOCATIONS, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE,
     STATUS_INVALID_PARAMETER, STATUS_NO_MEMORY, VirtualAllocation, VirtualMemory,
 };
+pub use waits::{MAX_WAIT_OBJECTS, STATUS_TIMEOUT};
 
 use crate::imports::{Abi, Call, Kind};
 use crate::loader::Result as LoaderResult;
@@ -125,6 +127,8 @@ pub const ORDINAL_NT_CREATE_EVENT: u32 = 189;
 pub const ORDINAL_NT_PULSE_EVENT: u32 = 205;
 pub const ORDINAL_NT_SET_EVENT: u32 = 225;
 pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 233;
+pub const ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT_EX: u32 = 234;
+pub const ORDINAL_NT_WAIT_FOR_MULTIPLE_OBJECTS_EX: u32 = 235;
 pub const ORDINAL_EX_QUERY_NON_VOLATILE_SETTING: u32 = 24;
 pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
@@ -206,6 +210,8 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_PULSE_EVENT,
     ORDINAL_NT_SET_EVENT,
     ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT,
+    ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT_EX,
+    ORDINAL_NT_WAIT_FOR_MULTIPLE_OBJECTS_EX,
     ORDINAL_PS_CREATE_SYSTEM_THREAD_EX,
     ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
     ORDINAL_KE_DELAY_EXECUTION_THREAD,
@@ -328,6 +334,10 @@ pub struct Dispatcher {
     // A espera atual não termina sem tempo e interrupções; só a sessão consome. Transiente
     // como `pending_time`: a sessão o resolve antes de qualquer ponto de salvamento.
     pending_block: bool,
+    // Prazo (ciclos) da espera que acabou de bloquear; só a sessão o consome.
+    pending_block_deadline: Option<u64>,
+    // A espera bloqueada que a sessão vai repetir (prazo e thread); persiste (WAIT).
+    waits: waits::Waits,
     // Pedidos de escalonamento de NtSuspend/Resume/Yield; só a sessão os consome.
     control_request: thread_control::ControlRequest,
 }
@@ -685,8 +695,17 @@ impl Dispatcher {
             | ORDINAL_KE_INSERT_QUEUE_DPC
             | ORDINAL_KE_REMOVE_QUEUE_DPC => self.dispatch_signals(bus, &call),
             ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT => {
-                self.nt_wait_for_single_object(bus, &call, scheduled)
+                self.nt_wait_for_single_object(bus, &call, scheduled, clock.map(|c| c.cycles()))
             }
+            ORDINAL_NT_WAIT_FOR_SINGLE_OBJECT_EX => {
+                self.nt_wait_for_single_object_ex(bus, &call, scheduled, clock.map(|c| c.cycles()))
+            }
+            ORDINAL_NT_WAIT_FOR_MULTIPLE_OBJECTS_EX => self.nt_wait_for_multiple_objects_ex(
+                bus,
+                &call,
+                scheduled,
+                clock.map(|c| c.cycles()),
+            ),
             ORDINAL_KE_DELAY_EXECUTION_THREAD => {
                 self.ke_delay_execution_thread(bus, &call, scheduled)
             }
@@ -721,126 +740,6 @@ impl Dispatcher {
             self.recusadas = self.recusadas.saturating_add(1);
         }
         resultado
-    }
-
-    /// `NTSTATUS NtWaitForSingleObject(HANDLE, BOOLEAN Alertable, PLARGE_INTEGER Timeout)`
-    ///
-    /// Espera imediata em mutant ou thread já terminada. A espera
-    /// **nunca bloqueia a thread do host**: ou a aquisição é
-    /// imediata, ou o estado é um que este perfil não representa e vira erro
-    /// identificável. É assim que o `mtx_lock` do nxdk chega aqui — handle, `FALSE`,
-    /// timeout nulo — esperando `STATUS_WAIT_0`.
-    fn nt_wait_for_single_object(
-        &mut self,
-        bus: &mut Bus,
-        call: &Call,
-        scheduled: bool,
-    ) -> Resultado {
-        let handle = call.argument(bus, 0)?;
-        // BOOLEAN ocupa uma palavra na ABI, mas só o byte baixo importa.
-        let alertable = call.argument(bus, 1)? as u8 != 0;
-        let timeout = call.argument(bus, 2)?;
-
-        let variante = |detalhe| {
-            Err(Erro::VarianteNaoImplementada {
-                nome: call.export.name,
-                ordinal: call.export.ordinal,
-                chamador: call.return_pc,
-                detalhe,
-                argumentos: descrever_argumentos(bus, call),
-            })
-        };
-
-        if alertable {
-            // Espera alertável exige entrega de APC, que não existe.
-            return variante("espera alertável exige APCs, ainda não modeladas");
-        }
-        if timeout != 0 {
-            // `mtx_timedlock`/`mtx_trylock` passam intervalo; exige relógio de espera.
-            return variante("espera com timeout ainda não modelada");
-        }
-
-        if scheduled && self.irql != Irql::Passive {
-            return variante("bloqueio escalonado exige Passive neste perfil");
-        }
-        if let Some(child) = self
-            .child_thread()
-            .filter(|child| child.handle == handle && !self.threads.handle_closed)
-        {
-            return if matches!(child.phase, ThreadPhase::Terminated(_)) {
-                Ok(Atendimento { eax: STATUS_WAIT_0 })
-            } else if scheduled {
-                self.pending_block = true;
-                Ok(Atendimento { eax: STATUS_WAIT_0 })
-            } else {
-                variante("espera de thread viva exige yield/escalonamento ainda não modelado")
-            };
-        }
-
-        if self.files.contains(handle) {
-            return Err(Erro::VarianteNaoImplementada {
-                nome: call.export.name,
-                ordinal: call.export.ordinal,
-                chamador: call.return_pc,
-                detalhe: "espera de objeto de arquivo fora do perfil de I/O síncrona",
-                argumentos: descrever_argumentos(bus, call),
-            });
-        }
-        if self.links.contains(handle) {
-            return variante("link simbólico não é objeto aguardável");
-        }
-        if self.semaphores.get(handle).is_some() {
-            if self.irql != Irql::Passive {
-                return variante("espera de semáforo exige Passive");
-            }
-            if self.semaphores.acquire(handle) == Some(true) {
-                return Ok(Atendimento { eax: STATUS_WAIT_0 });
-            }
-            if scheduled || self.interrupt_can_signal(bus) {
-                self.pending_block = true;
-                return Ok(Atendimento { eax: STATUS_WAIT_0 });
-            }
-            return variante("espera de semáforo sem sinal exige scheduler ou interrupção");
-        }
-        if let Some(espera) = self.events.wait(handle) {
-            return match espera {
-                events::Espera::Satisfeita => Ok(Atendimento { eax: STATUS_WAIT_0 }),
-                // Só um scheduler ou uma interrupção o sinalizariam; nenhum existe.
-                events::Espera::Bloquearia => {
-                    if scheduled || self.interrupt_can_signal(bus) {
-                        // Há uma interrupção que pode sinalizar o evento: a sessão deixa o
-                        // tempo correr até o vblank, entrega ISR e DPC e repete esta
-                        // chamada. O retorno não é aplicado enquanto o bloqueio durar.
-                        self.events.register_waiter(handle);
-                        self.pending_block = true;
-                        Ok(Atendimento { eax: STATUS_WAIT_0 })
-                    } else {
-                        variante("espera de evento não sinalizado exige scheduler ou interrupção")
-                    }
-                }
-            };
-        }
-        // Handles de thread/link foram distinguidos; os demais pertencem a mutants.
-        let Some(aquisicao) = self.mutants.acquire(handle, self.current_thread()) else {
-            return Ok(Atendimento {
-                eax: STATUS_INVALID_HANDLE,
-            });
-        };
-
-        match aquisicao {
-            Aquisicao::Adquirido(_) => Ok(Atendimento { eax: STATUS_WAIT_0 }),
-            Aquisicao::LimiteDeRecursao => Ok(Atendimento {
-                eax: STATUS_MUTANT_LIMIT_EXCEEDED,
-            }),
-            // Outro proprietário exige yield ainda ausente neste perfil de bootstrap.
-            Aquisicao::OutroProprietario(_) if scheduled => {
-                self.pending_block = true;
-                Ok(Atendimento { eax: STATUS_WAIT_0 })
-            }
-            Aquisicao::OutroProprietario(_) => {
-                variante("espera bloqueante exige scheduler de threads guest")
-            }
-        }
     }
 
     /// `NTSTATUS NtReleaseMutant(HANDLE MutantHandle, PLONG PreviousCount)`
@@ -941,7 +840,7 @@ fn ram_range(bus: &Bus, address: u32, size: u32, access: Acesso) -> bool {
 
 impl Snapshot for Dispatcher {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KRNL", 16);
+        out.section("KRNL", 17);
         out.u64(self.atendidas);
         out.u64(self.recusadas);
         self.mutants.save(out);
@@ -960,10 +859,11 @@ impl Snapshot for Dispatcher {
         self.files.save(out);
         self.smbus.save(out);
         self.semaphores.save(out);
+        self.waits.save(out);
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KRNL", 16)?;
+        let version = inp.section("KRNL", 17)?;
         if version == 0 {
             return Err(SnapshotError::BadValue {
                 section: "KRNL",
@@ -1041,7 +941,7 @@ impl Snapshot for Dispatcher {
         if version >= 15 {
             smbus.load(inp)?;
         }
-        let semaphores = semaphores::load_kernel_version(inp, version)?;
+        let (semaphores, waits) = waits::load_late_sections(inp, version)?;
         video
             .validate_memory(&contiguous, &eeprom)
             .map_err(video::snapshot_error)?;
@@ -1070,6 +970,8 @@ impl Snapshot for Dispatcher {
             // de relógio que já foi aplicado (ou descartado) na sessão de origem.
             pending_time: None,
             pending_block: false,
+            pending_block_deadline: None,
+            waits,
             control_request: thread_control::ControlRequest::default(),
         };
         candidate.validate_objects()?;
@@ -1089,6 +991,16 @@ impl Dispatcher {
             .validate(&self.mutants, &self.links, self.threads.child)?;
         self.gpu_instance.validate(&self.contiguous, None)?;
         self.files.validate(self)?;
+        if self
+            .waits
+            .pending
+            .is_some_and(|pending| pending.thread == CHILD_THREAD && self.threads.child.is_none())
+        {
+            return Err(SnapshotError::BadValue {
+                section: "WAIT",
+                what: "espera pendente de thread inexistente",
+            });
+        }
         self.semaphores.validate(self)
     }
 }

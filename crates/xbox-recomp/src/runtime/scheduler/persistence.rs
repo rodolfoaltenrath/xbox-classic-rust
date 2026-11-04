@@ -19,6 +19,7 @@ impl Scheduler {
                     Status::Ready => (2, 0),
                     Status::Sleeping(t) => (3, t),
                     Status::KernelWait => (4, 0),
+                    Status::KernelWaitUntil(t) => (6, t),
                     Status::Finished => (5, 0),
                 };
                 data.u8(tag);
@@ -66,6 +67,7 @@ impl Scheduler {
                 (2, 0) => Status::Ready,
                 (3, t) if t != 0 => Status::Sleeping(t),
                 (4, 0) => Status::KernelWait,
+                (6, t) if t != 0 => Status::KernelWaitUntil(t),
                 (5, 0) => Status::Finished,
                 _ => return Err(bad("estado de thread inválido")),
             };
@@ -132,7 +134,11 @@ impl Scheduler {
             if id != current
                 && matches!(
                     self.status[id],
-                    Status::Ready | Status::Sleeping(_) | Status::KernelWait | Status::Finished
+                    Status::Ready
+                        | Status::Sleeping(_)
+                        | Status::KernelWait
+                        | Status::KernelWaitUntil(_)
+                        | Status::Finished
                 )
                 && !(id == 1 && self.status[id] == Status::Finished)
                 && self.contexts[id].is_none()
@@ -154,8 +160,10 @@ impl Scheduler {
         )?;
         // ThreadPhase não armazena deadline: a CPU selecionada pode estar esperando
         // no trampolim. A continuação permanece reconstruível por EIP/ESP/RAM.
-        if self.status[current] == Status::KernelWait
-            && xbox_kernel::imports::entry(bus, state.eip).is_err()
+        if matches!(
+            self.status[current],
+            Status::KernelWait | Status::KernelWaitUntil(_)
+        ) && xbox_kernel::imports::entry(bus, state.eip).is_err()
         {
             return Err(bad("espera sem chamada de kernel pendente"));
         }

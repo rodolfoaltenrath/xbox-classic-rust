@@ -53,13 +53,23 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 ### Estado executável vigente
 
+**Subentrega 12.4c/ADR-0099 (2026-11-04):** NtWaitForSingleObject (233), NtWaitForSingleObjectEx (234)
+e NtWaitForMultipleObjectsEx (235) passam por um motor de esperas só. WaitAny devolve
+o índice; WaitAll consome tudo ou nada; timeout relativo e zero com prazo guardado na
+espera pendente (WAIT v1, KRNL v17; KEVT v3 guarda a lista de eventos esperados;
+scheduler com KernelWaitUntil, tag 6 de SCHD). Alertável e timeout absoluto seguem
+recusados. Relatório real: **hello 53/69, triangle 57/75**. **12.4b (143,
+KeSetBasePriorityThread) está BLOQUEADA** (ADR-0099): nxdk só declara a assinatura, o
+Cxbx fixado é um stub que devolve o valor novo, não há página do WDK e a KTHREAD do
+pai não existe; não inventar retorno, aritmética nem preempção. P27 registra os limites.
+
 **Subentrega 12.4a/ADR-0098 (2026-11-04):** NtSuspendThread (231), NtResumeThread
 (224), NtYieldExecution (238) e criação suspensa no scheduler de duas threads. A
 contagem 0–127 vive no kernel (THRD v3; v1–v2 migram para zero) e a filha suspensa
 é inelegível em qualquer estado; a autossuspensão cede a CPU e o yield só é
 "realizado" se há outra thread pronta (senão STATUS_NO_YIELD_PERFORMED). Sem
 scheduler (LegacyBootstrap) e dentro de ISR/DPC os serviços são recusados.
-Relatório real: **hello 51/69, triangle 55/75**. Restam em 12.4: prioridades
+Relatório real na época: hello 51/69, triangle 55/75. Restava em 12.4: prioridades
 (KeSetBasePriorityThread, 143) e esperas Ex com timeout e múltiplos objetos
 (234, 235). P26 registra as convenções NT não medidas no Xbox. 12.3b segue
 BLOQUEADO; 12.4 foi retomada porque não depende dele.

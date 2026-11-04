@@ -25,6 +25,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Esperas com timeout e por vários objetos: NtWaitForSingleObject (233),
+  NtWaitForSingleObjectEx (234) e NtWaitForMultipleObjectsEx (235) passam por um
+  motor só. WaitAny devolve o índice e consome só o satisfeito; WaitAll consome tudo
+  ou nada; timeout relativo/zero com prazo que sobrevive às repetições (WAIT v1,
+  KRNL v17, KEVT v3, KernelWaitUntil no scheduler); pulso libera um de vários
+  eventos. Alertável e timeout absoluto seguem recusados. Hello 53/69, triangle
+  57/75 (ADR-0099, PLANO 12.4c, P27). KeSetBasePriorityThread (12.4b) registrada
+  como BLOQUEADA por falta de contrato verificável.
+
 - NtSuspendThread (231), NtResumeThread (224), NtYieldExecution (238) e
   PsCreateSystemThreadEx com CreateSuspended no scheduler de duas threads. A
   contagem de suspensão (0..=127, THRD v3; v1–v2 migram para zero) torna a filha

@@ -66,7 +66,7 @@ impl ThreadContext {
         Ok(())
     }
     pub(super) fn pending_wait(&self) -> bool {
-        self.eip == xbox_kernel::imports::trampoline(233)
+        (233..=235).any(|ordinal| self.eip == xbox_kernel::imports::trampoline(ordinal))
     }
     pub(super) fn interrupts_enabled(&self) -> bool {
         self.eflags & super::INTERRUPT_FLAG != 0

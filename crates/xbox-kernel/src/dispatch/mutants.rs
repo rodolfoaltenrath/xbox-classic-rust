@@ -73,6 +73,12 @@ impl Mutants {
     pub(super) fn reserve_handle(&mut self) {
         self.next += 4;
     }
+    /// A espera de `thread` seria satisfeita agora (livre ou já dela)? Não altera nada.
+    pub(super) fn peek(&self, handle: u32, thread: u32) -> Option<bool> {
+        self.objects
+            .get(&handle)
+            .map(|object| object.owner.is_none_or(|owner| owner == thread))
+    }
     pub(super) fn has_owner(&self, thread: u32) -> bool {
         self.objects
             .values()

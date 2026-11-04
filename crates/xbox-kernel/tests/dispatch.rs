@@ -512,20 +512,27 @@ fn espera_recusa_variantes_sem_alterar_o_objeto() {
     let mut d = Dispatcher::new();
     let handle = criar_livre(&mut d, &mut bus, pcs[0], &regs);
 
-    for (alertable, timeout, trecho) in [(1u32, 0u32, "alertável"), (0, 0x12020, "timeout")] {
-        argumento(&mut bus, &regs, 0, handle);
-        argumento(&mut bus, &regs, 1, alertable);
-        argumento(&mut bus, &regs, 2, timeout);
-        let erro = d.atender(&mut bus, pcs[1], &regs).unwrap_err();
-        assert!(
-            matches!(erro, Erro::VarianteNaoImplementada { .. }),
-            "veio {erro:?}"
-        );
-        assert!(erro.to_string().contains(trecho), "{erro}");
-        // A recusa não pode adquirir nada.
-        assert_eq!(d.mutant(handle).unwrap().owner, None);
-        assert_eq!(d.mutant(handle).unwrap().recursion, 0);
-    }
+    // Espera alertável segue recusada (sem APC). O timeout deixou de ser recusado
+    // (ADR-0099): ponteiro de tempo relativo/zero é aceito; o absoluto (positivo), não.
+    argumento(&mut bus, &regs, 0, handle);
+    argumento(&mut bus, &regs, 1, 1);
+    argumento(&mut bus, &regs, 2, 0);
+    let erro = d.atender(&mut bus, pcs[1], &regs).unwrap_err();
+    assert!(
+        matches!(erro, Erro::VarianteNaoImplementada { .. }),
+        "veio {erro:?}"
+    );
+    assert!(erro.to_string().contains("alertável"), "{erro}");
+    // A recusa não pode adquirir nada.
+    assert_eq!(d.mutant(handle).unwrap().owner, None);
+    assert_eq!(d.mutant(handle).unwrap().recursion, 0);
+    // Timeout absoluto (positivo) também é recusado, sem adquirir.
+    bus.escrever_u64(GuestVirt(0x12020), 1).unwrap();
+    argumento(&mut bus, &regs, 1, 0);
+    argumento(&mut bus, &regs, 2, 0x12020);
+    let erro = d.atender(&mut bus, pcs[1], &regs).unwrap_err();
+    assert!(erro.to_string().contains("timeout absoluto"), "{erro}");
+    assert_eq!(d.mutant(handle).unwrap().owner, None);
     // BOOLEAN usa só os oito bits baixos: 0x100 é FALSE.
     argumento(&mut bus, &regs, 1, 0x100);
     argumento(&mut bus, &regs, 2, 0);

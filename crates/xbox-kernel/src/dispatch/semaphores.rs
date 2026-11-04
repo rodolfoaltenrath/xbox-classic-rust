@@ -34,6 +34,10 @@ impl Semaphores {
     pub(super) fn close(&mut self, handle: u32) -> bool {
         self.objects.remove(&handle).is_some()
     }
+    /// A contagem é positiva? `None` se o handle não é um semáforo. Não altera nada.
+    pub(super) fn peek(&self, handle: u32) -> Option<bool> {
+        self.objects.get(&handle).map(|&(count, _)| count > 0)
+    }
     pub(super) fn acquire(&mut self, handle: u32) -> Option<bool> {
         let (count, _) = self.objects.get_mut(&handle)?;
         if *count == 0 {

@@ -22,6 +22,8 @@ use crate::imports::Call;
 
 /// Limite de recursos do perfil, independente da memória do host.
 pub(super) const MAX_EVENTS: usize = 4096;
+/// Eventos que uma espera pendente pode aguardar ao mesmo tempo (`MAXIMUM_WAIT_OBJECTS`).
+pub(super) const MAX_WAITERS: usize = 64;
 /// `STATUS_INVALID_PARAMETER`.
 pub(super) const STATUS_INVALID_PARAMETER: u32 = 0xC000_000D;
 
@@ -51,23 +53,16 @@ pub(super) struct Event {
     pub(super) signaled: bool,
 }
 
-/// Resultado de esperar um evento sem bloquear.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Espera {
-    /// Estava sinalizado; um evento de sincronização foi limpo.
-    Satisfeita,
-    /// Não sinalizado: só progrediria com scheduler ou interrupção.
-    Bloquearia,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct Events {
     objects: BTreeMap<u32, Event>,
-    /// Evento pelo qual a chamada bloqueada atual espera (no máximo uma: há uma só CPU).
-    waiter: Option<u32>,
-    /// Um `NtPulseEvent` aconteceu enquanto `waiter` esperava: a próxima tentativa é
-    /// satisfeita sem que o evento fique sinalizado, que é o que o pulso significa.
-    released: bool,
+    /// Eventos pelos quais a chamada bloqueada atual espera (uma só espera pendente: há
+    /// uma só CPU e P19 limita a uma chamada de espera por vez).
+    waiters: Vec<u32>,
+    /// Evento de `waiters` que um `NtPulseEvent` liberou durante o bloqueio: a próxima
+    /// tentativa é satisfeita por ele sem que o evento fique sinalizado, que é o que o
+    /// pulso significa.
+    released: Option<u32>,
 }
 
 impl Events {
@@ -95,41 +90,54 @@ impl Events {
         Some(std::mem::replace(&mut event.signaled, false))
     }
 
-    /// Espera sem bloquear. O estado só muda quando a espera é satisfeita.
-    pub(super) fn wait(&mut self, handle: u32) -> Option<Espera> {
-        let event = self.objects.get_mut(&handle)?;
-        Some(if event.signaled {
-            if event.kind == EventKind::Synchronization {
-                event.signaled = false;
-            }
-            Espera::Satisfeita
-        } else if self.released && self.waiter == Some(handle) {
-            // Liberada por um pulso durante o bloqueio.
-            self.released = false;
-            self.waiter = None;
-            Espera::Satisfeita
-        } else {
-            Espera::Bloquearia
-        })
+    /// O evento está sinalizado? `None` se o handle não é um evento. Não altera nada.
+    pub(super) fn peek(&self, handle: u32) -> Option<bool> {
+        self.objects.get(&handle).map(|event| event.signaled)
+    }
+
+    /// Consome a sinalização de uma espera satisfeita: só o evento de sincronização
+    /// volta a não sinalizado.
+    pub(super) fn consume(&mut self, handle: u32) {
+        if let Some(event) = self.objects.get_mut(&handle)
+            && event.kind == EventKind::Synchronization
+        {
+            event.signaled = false;
+        }
     }
 
     /// A chamada de espera vai bloquear em `handle`: um pulso a partir de agora a libera.
     pub(super) fn register_waiter(&mut self, handle: u32) {
-        self.waiter = Some(handle);
-        self.released = false;
+        if !self.waiters.contains(&handle) {
+            self.waiters.push(handle);
+        }
+    }
+
+    /// A espera pendente terminou (satisfeita, expirada ou abandonada).
+    pub(super) fn clear_waiters(&mut self) {
+        self.waiters.clear();
+        self.released = None;
     }
 
     /// `NtPulseEvent`: libera quem espera por `handle`, sem deixar o evento sinalizado.
     pub(super) fn pulse(&mut self, handle: u32) {
-        if self.waiter == Some(handle) {
-            self.released = true;
+        if self.released.is_none() && self.waiters.contains(&handle) {
+            self.released = Some(handle);
         }
     }
 
+    /// Se um pulso liberou um dos `handles` desta espera, devolve o índice (o menor) e
+    /// consome a liberação.
+    pub(super) fn take_released(&mut self, handles: &[u32]) -> Option<usize> {
+        let released = self.released?;
+        let index = handles.iter().position(|&handle| handle == released)?;
+        self.clear_waiters();
+        Some(index)
+    }
+
     pub(super) fn close(&mut self, handle: u32) -> bool {
-        if self.waiter == Some(handle) {
-            self.waiter = None;
-            self.released = false;
+        self.waiters.retain(|&waiter| waiter != handle);
+        if self.released == Some(handle) {
+            self.released = None;
         }
         self.objects.remove(&handle).is_some()
     }
@@ -165,7 +173,7 @@ fn bad(what: &'static str) -> SnapshotError {
 
 impl Snapshot for Events {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("KEVT", 2);
+        out.section("KEVT", 3);
         out.u32(self.objects.len() as u32);
         for (&handle, event) in &self.objects {
             out.u32(handle);
@@ -175,13 +183,16 @@ impl Snapshot for Events {
             });
             out.bool(event.signaled);
         }
-        out.u32(self.waiter.unwrap_or(0));
-        out.bool(self.released);
+        out.u32(self.waiters.len() as u32);
+        for &waiter in &self.waiters {
+            out.u32(waiter);
+        }
+        out.u32(self.released.unwrap_or(0));
     }
 
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("KEVT", 2)?;
-        if !matches!(version, 1 | 2) {
+        let version = inp.section("KEVT", 3)?;
+        if !matches!(version, 1..=3) {
             return Err(bad("versão desconhecida"));
         }
         let count = inp.u32()? as usize;
@@ -200,16 +211,49 @@ impl Snapshot for Events {
             objects.insert(handle, Event { kind, signaled });
             previous = handle;
         }
-        // v1 não guardava quem esperava: migra para ninguém.
-        let (waiter, released) = if version >= 2 {
-            (inp.u32()?, inp.bool()?)
-        } else {
-            (0, false)
+        // v1 não guardava quem esperava; v2 guardava um evento e se foi pulsado; v3 guarda
+        // a lista (várias esperas por evento em NtWaitForMultipleObjectsEx) e qual foi
+        // liberado.
+        let (waiters, released) = match version {
+            1 => (Vec::new(), None),
+            2 => {
+                let waiter = inp.u32()?;
+                let released = inp.bool()?;
+                if waiter == 0 && released {
+                    return Err(bad("liberação sem evento esperado"));
+                }
+                (
+                    if waiter == 0 {
+                        Vec::new()
+                    } else {
+                        vec![waiter]
+                    },
+                    released.then_some(waiter),
+                )
+            }
+            _ => {
+                let count = inp.u32()? as usize;
+                if count > MAX_WAITERS {
+                    return Err(bad("esperas pendentes além do limite"));
+                }
+                let mut waiters = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let waiter = inp.u32()?;
+                    if waiters.contains(&waiter) {
+                        return Err(bad("evento esperado duplicado"));
+                    }
+                    waiters.push(waiter);
+                }
+                let released = inp.u32()?;
+                (waiters, (released != 0).then_some(released))
+            }
         };
-        if waiter != 0 && !objects.contains_key(&waiter) || waiter == 0 && released {
+        if waiters.iter().any(|waiter| !objects.contains_key(waiter))
+            || released.is_some_and(|handle| !waiters.contains(&handle))
+        {
             return Err(bad("espera pendente sobre evento inexistente"));
         }
-        self.waiter = (waiter != 0).then_some(waiter);
+        self.waiters = waiters;
         self.released = released;
         self.objects = objects;
         Ok(())

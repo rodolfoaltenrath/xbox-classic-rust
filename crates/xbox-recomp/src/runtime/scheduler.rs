@@ -18,6 +18,9 @@ enum Status {
     Ready,
     Sleeping(u64),
     KernelWait,
+    /// Espera de objeto com prazo (timeout): acorda quando o objeto sinaliza ou no prazo,
+    /// e a chamada é repetida (ADR-0099).
+    KernelWaitUntil(u64),
     Finished,
 }
 #[derive(Debug)]
@@ -52,14 +55,15 @@ impl Scheduler {
     }
     fn wake_deadlines(&mut self, now: u64) {
         for status in &mut self.status {
-            if matches!(*status,Status::Sleeping(deadline) if deadline<=now) {
+            if matches!(*status,Status::Sleeping(deadline) | Status::KernelWaitUntil(deadline) if deadline<=now)
+            {
                 *status = Status::Ready;
             }
         }
     }
     fn wake_waiters(&mut self) {
         for status in &mut self.status {
-            if *status == Status::KernelWait {
+            if matches!(*status, Status::KernelWait | Status::KernelWaitUntil(_)) {
                 *status = Status::Ready;
             }
         }
@@ -158,14 +162,17 @@ impl Session {
             .status
             .iter()
             .filter_map(|s| {
-                if let Status::Sleeping(t) = s {
+                if let Status::Sleeping(t) | Status::KernelWaitUntil(t) = s {
                     Some(*t)
                 } else {
                     None
                 }
             })
             .min();
-        let irq = if scheduler.status.contains(&Status::KernelWait)
+        let irq = if scheduler
+            .status
+            .iter()
+            .any(|s| matches!(s, Status::KernelWait | Status::KernelWaitUntil(_)))
             && self.kernel.interrupt_can_signal(&self.bus)
         {
             self.vblanks
@@ -231,7 +238,7 @@ impl Session {
         if let Some(scheduler) = &self.scheduler
             && matches!(
                 scheduler.status[scheduler.other()],
-                Status::Ready | Status::Sleeping(_)
+                Status::Ready | Status::Sleeping(_) | Status::KernelWaitUntil(_)
             )
             && Scheduler::eligible(scheduler.other(), suspended)
         {
@@ -243,7 +250,7 @@ impl Session {
     fn validate_wait_slot(&self, call: &xbox_kernel::imports::Call) -> Result<()> {
         if self.in_interrupt
             || self.state.interrupt_profile != super::InterruptProfile::MaskedV1
-            || call.export.ordinal != 233
+            || !matches!(call.export.ordinal, 233..=235)
         {
             return Ok(());
         }
@@ -329,8 +336,10 @@ impl Session {
         };
         let suspended = self.kernel.child_suspend_count() > 0;
         if blocked {
+            let deadline = self.kernel.take_block_deadline();
             let scheduler = self.scheduler.as_mut().expect("scheduler");
-            scheduler.status[usize::from(scheduler.current)] = Status::KernelWait;
+            scheduler.status[usize::from(scheduler.current)] =
+                deadline.map_or(Status::KernelWait, Status::KernelWaitUntil);
             if let Some(next) = scheduler.runnable(suspended) {
                 self.switch_task(next)?;
                 return Ok(Servico::Concluido);

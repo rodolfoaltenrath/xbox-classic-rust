@@ -34,7 +34,9 @@ mod semaphore_verification {
     fn krnl_v15_migration_keeps_legacy_state_without_inheriting_a_semaphore(){
         let mut source=loaded();boundary(&mut source,193);source.atender_kernel().unwrap();
         let mut old=saved(&source);let at=old.windows(4).rposition(|v|v==b"SEMA").unwrap();
-        let n=u32::from_le_bytes(old[at+8..at+12].try_into().unwrap())as usize;assert_eq!(n,1);old.drain(at..at+12+n*12);
+        let n=u32::from_le_bytes(old[at+8..at+12].try_into().unwrap())as usize;assert_eq!(n,1);
+        // KRNL v17 grava WAIT (sem espera pendente aqui) logo depois de SEMA: a v15 não tem nenhuma das duas.
+        assert_eq!(&old[at+12+n*12..at+12+n*12+8],b"WAIT\x01\0\0\0");old.drain(at..at+12+n*12+9);
         let k=old.windows(4).rposition(|v|v==b"KRNL").unwrap();old[k+4..k+8].copy_from_slice(&15u32.to_le_bytes());
         let mut target=loaded();boundary(&mut target,193);target.atender_kernel().unwrap();let h=word(&target,0x12100);
         target.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();assert_eq!(target.kernel.semaphore(h),None);
