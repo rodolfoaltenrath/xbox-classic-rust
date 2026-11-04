@@ -16,3 +16,7 @@ eeprom.bin
 /shadercache/
 obsidian.toml
 /dados/
+
+# Material de terceiros fornecido pelo mantenedor para consulta local (firmware, kernels,
+# dashboards): nunca versionar nem redistribuir.
+/teste/
