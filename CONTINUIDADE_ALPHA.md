@@ -53,6 +53,10 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 ### Estado executável vigente
 
+**Fase 13.2/ADR-0101 (2026-11-04):** KeQueryPerformanceCounter (126) e Frequency (127)
+devolvem 64 bits em EDX:EAX (3,375 MHz, Clock único); RtlTimeToTimeFields (305) e
+RtlTimeFieldsToTime (304) fazem o calendário gregoriano desde 1601 (P29).
+
 **Fase 13.1/ADR-0100 (2026-11-04):** IoDeleteSymbolicLink (69), AvSetSavedDataAddress (4),
 DbgPrint (8) e HalReturnToFirmware (49). Link D: apagável e recriável, endereço de dados
 salvos persistido (AVST v4), transcrito de DbgPrint (64 KiB, fora do snapshot) e o desfecho

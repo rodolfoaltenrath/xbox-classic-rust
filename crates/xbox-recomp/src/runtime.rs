@@ -51,6 +51,8 @@ pub fn validate_cmpxchg_ram(bus: &Bus, address: u32, width: Width) -> Result<()>
 pub use xbox_kernel::loader::RETURN_SENTINEL;
 /// Índice de EAX na ordem x86 dos registradores.
 pub const EAX: usize = 0;
+/// Índice de EDX em `regs` (EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI).
+pub const EDX: usize = 2;
 /// Índice de ESP na ordem x86 dos registradores.
 pub const ESP: usize = 4;
 /// Interrupt-enable flag do guest, independente das flags do processo host.
@@ -524,6 +526,10 @@ impl Session {
 
     fn apply_kernel_return(&mut self, call: &xbox_kernel::imports::Call, eax: u32) {
         self.state.regs[EAX] = eax;
+        // Retorno de 64 bits (ULONGLONG): a palavra alta vai em EDX.
+        if let Some(high) = self.kernel.take_return_high() {
+            self.state.regs[EDX] = high;
+        }
         self.state.regs[ESP] = call.return_esp;
         self.state.eip = call.return_pc;
         self.state.returned = call.return_pc == RETURN_SENTINEL;

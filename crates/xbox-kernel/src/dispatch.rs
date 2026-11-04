@@ -44,6 +44,7 @@ mod smbus;
 mod system_time;
 mod thread_control;
 mod threads;
+mod time_services;
 mod video;
 mod virtual_memory;
 mod waits;
@@ -71,6 +72,7 @@ pub use thread_control::{
     STATUS_NO_YIELD_PERFORMED, STATUS_SUSPEND_COUNT_EXCEEDED, STATUS_THREAD_IS_TERMINATING,
 };
 pub use threads::{CHILD_THREAD, GuestThread, MAX_SUSPEND_COUNT, MAX_THREAD_STACK, ThreadPhase};
+pub use time_services::{Fields, fields_to_ticks, ticks_to_fields};
 pub use video::{
     AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, HEIGHT as FRAMEBUFFER_HEIGHT,
     MODE_640_480_NTSC_M, VIDEO_BASE, VIDEO_ENC_FLICKERFILTER, VIDEO_ENC_GET_SETTINGS,
@@ -140,6 +142,10 @@ pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
+pub const ORDINAL_KE_QUERY_PERFORMANCE_COUNTER: u32 = 126;
+pub const ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY: u32 = 127;
+pub const ORDINAL_RTL_TIME_FIELDS_TO_TIME: u32 = 304;
+pub const ORDINAL_RTL_TIME_TO_TIME_FIELDS: u32 = 305;
 pub const ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 184;
 pub const ORDINAL_NT_FREE_VIRTUAL_MEMORY: u32 = 199;
 pub const ORDINAL_NT_QUERY_VIRTUAL_MEMORY: u32 = 217;
@@ -199,6 +205,10 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_KE_GET_CURRENT_IRQL,
     ORDINAL_KE_GET_CURRENT_THREAD,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
+    ORDINAL_KE_QUERY_PERFORMANCE_COUNTER,
+    ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY,
+    ORDINAL_RTL_TIME_FIELDS_TO_TIME,
+    ORDINAL_RTL_TIME_TO_TIME_FIELDS,
     ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY,
     ORDINAL_NT_FREE_VIRTUAL_MEMORY,
     ORDINAL_NT_QUERY_VIRTUAL_MEMORY,
@@ -344,6 +354,8 @@ pub struct Dispatcher {
     // A espera atual não termina sem tempo e interrupções; só a sessão consome. Transiente
     // como `pending_time`: a sessão o resolve antes de qualquer ponto de salvamento.
     pending_block: bool,
+    // Palavra alta de um retorno de 64 bits (EDX); só a sessão a consome.
+    return_high: Option<u32>,
     // HalReturnToFirmware pedido pelo último serviço; só a sessão o consome.
     firmware_request: Option<u32>,
     // Transcrito do DbgPrint (diagnóstico do host; não entra em snapshot).
@@ -684,6 +696,10 @@ impl Dispatcher {
                 eax: u32::from(self.irql.level()),
             }),
             ORDINAL_KE_QUERY_SYSTEM_TIME => self.system_time.query(bus, &call, clock),
+            ORDINAL_KE_QUERY_PERFORMANCE_COUNTER => self.ke_query_performance_counter(clock),
+            ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY => Ok(self.ke_query_performance_frequency()),
+            ORDINAL_RTL_TIME_FIELDS_TO_TIME => Self::rtl_time_fields_to_time(bus, &call),
+            ORDINAL_RTL_TIME_TO_TIME_FIELDS => Self::rtl_time_to_time_fields(bus, &call),
             ORDINAL_NT_ALLOCATE_VIRTUAL_MEMORY => {
                 self.virtual_memory.allocate(bus, &call, self.irql)
             }

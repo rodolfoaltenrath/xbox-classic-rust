@@ -857,3 +857,15 @@ valor de hardware desconhecido. Itens que exigem evidência externa ficam em 12.
   Evidência: GATE OK: 693 testes, target/gate/20261104-162821-tI7eCnHz.log; oito testes common_services.rs e 290 casos
   emitidos (três novos em firmware). AVST v4 (v1–v3 migram para zero). Hello 57/69,
   triangle 61/75 pelo ordinal-report. ADR-0100/P28.
+
+- [x] 13.2 KeQueryPerformanceCounter (126), KeQueryPerformanceFrequency (127),
+  RtlTimeToTimeFields (305), RtlTimeFieldsToTime (304).
+
+  **Aceite:** GATE OK; palavra alta do retorno de 64 bits chegando ao EDX do guest;
+  contador derivado do Clock único; ida e volta de calendário pela ABI de `TIME_FIELDS` com
+  campos inválidos devolvendo FALSE sem escrita; recusas sem efeito parcial; ADR, CHANGELOG,
+  ROADMAP §16.1 e passagem de bastão atualizados.
+
+  Evidência: GATE OK: 703 testes, target/gate/20261104-164005-kmQpB7a5.log; quatro testes de
+  unidade em time_services.rs, seis em tests/time_services.rs e o caso emitido
+  `contador_frequencia_e_calendario_pela_abi_do_guest` (291 casos nativos). ADR-0101/P29.

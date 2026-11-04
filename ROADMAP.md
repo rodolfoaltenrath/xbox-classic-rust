@@ -1185,6 +1185,11 @@ projeto. `HalReturnToFirmware` informa a rotina pedida (0–4) sem emular o efei
 uma. `IoDeleteSymbolicLink` só conhece `\??\D:`. Condição de saída: consumidor real de
 ponto flutuante ou 64 bits no `DbgPrint`, um host que trate cada rotina e links além de D:.
 
+P29 — **Tempo de performance e calendário** (ADR-0101): a frequência de 3,375 MHz vem do
+Cxbx-Reloaded fixado, não de medida no console; o calendário é o gregoriano proléptico do NT,
+sem fuso, e tempo negativo ou ano acima de 32767 é recusado. Condição de saída: medida em
+hardware ou comportamento documentado fora do domínio.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

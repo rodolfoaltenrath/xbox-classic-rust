@@ -8,6 +8,12 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ## [Não publicado]
 
+### Adicionado
+
+- Fase 13.2 (ADR-0101): KeQueryPerformanceCounter (126), KeQueryPerformanceFrequency (127),
+  RtlTimeToTimeFields (305) e RtlTimeFieldsToTime (304). Retorno de 64 bits em EDX:EAX,
+  contador derivado do Clock único a 3,375 MHz e calendário gregoriano desde 1601 (P29).
+
 ### Corrigido
 
 - Referência matemática do teste x87 perto de π independente da libm do host:
