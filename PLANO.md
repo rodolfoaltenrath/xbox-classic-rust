@@ -820,6 +820,18 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   escrita somente com backing gravável explícito, preservando mídia readonly;
   ABI emitida, erros/aliases e replay; nenhuma partição fictícia; ADR e docs.
 
+  Análise (2026-11-04, sem código): consumidores no nxdk fixado. 226 é usado por
+  SetFilePointer (FilePositionInformation, contrato claro em lib/winapi/fileio.c),
+  SetEndOfFile (FileEndOfFileInformation/FileAllocationInformation) e atributos; 210
+  por GetFileAttributes (só FileAttributes) e GetFileAttributesEx, que **repassa ao
+  guest** CreationTime, LastAccessTime e LastWriteTime; 236 por WriteFile e pelas
+  rotinas de formatação/partição do nxdk; 218 não tem consumidor no nxdk fixado.
+  Subentregas viáveis sem inventar: 12.5a posição (FilePositionInformation) sobre o
+  default.xbe de D:. Dependem de evidência que não existe no projeto: carimbos de
+  data de arquivo em mídia óptica (210), valores de volume (218; ADR-0091 já recusa
+  partições fictícias) e o status de escrita em mídia somente leitura (236 e os
+  demais códigos de 226). Decisão do mantenedor pendente: fonte desses valores.
+
 - [ ] 12.6 Vídeo/sistema e persistência: ordinais 4, 8, 49, 178, 301, 302.
 
   **Aceite:** GATE OK; endereço salvo, diagnóstico, status, exceções e firmware
