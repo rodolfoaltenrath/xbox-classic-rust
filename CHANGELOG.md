@@ -25,6 +25,14 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- NtSuspendThread (231), NtResumeThread (224), NtYieldExecution (238) e
+  PsCreateSystemThreadEx com CreateSuspended no scheduler de duas threads. A
+  contagem de suspensão (0..=127, THRD v3; v1–v2 migram para zero) torna a filha
+  inelegível em qualquer estado; a filha que se suspende cede a CPU, e o yield
+  devolve STATUS_NO_YIELD_PERFORMED se não há outra thread pronta. Hello 51/69,
+  triangle 55/75; oito testes de kernel e cinco casos emitidos (ADR-0098, PLANO
+  12.4a, P26).
+
 - Semáforos anônimos com contagem/limite, NtCreateSemaphore/NtReleaseSemaphore,
   espera real pelo scheduler e fechamento. KRNL v16/SEMA v1, migração vazia de
   legados e replay integral de duas threads (ADR-0096, PLANO 12.3a).

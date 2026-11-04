@@ -780,11 +780,25 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   externa, sem execução de hardware nesta sessão. Evidências/tentativas/saída no
   ADR-0097. Manter 12.3 em andamento e 12.4–12.6 pendentes; não alegar 69/69.
 
-- [ ] 12.4 Threads e esperas: ordinais 143, 224, 231, 234, 235, 238.
+- [~] 12.4 Threads e esperas: ordinais 143, 224, 231, 234, 235, 238.
 
   **Aceite:** GATE OK; prioridades/suspensão/retomada/yield e waits suportados
   afetam o scheduler real, sem sucesso artificial; testes guest da ABI,
   escalonamento e replay; perfil e limites explícitos em ADR/ROADMAP/continuidade.
+
+  Subentregas: 12.4a suspensão, retomada, yield e criação suspensa (224, 231,
+  238); 12.4b prioridades (143); 12.4c esperas Ex com timeout e múltiplos objetos
+  (234, 235). Retomada em 2026-11-04: o bloqueio de 12.3b não impede 12.4, que não
+  depende do contrato de NtQueryDirectoryObject. Commits intermediários somente
+  com gate verde; o aceite acima permanece integral.
+
+  Evidência (12.4a): GATE OK: 675 testes, target/gate/20261104-140034-5js8gYgt.log;
+  oito testes thread_control.rs e 284 casos emitidos (cinco novos). Ciclo guest
+  completo: cria suspensa, yield sem ninguém (NO_YIELD), retoma e a filha roda e
+  se suspende, yield com a filha suspensa (NO_YIELD), retoma, yield real, espera a
+  filha terminada. Replay de snapshot com a filha nunca iniciada e suspensa depois
+  de rodar; deadlock identificável (WouldBlock). THRD v3 (v1–v2 migram para zero).
+  ADR-0098/P26. Hello 51/69, triangle 55/75 pelo ordinal-report.
 
 - [ ] 12.5 Arquivos/volume: ordinais 210, 218, 226, 236.
 

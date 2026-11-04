@@ -54,11 +54,13 @@ mod thread_verification {
     #[test]
     fn criacao_recusada_preserva_cpu_frames_saidas_e_nao_estaciona_pai() {
         let mut s=loaded();boundary(&mut s,255);let esp=s.state.regs[ESP];let used=s.bus.frames().usados();
-        s.bus.escrever_u32(GuestVirt(esp+32),1).unwrap(); // CreateSuspended.
+        // CreateSuspended deixou de ser recusada com o scheduler (ADR-0098); a recusa que
+        // sobra para exercitar o mesmo caminho é o argumento de depurador (arg 8).
+        s.bus.escrever_u32(GuestVirt(esp+36),1).unwrap();
         let before=s.state.clone();assert!(s.atender_kernel().is_err());assert_eq!(s.state,before);
         assert_eq!(s.bus.frames().usados(),used);assert!(!s.has_parked_parent());assert!(s.kernel.child_thread().is_none());
         assert_eq!(s.bus.ler_u32(GuestVirt(0x12010)).unwrap(),0);
-        s.bus.escrever_u32(GuestVirt(esp+32),0).unwrap();
+        s.bus.escrever_u32(GuestVirt(esp+36),0).unwrap();
         s.bus.escrever_u32(GuestVirt(esp),0x50000000).unwrap();assert!(s.atender_kernel().is_err());
         assert_eq!(s.state,before);assert_eq!(s.bus.frames().usados(),used);
     }

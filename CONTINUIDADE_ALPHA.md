@@ -53,6 +53,17 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 ### Estado executável vigente
 
+**Subentrega 12.4a/ADR-0098 (2026-11-04):** NtSuspendThread (231), NtResumeThread
+(224), NtYieldExecution (238) e criação suspensa no scheduler de duas threads. A
+contagem 0–127 vive no kernel (THRD v3; v1–v2 migram para zero) e a filha suspensa
+é inelegível em qualquer estado; a autossuspensão cede a CPU e o yield só é
+"realizado" se há outra thread pronta (senão STATUS_NO_YIELD_PERFORMED). Sem
+scheduler (LegacyBootstrap) e dentro de ISR/DPC os serviços são recusados.
+Relatório real: **hello 51/69, triangle 55/75**. Restam em 12.4: prioridades
+(KeSetBasePriorityThread, 143) e esperas Ex com timeout e múltiplos objetos
+(234, 235). P26 registra as convenções NT não medidas no Xbox. 12.3b segue
+BLOQUEADO; 12.4 foi retomada porque não depende dele.
+
 **BLOQUEADO em 12.3b (ADR-0097):** falta contrato verificado para ULONG Type
 de NtQueryDirectoryObject do Xbox. Nxdk dá layout de 12 bytes/ABI de seis
 argumentos, mas não semântica do campo; GetLogicalDrives ignora Type, Cxbx

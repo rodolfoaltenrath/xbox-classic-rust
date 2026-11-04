@@ -308,22 +308,39 @@ fn fechar_handle_nao_termina_thread_ou_libera_pilha_e_persiste_invalidez() {
     }
 }
 #[test]
-fn thrd_v1_migra_handle_aberto_e_v2_recusa_flag_invalida() {
+fn thrd_v1_v2_migram_handle_aberto_sem_suspensao_e_v3_recusa_campos_invalidos() {
     let (mut bus, mut d, regs) = setup();
     call(&mut bus, &mut d, &regs, 255, &args()).unwrap();
     let bytes = saved(&d);
     let at = bytes.windows(4).rposition(|v| v == b"THRD").unwrap();
     let flag = at + 46;
-    assert_eq!(bytes[flag], 0);
+    assert_eq!(bytes[flag], 0, "handle_closed");
+    assert_eq!(bytes[flag + 1], 0, "contagem de suspensão");
+    // v1: sem handle fechado nem suspensão.
     let mut old = bytes.clone();
+    old.remove(flag);
     old.remove(flag);
     old[at + 4..at + 8].copy_from_slice(&1u32.to_le_bytes());
     let mut r = Dispatcher::new();
     r.load(&mut SnapshotReader::new(&old).unwrap()).unwrap();
     assert_eq!(saved(&r), bytes);
+    // v2: sem suspensão.
+    let mut v2 = bytes.clone();
+    v2.remove(flag + 1);
+    v2[at + 4..at + 8].copy_from_slice(&2u32.to_le_bytes());
+    let mut r2 = Dispatcher::new();
+    r2.load(&mut SnapshotReader::new(&v2).unwrap()).unwrap();
+    assert_eq!(saved(&r2), bytes);
     for value in [2, 255] {
         let mut bad = bytes.clone();
         bad[flag] = value;
+        assert!(r.load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
+        assert_eq!(saved(&r), bytes);
+    }
+    // Contagem acima de 127, ou sem filha, é recusada e não altera o estado.
+    for value in [128u8, 255] {
+        let mut bad = bytes.clone();
+        bad[flag + 1] = value;
         assert!(r.load(&mut SnapshotReader::new(&bad).unwrap()).is_err());
         assert_eq!(saved(&r), bytes);
     }

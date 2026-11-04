@@ -67,15 +67,19 @@ impl Scheduler {
     fn other(&self) -> usize {
         1 - usize::from(self.current)
     }
-    fn runnable(&self) -> Option<usize> {
+    /// A filha suspensa (contagem > 0) nunca é elegível, em qualquer estado (ADR-0098).
+    fn eligible(slot: usize, child_suspended: bool) -> bool {
+        !(slot == 1 && child_suspended)
+    }
+    fn runnable(&self, child_suspended: bool) -> Option<usize> {
         let other = self.other();
-        if self.status[other] == Status::Ready {
+        let current = usize::from(self.current);
+        if self.status[other] == Status::Ready && Self::eligible(other, child_suspended) {
             Some(other)
-        } else if matches!(
-            self.status[usize::from(self.current)],
-            Status::Running | Status::Ready
-        ) {
-            Some(usize::from(self.current))
+        } else if matches!(self.status[current], Status::Running | Status::Ready)
+            && Self::eligible(current, child_suspended)
+        {
+            Some(current)
         } else {
             None
         }
@@ -142,11 +146,12 @@ impl Session {
     }
     /// O scheduler só salta tempo quando nenhuma thread pode executar.
     pub(super) fn schedule_idle(&mut self) -> Result<()> {
+        let suspended = self.kernel.child_suspend_count() > 0;
         let Some(scheduler) = &mut self.scheduler else {
             return self.advance_to_next_vblank();
         };
         scheduler.wake_deadlines(self.state.clock.cycles());
-        if let Some(next) = scheduler.runnable() {
+        if let Some(next) = scheduler.runnable(suspended) {
             return self.switch_task(next);
         }
         let deadline = scheduler
@@ -180,7 +185,7 @@ impl Session {
         scheduler.wake_deadlines(self.state.clock.cycles());
         scheduler.wake_waiters();
         let next = scheduler
-            .runnable()
+            .runnable(suspended)
             .ok_or_else(|| xbox_core::Error::format("deadline sem thread executável"))?;
         self.switch_task(next)
     }
@@ -188,6 +193,7 @@ impl Session {
         if self.in_interrupt || self.state.stopped_exit().is_some() {
             return Ok(());
         }
+        let suspended = self.kernel.child_suspend_count() > 0;
         let Some(scheduler) = &mut self.scheduler else {
             return Ok(());
         };
@@ -203,6 +209,7 @@ impl Session {
             return self.schedule_idle();
         }
         if scheduler.status[scheduler.other()] == Status::Ready
+            && Scheduler::eligible(scheduler.other(), suspended)
             && self
                 .state
                 .clock
@@ -219,11 +226,14 @@ impl Session {
         if self.kernel.irql() != Irql::Passive {
             return requested;
         }
+        // Uma filha suspensa não disputa a CPU: não há por que limitar o orçamento.
+        let suspended = self.kernel.child_suspend_count() > 0;
         if let Some(scheduler) = &self.scheduler
             && matches!(
                 scheduler.status[scheduler.other()],
                 Status::Ready | Status::Sleeping(_)
             )
+            && Scheduler::eligible(scheduler.other(), suspended)
         {
             requested.min(QUANTUM)
         } else {
@@ -252,6 +262,7 @@ impl Session {
     }
     pub(super) fn scheduled_kernel(&mut self) -> Result<Servico> {
         use xbox_kernel::dispatch::{
+            ORDINAL_NT_RESUME_THREAD, ORDINAL_NT_SUSPEND_THREAD, ORDINAL_NT_YIELD_EXECUTION,
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX, ORDINAL_PS_TERMINATE_SYSTEM_THREAD,
         };
         if self.state.stopped_exit().is_some() {
@@ -263,7 +274,11 @@ impl Session {
         if self.in_interrupt
             && matches!(
                 call.export.ordinal,
-                ORDINAL_PS_TERMINATE_SYSTEM_THREAD | ORDINAL_PS_CREATE_SYSTEM_THREAD_EX
+                ORDINAL_PS_TERMINATE_SYSTEM_THREAD
+                    | ORDINAL_PS_CREATE_SYSTEM_THREAD_EX
+                    | ORDINAL_NT_SUSPEND_THREAD
+                    | ORDINAL_NT_RESUME_THREAD
+                    | ORDINAL_NT_YIELD_EXECUTION
             )
         {
             return Err(Error::BlockedInInterrupt { pc: self.state.eip });
@@ -312,16 +327,17 @@ impl Session {
         } else {
             None
         };
+        let suspended = self.kernel.child_suspend_count() > 0;
         if blocked {
             let scheduler = self.scheduler.as_mut().expect("scheduler");
             scheduler.status[usize::from(scheduler.current)] = Status::KernelWait;
-            if let Some(next) = scheduler.runnable() {
+            if let Some(next) = scheduler.runnable(suspended) {
                 self.switch_task(next)?;
                 return Ok(Servico::Concluido);
             }
             return Ok(Servico::Bloqueado);
         }
-        self.apply_kernel_return(&call, answer.eax);
+        self.apply_return_and_control(&call, answer.eax, suspended)?;
         // ISR/DPC pode sinalizar um objeto de outra thread. Torná-la Ready é
         // permitido aqui; a troca continua adiada até sair da interrupção.
         self.scheduler.as_mut().expect("scheduler").wake_waiters();
@@ -334,6 +350,41 @@ impl Session {
             self.start_scheduled_child();
         }
         Ok(Servico::Concluido)
+    }
+    /// Aplica o retorno da chamada e o que `NtSuspend/Resume/Yield` pediram (ADR-0098).
+    ///
+    /// `NtYieldExecution`: o status depende de haver outra thread pronta e elegível, o
+    /// que só o scheduler sabe; sem ninguém para quem ceder, não há cessão realizada.
+    /// Uma filha que se suspendeu a si mesma não pode continuar: cede a CPU a quem puder
+    /// rodar, e sem ninguém (deadlock) `schedule_idle` devolve `WouldBlock`.
+    fn apply_return_and_control(
+        &mut self,
+        call: &xbox_kernel::imports::Call,
+        eax: u32,
+        suspended: bool,
+    ) -> Result<()> {
+        let reschedule = self.kernel.take_reschedule_request();
+        let mut eax = eax;
+        let mut yield_to = None;
+        if self.kernel.take_yield_request() {
+            let scheduler = self.scheduler.as_ref().expect("scheduler");
+            let other = scheduler.other();
+            if scheduler.status[other] == Status::Ready && Scheduler::eligible(other, suspended) {
+                yield_to = Some(other);
+            } else {
+                eax = xbox_kernel::dispatch::STATUS_NO_YIELD_PERFORMED;
+            }
+        }
+        self.apply_kernel_return(call, eax);
+        if let Some(other) = yield_to {
+            self.switch_task(other)?;
+        } else if reschedule {
+            let scheduler = self.scheduler.as_ref().expect("scheduler");
+            if scheduler.current == 1 && suspended {
+                self.schedule_idle()?;
+            }
+        }
+        Ok(())
     }
     fn finish_scheduled_thread(&mut self, status: u32, terminated: bool) -> Result<bool> {
         if self.kernel.irql() != Irql::Passive {

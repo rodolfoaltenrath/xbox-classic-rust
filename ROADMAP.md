@@ -1164,6 +1164,14 @@ prioridades/filas gerais, APC, timeout ou ObReferenceObjectByHandle para semáfo
 Condição de saída: consumidores reais para novas variantes, com objeto guest,
 ciclo de vida e migração/replay; nunca satisfazer wait sem consumir contagem.
 
+P26 — **Suspensão, retomada e cessão** (ADR-0098): uma filha com handle único,
+contagem de suspensão 0–127 (THRD v3) e yield entre as duas threads. Os valores
+STATUS_THREAD_IS_TERMINATING (0xC000004B) e o limite 127 são convenção pública do NT,
+não medidos no Xbox; o nxdk fixado só consome NO_YIELD e SUSPEND_COUNT_EXCEEDED.
+Sem pseudo-handle de thread atual, prioridades, timeouts, APC ou mais threads.
+Condição de saída: referência externa ou consumidor para esses valores e filas por
+thread; nunca iniciar ou rodar uma thread suspensa para satisfazer uma espera.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

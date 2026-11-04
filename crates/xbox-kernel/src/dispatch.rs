@@ -41,6 +41,7 @@ mod semaphores;
 mod sha;
 mod smbus;
 mod system_time;
+mod thread_control;
 mod threads;
 mod video;
 mod virtual_memory;
@@ -63,7 +64,10 @@ pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use smbus::Smbus;
 pub use system_time::SystemTimeReference;
-pub use threads::{CHILD_THREAD, GuestThread, MAX_THREAD_STACK, ThreadPhase};
+pub use thread_control::{
+    STATUS_NO_YIELD_PERFORMED, STATUS_SUSPEND_COUNT_EXCEEDED, STATUS_THREAD_IS_TERMINATING,
+};
+pub use threads::{CHILD_THREAD, GuestThread, MAX_SUSPEND_COUNT, MAX_THREAD_STACK, ThreadPhase};
 pub use video::{
     AV_PACK_STANDARD, COLOR_A8R8G8B8, DisplayMode, FramebufferView, HEIGHT as FRAMEBUFFER_HEIGHT,
     MODE_640_480_NTSC_M, VIDEO_BASE, VIDEO_ENC_FLICKERFILTER, VIDEO_ENC_GET_SETTINGS,
@@ -91,6 +95,9 @@ pub const ORDINAL_HAL_WRITE_SMBUS_VALUE: u32 = 50;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
+pub const ORDINAL_NT_RESUME_THREAD: u32 = 224;
+pub const ORDINAL_NT_SUSPEND_THREAD: u32 = 231;
+pub const ORDINAL_NT_YIELD_EXECUTION: u32 = 238;
 pub const ORDINAL_NT_CREATE_FILE: u32 = 190;
 pub const ORDINAL_NT_OPEN_FILE: u32 = 202;
 pub const ORDINAL_NT_QUERY_DIRECTORY_FILE: u32 = 207;
@@ -165,6 +172,9 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
     ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
     ORDINAL_NT_CLOSE,
+    ORDINAL_NT_RESUME_THREAD,
+    ORDINAL_NT_SUSPEND_THREAD,
+    ORDINAL_NT_YIELD_EXECUTION,
     ORDINAL_NT_CREATE_FILE,
     ORDINAL_NT_OPEN_FILE,
     ORDINAL_NT_QUERY_DIRECTORY_FILE,
@@ -318,6 +328,8 @@ pub struct Dispatcher {
     // A espera atual não termina sem tempo e interrupções; só a sessão consome. Transiente
     // como `pending_time`: a sessão o resolve antes de qualquer ponto de salvamento.
     pending_block: bool,
+    // Pedidos de escalonamento de NtSuspend/Resume/Yield; só a sessão os consome.
+    control_request: thread_control::ControlRequest,
 }
 
 impl Dispatcher {
@@ -397,8 +409,10 @@ impl Dispatcher {
 
     /// Só a sessão coordena a continuação CPU após consumir a criação Ready.
     pub fn start_ready_thread(&mut self) -> Option<GuestThread> {
+        let suspended = self.threads.suspend != 0;
         let child = self.threads.child.as_mut()?;
-        if child.phase != ThreadPhase::Ready {
+        // Uma filha criada suspensa só inicia depois que `NtResumeThread` zera a contagem.
+        if child.phase != ThreadPhase::Ready || suspended {
             return None;
         }
         child.phase = ThreadPhase::Running;
@@ -598,6 +612,9 @@ impl Dispatcher {
                 self.links.open(bus, &call, self.irql, &mut self.mutants)
             }
             ORDINAL_NT_CLOSE => self.nt_close(bus, &call, scheduled),
+            ORDINAL_NT_SUSPEND_THREAD => self.nt_suspend_thread(bus, &call, scheduled),
+            ORDINAL_NT_RESUME_THREAD => self.nt_resume_thread(bus, &call, scheduled),
+            ORDINAL_NT_YIELD_EXECUTION => self.nt_yield_execution(bus, &call, scheduled),
             ORDINAL_NT_CREATE_FILE => self.nt_create_file(bus, &call),
             ORDINAL_NT_OPEN_FILE => self.nt_open_file(bus, &call),
             ORDINAL_NT_QUERY_DIRECTORY_FILE => self.nt_query_directory_file(bus, &call),
@@ -609,6 +626,7 @@ impl Dispatcher {
                 &mut self.virtual_memory,
                 &mut self.mutants,
                 self.irql,
+                scheduled,
             ),
             ORDINAL_PS_TERMINATE_SYSTEM_THREAD => {
                 let status = call.argument(bus, 0)?;
@@ -1052,6 +1070,7 @@ impl Snapshot for Dispatcher {
             // de relógio que já foi aplicado (ou descartado) na sessão de origem.
             pending_time: None,
             pending_block: false,
+            control_request: thread_control::ControlRequest::default(),
         };
         candidate.validate_objects()?;
         *self = candidate;

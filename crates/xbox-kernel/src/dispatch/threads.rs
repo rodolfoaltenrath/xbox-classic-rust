@@ -14,6 +14,8 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 
 pub const CHILD_THREAD: u32 = 2;
 pub const MAX_THREAD_STACK: u32 = 1024 * 1024;
+/// Maior contagem de suspensão (`MAXIMUM_SUSPEND_COUNT` do NT, 127), declarada no ADR-0098 (P26).
+pub const MAX_SUSPEND_COUNT: u8 = 127;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadPhase {
@@ -97,6 +99,8 @@ impl GuestThread {
 pub(super) struct Threads {
     pub child: Option<GuestThread>,
     pub handle_closed: bool,
+    /// Contagem de suspensão da filha (0..=127), como `NtSuspendThread` a define.
+    pub suspend: u8,
 }
 
 impl Threads {
@@ -117,6 +121,7 @@ impl Threads {
         memory: &mut VirtualMemory,
         mutants: &mut Mutants,
         irql: Irql,
+        scheduled: bool,
     ) -> Resultado {
         let mut args = [0; 10];
         for (i, value) in args.iter_mut().enumerate() {
@@ -141,16 +146,19 @@ impl Threads {
                 "perfil admite uma única filha por sessão",
             ));
         }
+        // Criar suspensa (CreateSuspended) só faz sentido com o scheduler, que é quem sabe
+        // não iniciar a thread até `NtResumeThread` (ADR-0098).
+        let create_suspended = suspended as u8 != 0;
         if irql != Irql::Passive
             || extension != 0
-            || suspended as u8 != 0
+            || create_suspended && !scheduled
             || debugger as u8 != 0
             || entry == 0
         {
             return Err(variant(
                 bus,
                 call,
-                "exige Passive, extensão zero, execução imediata e SystemRoutine explícita",
+                "exige Passive, extensão zero, SystemRoutine explícita e, para criar suspensa, o scheduler",
             ));
         }
         let Some(stack_size) = stack
@@ -208,6 +216,7 @@ impl Threads {
         }
         mutants.reserve_handle();
         self.child = Some(child);
+        self.suspend = u8::from(create_suspended);
         Ok(Atendimento {
             eax: STATUS_SUCCESS,
         })
@@ -271,7 +280,7 @@ impl Threads {
 
 impl Snapshot for Threads {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("THRD", 2);
+        out.section("THRD", 3);
         out.bool(self.child.is_some());
         if let Some(child) = self.child {
             for value in [
@@ -295,9 +304,10 @@ impl Snapshot for Threads {
             out.u32(status);
         }
         out.bool(self.handle_closed);
+        out.u8(self.suspend);
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
-        let version = inp.section("THRD", 2)?;
+        let version = inp.section("THRD", 3)?;
         if version == 0 {
             return Err(bad("versão de threads desconhecida"));
         }
@@ -352,8 +362,19 @@ impl Snapshot for Threads {
         } else {
             false
         };
+        // THRD v1–v2 não tinham suspensão: migram para 0, sem herdar o estado do destino.
+        let suspend = if version >= 3 { inp.u8()? } else { 0 };
+        if suspend > MAX_SUSPEND_COUNT || suspend != 0 && child.is_none() {
+            return Err(bad("contagem de suspensão inválida"));
+        }
+        if suspend != 0
+            && child.is_some_and(|thread| matches!(thread.phase, ThreadPhase::Terminated(_)))
+        {
+            return Err(bad("thread terminada não pode estar suspensa"));
+        }
         self.child = child;
         self.handle_closed = handle_closed;
+        self.suspend = suspend;
         Ok(())
     }
 }

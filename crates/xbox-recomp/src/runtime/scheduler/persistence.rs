@@ -108,6 +108,9 @@ impl Scheduler {
         }
         if self.child_started {
             let child = child.ok_or_else(|| bad("recurso da filha ausente"))?;
+            if current == 1 && kernel.child_suspend_count() > 0 {
+                return Err(bad("filha suspensa não pode ser a thread ativa"));
+            }
             if self.status[1] == Status::Absent
                 || matches!(child.phase, ThreadPhase::Terminated(_))
                     != (self.status[1] == Status::Finished)
@@ -116,8 +119,10 @@ impl Scheduler {
             {
                 return Err(bad("fase kernel diverge da filha escalonada"));
             }
-        } else if child.is_some()
-            || current != 0
+        } else if child.is_some_and(|thread| {
+            // Única exceção: criada suspensa e ainda não iniciada (ADR-0098).
+            thread.phase != ThreadPhase::Ready || kernel.child_suspend_count() == 0
+        }) || current != 0
             || self.status[1] != Status::Absent
             || self.contexts[1].is_some()
         {
