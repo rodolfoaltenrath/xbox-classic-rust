@@ -20,6 +20,7 @@ mod double_shifts;
 mod encoder_filters;
 mod exchange;
 mod files;
+mod firmware;
 mod free_contiguous;
 mod free_query_virtual;
 mod gpu_instance;
@@ -106,6 +107,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&semaphores::sources(output));
     main.push_str(&thread_control::sources(output));
     main.push_str(&waits::sources(output));
+    main.push_str(&firmware::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
     main.push_str(&simple_contiguous::sources(output));

@@ -105,6 +105,10 @@ pub enum Error {
     BlockedInInterrupt { pc: u32 },
     #[error("{fault} (instrução em EIP=0x{pc:08X})")]
     MemoryAt { pc: u32, fault: xbox_mem::Falta },
+    #[error(
+        "HalReturnToFirmware({routine}) em um chamador que não encerra a execução; use `conduzir`"
+    )]
+    FirmwareReturn { routine: u32 },
     /// O apresentador do host falhou; o texto vem do erro dele, que este crate não conhece.
     #[error("apresentação: {0}")]
     Presentation(String),

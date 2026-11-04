@@ -39,6 +39,8 @@ pub(super) const MAX_CONNECTED: usize = 32;
 pub(super) const MAX_QUEUED_DPCS: usize = 256;
 /// Notificações de desligamento registradas ao mesmo tempo.
 pub(super) const MAX_SHUTDOWN: usize = 16;
+/// Valores de `FIRMWARE_REENTRY` aceitos: `HalHaltRoutine`..`HalFatalErrorRebootRoutine`.
+pub(super) const FIRMWARE_ROUTINES: u32 = 5;
 /// `KDPC.Type` de um DPC inicializado.
 const DPC_OBJECT: u16 = 19;
 
@@ -494,11 +496,11 @@ impl super::Dispatcher {
     pub(super) fn dispatch_signals(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
         use super::{
             EventOperation, ORDINAL_HAL_GET_INTERRUPT_VECTOR,
-            ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION, ORDINAL_KE_CONNECT_INTERRUPT,
-            ORDINAL_KE_DISCONNECT_INTERRUPT, ORDINAL_KE_INITIALIZE_DPC,
-            ORDINAL_KE_INITIALIZE_INTERRUPT, ORDINAL_KE_INSERT_QUEUE_DPC,
-            ORDINAL_KE_REMOVE_QUEUE_DPC, ORDINAL_NT_CLEAR_EVENT, ORDINAL_NT_CREATE_EVENT,
-            ORDINAL_NT_PULSE_EVENT, ORDINAL_NT_SET_EVENT,
+            ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION, ORDINAL_HAL_RETURN_TO_FIRMWARE,
+            ORDINAL_KE_CONNECT_INTERRUPT, ORDINAL_KE_DISCONNECT_INTERRUPT,
+            ORDINAL_KE_INITIALIZE_DPC, ORDINAL_KE_INITIALIZE_INTERRUPT,
+            ORDINAL_KE_INSERT_QUEUE_DPC, ORDINAL_KE_REMOVE_QUEUE_DPC, ORDINAL_NT_CLEAR_EVENT,
+            ORDINAL_NT_CREATE_EVENT, ORDINAL_NT_PULSE_EVENT, ORDINAL_NT_SET_EVENT,
         };
         match call.export.ordinal {
             ORDINAL_NT_CREATE_EVENT => self.nt_create_event(bus, call),
@@ -506,6 +508,7 @@ impl super::Dispatcher {
             ORDINAL_NT_CLEAR_EVENT => self.nt_event_operation(bus, call, EventOperation::Clear),
             ORDINAL_NT_PULSE_EVENT => self.nt_event_operation(bus, call, EventOperation::Pulse),
             ORDINAL_HAL_GET_INTERRUPT_VECTOR => Self::hal_get_interrupt_vector(bus, call),
+            ORDINAL_HAL_RETURN_TO_FIRMWARE => self.hal_return_to_firmware(bus, call),
             ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION => {
                 self.hal_register_shutdown_notification(bus, call)
             }
@@ -517,5 +520,48 @@ impl super::Dispatcher {
             ORDINAL_KE_REMOVE_QUEUE_DPC => self.ke_remove_queue_dpc(bus, call),
             ordinal => unreachable!("ordinal {ordinal} não pertence a este grupo"),
         }
+    }
+}
+
+impl super::Dispatcher {
+    /// `VOID HalReturnToFirmware(FIRMWARE_REENTRY Routine)` (ADR-0100).
+    ///
+    /// Não retorna: o serviço só **registra o pedido** e a sessão encerra a execução com
+    /// o desfecho "retorno ao firmware", depois de chamar as notificações de desligamento.
+    /// `Routine` vale 0..=4 (`HalHaltRoutine` a `HalFatalErrorRebootRoutine`, do
+    /// `xboxkrnl.h` fixado); `HalMaximumRoutine` e acima são recusados.
+    pub(super) fn hal_return_to_firmware(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        let routine = call.argument(bus, 0)?;
+        if routine >= FIRMWARE_ROUTINES {
+            return Err(invalid(call, "rotina de firmware fora de 0..=4"));
+        }
+        self.firmware_request = Some(routine);
+        Ok(Atendimento { eax: 0 })
+    }
+
+    /// Só a sessão chama: o pedido de retorno ao firmware do último serviço.
+    pub fn take_firmware_request(&mut self) -> Option<u32> {
+        self.firmware_request.take()
+    }
+
+    /// As notificações de desligamento registradas, na ordem em que o kernel as chama:
+    /// prioridade **maior primeiro** (o `xboxkrnl.h` fixado diz que quanto maior a
+    /// prioridade, mais cedo a rotina roda); empates, na ordem de registro.
+    pub fn shutdown_notifications(&self, bus: &Bus) -> Result<Vec<GuestCall>, Erro> {
+        let mut entries = Vec::with_capacity(self.interrupts.shutdown.len());
+        for &registration in &self.interrupts.shutdown {
+            let routine = bus.ler_u32(GuestVirt(registration))?;
+            let priority = bus.ler_u32(GuestVirt(registration + 4))?.cast_signed();
+            entries.push((priority, registration, routine));
+        }
+        entries.sort_by_key(|&(priority, ..)| std::cmp::Reverse(priority));
+        Ok(entries
+            .into_iter()
+            .map(|(_, registration, routine)| GuestCall {
+                entry: routine,
+                arguments: [registration, 0, 0, 0],
+                count: 1,
+            })
+            .collect())
     }
 }

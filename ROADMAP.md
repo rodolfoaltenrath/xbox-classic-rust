@@ -1179,6 +1179,12 @@ saída: consumidor ou referência para timeout absoluto e alertável, e filas po
 para mais de uma espera pendente; nunca satisfazer uma espera sem consumir o objeto.
 KeSetBasePriorityThread (143) segue sem implementação por falta de contrato (12.4b).
 
+P28 — **Serviços comuns** (ADR-0100): `DbgPrint` só formata conversões de 32 bits e o
+transcrito (64 KiB) não entra em snapshot; `%p` com oito dígitos hexadecimais é decisão do
+projeto. `HalReturnToFirmware` informa a rotina pedida (0–4) sem emular o efeito de cada
+uma. `IoDeleteSymbolicLink` só conhece `\??\D:`. Condição de saída: consumidor real de
+ponto flutuante ou 64 bits no `DbgPrint`, um host que trate cada rotina e links além de D:.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

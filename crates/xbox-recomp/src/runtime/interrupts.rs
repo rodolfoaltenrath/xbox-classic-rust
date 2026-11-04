@@ -189,16 +189,38 @@ impl Session {
                         interrupts_enabled,
                     });
                 }
-                Exit::KernelCall { .. } => {
-                    if self.atender_kernel_ou_bloquear()? == Servico::Bloqueado {
+                Exit::KernelCall { .. } => match self.atender_kernel_ou_bloquear()? {
+                    Servico::Bloqueado | Servico::RetornoAoFirmware(_) => {
                         return Err(Error::BlockedInInterrupt { pc: self.state.eip });
                     }
-                }
+                    Servico::Concluido => {}
+                },
             }
         }
         Err(Error::InterruptStuck {
             entry: call.entry,
             slices: MAX_ROUTINE_SLICES,
         })
+    }
+}
+
+impl Session {
+    /// Fim de `HalReturnToFirmware`: chama as notificações de desligamento registradas, da
+    /// maior prioridade para a menor, cada uma como uma chamada guest aninhada, e só então
+    /// devolve o desfecho. O estado fica intacto (a chamada que não retorna nunca é
+    /// aplicada), de modo que o snapshot depois do desfecho é consultável (ADR-0100).
+    pub(super) fn return_to_firmware<R>(
+        &mut self,
+        routine: u32,
+        run: &mut R,
+        blocks: u64,
+    ) -> Result<super::Desfecho>
+    where
+        R: FnMut(&mut State, &mut Bus, u64) -> Result<Exit>,
+    {
+        for call in self.kernel.shutdown_notifications(&self.bus)? {
+            self.invoke_guest(call, run, blocks, true)?;
+        }
+        Ok(super::Desfecho::RetornoAoFirmware(routine))
     }
 }

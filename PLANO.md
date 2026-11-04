@@ -838,3 +838,22 @@ Referência visual pública: `samples/mesh/screenshot.png` do nxdk fixado.
   com efeitos observáveis e contrato declarado; persistência significa preservação
   no ciclo de reinício suportado, não apenas um booleano; ABI emitida e replay;
   sonda hello sem recusas, docs/ADR e inventário final das 69 importações.
+
+## Fase 13 — Serviços comuns com contrato no nxdk fixado
+
+Bloco acrescentado em 2026-11-04 a pedido do mantenedor ("concentrar no que já temos").
+Critério de escolha: importações comuns ao hello, ao triangle e a programas maiores
+(ranking por `ordinal-report`) cujo contrato está no `xboxkrnl.h` fixado e não depende de
+valor de hardware desconhecido. Itens que exigem evidência externa ficam em 12.x.
+
+- [x] 13.1 IoDeleteSymbolicLink (69), AvSetSavedDataAddress (4), DbgPrint (8),
+  HalReturnToFirmware (49).
+
+  **Aceite:** GATE OK; efeito observável de cada serviço (link apagado e recriável,
+  endereço lido de volta, texto no transcrito, desfecho de firmware com as notificações de
+  desligamento por prioridade); recusas sem efeito parcial; Rust gerado pela ABI e snapshot;
+  ADR, CHANGELOG, ROADMAP §16.1 e passagem de bastão atualizados.
+
+  Evidência: GATE OK: 693 testes, target/gate/20261104-162821-tI7eCnHz.log; oito testes common_services.rs e 290 casos
+  emitidos (três novos em firmware). AVST v4 (v1–v3 migram para zero). Hello 57/69,
+  triangle 61/75 pelo ordinal-report. ADR-0100/P28.

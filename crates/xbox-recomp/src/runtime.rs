@@ -323,6 +323,10 @@ pub enum Servico {
     /// A espera não termina sem tempo e interrupções: o retorno **não** foi aplicado e a
     /// CPU continua na chamada pendente.
     Bloqueado,
+    /// `HalReturnToFirmware`: o título pediu para voltar ao firmware. O retorno **não** foi
+    /// aplicado (a chamada não retorna) e quem conduz a sessão encerra a execução depois das
+    /// notificações de desligamento (ADR-0100).
+    RetornoAoFirmware(u32),
 }
 
 /// Sessão AOT com CPU, memória e estado HLE. O snapshot da sessão inclui os três.
@@ -397,6 +401,7 @@ impl Session {
             // Quem chama aqui não entrega interrupções; seguir faria a mesma chamada
             // bloquear para sempre.
             Servico::Bloqueado => Err(crate::Error::WouldBlock { pc: self.state.eip }),
+            Servico::RetornoAoFirmware(routine) => Err(crate::Error::FirmwareReturn { routine }),
         }
     }
 
@@ -430,6 +435,9 @@ impl Session {
             &self.state.regs,
             &self.state.clock,
         )?;
+        if let Some(routine) = self.kernel.take_firmware_request() {
+            return Ok(Servico::RetornoAoFirmware(routine));
+        }
         // O serviço pode escrever sobre a pilha de argumentos/retorno. Usar a
         // continuação capturada, sem nova leitura falível depois de publicar efeitos.
         if terminating {

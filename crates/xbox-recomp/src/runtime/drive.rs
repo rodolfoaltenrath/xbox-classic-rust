@@ -29,6 +29,9 @@ pub enum Desfecho {
     Retornou,
     /// O host pediu para parar (janela fechada). Estado intacto e retomável.
     ParadoPeloHost,
+    /// O título chamou `HalReturnToFirmware(rotina)`, depois de as notificações de
+    /// desligamento rodarem (ADR-0100). A execução termina aqui; não é um retorno do `main`.
+    RetornoAoFirmware(u32),
 }
 
 impl Session {
@@ -97,8 +100,16 @@ impl Session {
                     // Uma espera que só termina com tempo e interrupções deixa o relógio
                     // correr até o próximo vblank; o ISR e o DPC rodam no topo da próxima
                     // volta, e a mesma chamada é repetida.
-                    if self.atender_kernel_ou_bloquear()? == Servico::Bloqueado {
-                        self.schedule_idle()?;
+                    match self.atender_kernel_ou_bloquear()? {
+                        Servico::Bloqueado => self.schedule_idle()?,
+                        Servico::RetornoAoFirmware(routine) => {
+                            return self.return_to_firmware(
+                                routine,
+                                &mut run,
+                                limites.blocos_por_fatia,
+                            );
+                        }
+                        Servico::Concluido => {}
                     }
                     if self.state.clock.cycles() != antes && apresentar(self)? {
                         return Ok(Desfecho::ParadoPeloHost);

@@ -26,6 +26,7 @@ use xbox_mem::{Acesso, Bus, GuestVirt};
 
 mod contiguous;
 mod critical;
+mod debug;
 mod delay;
 mod events;
 mod files;
@@ -51,6 +52,7 @@ pub use contiguous::{
     PAGE_WRITECOMBINE,
 };
 pub use critical::SECTION_SIZE as CRITICAL_SECTION_SIZE;
+pub use debug::MAX_DEBUG_OUTPUT;
 pub use delay::PedidoDeTempo;
 use events::{EventOperation, Events};
 pub use files::{MAX_FILE_HANDLES, MAX_MEDIA_BYTES};
@@ -86,7 +88,9 @@ use crate::loader::Result as LoaderResult;
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
 pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
+pub const ORDINAL_DBG_PRINT: u32 = 8;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
+pub const ORDINAL_AV_SET_SAVED_DATA_ADDRESS: u32 = 4;
 pub const ORDINAL_AV_SET_DISPLAY_MODE: u32 = 3;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY_EX: u32 = 166;
 pub const ORDINAL_MM_ALLOCATE_CONTIGUOUS_MEMORY: u32 = 165;
@@ -95,6 +99,7 @@ pub const ORDINAL_MM_CLAIM_GPU_INSTANCE_MEMORY: u32 = 168;
 pub const ORDINAL_MM_FREE_CONTIGUOUS_MEMORY: u32 = 171;
 pub const ORDINAL_HAL_WRITE_SMBUS_VALUE: u32 = 50;
 pub const ORDINAL_IO_CREATE_SYMBOLIC_LINK: u32 = 67;
+pub const ORDINAL_IO_DELETE_SYMBOLIC_LINK: u32 = 69;
 pub const ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT: u32 = 203;
 pub const ORDINAL_NT_CLOSE: u32 = 187;
 pub const ORDINAL_NT_RESUME_THREAD: u32 = 224;
@@ -116,6 +121,7 @@ pub const ORDINAL_NT_RELEASE_SEMAPHORE: u32 = 222;
 pub const ORDINAL_NT_RELEASE_MUTANT: u32 = 221;
 pub const ORDINAL_HAL_GET_INTERRUPT_VECTOR: u32 = 44;
 pub const ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION: u32 = 47;
+pub const ORDINAL_HAL_RETURN_TO_FIRMWARE: u32 = 49;
 pub const ORDINAL_KE_CONNECT_INTERRUPT: u32 = 98;
 pub const ORDINAL_KE_DISCONNECT_INTERRUPT: u32 = 100;
 pub const ORDINAL_KE_INITIALIZE_DPC: u32 = 107;
@@ -172,8 +178,11 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_MM_FREE_CONTIGUOUS_MEMORY,
     ORDINAL_HAL_WRITE_SMBUS_VALUE,
     ORDINAL_AV_GET_SAVED_DATA_ADDRESS,
+    ORDINAL_DBG_PRINT,
+    ORDINAL_AV_SET_SAVED_DATA_ADDRESS,
     ORDINAL_AV_SEND_TV_ENCODER_OPTION,
     ORDINAL_IO_CREATE_SYMBOLIC_LINK,
+    ORDINAL_IO_DELETE_SYMBOLIC_LINK,
     ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT,
     ORDINAL_NT_CLOSE,
     ORDINAL_NT_RESUME_THREAD,
@@ -199,6 +208,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_RELEASE_MUTANT,
     ORDINAL_HAL_GET_INTERRUPT_VECTOR,
     ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION,
+    ORDINAL_HAL_RETURN_TO_FIRMWARE,
     ORDINAL_KE_CONNECT_INTERRUPT,
     ORDINAL_KE_DISCONNECT_INTERRUPT,
     ORDINAL_KE_INITIALIZE_DPC,
@@ -334,6 +344,10 @@ pub struct Dispatcher {
     // A espera atual não termina sem tempo e interrupções; só a sessão consome. Transiente
     // como `pending_time`: a sessão o resolve antes de qualquer ponto de salvamento.
     pending_block: bool,
+    // HalReturnToFirmware pedido pelo último serviço; só a sessão o consome.
+    firmware_request: Option<u32>,
+    // Transcrito do DbgPrint (diagnóstico do host; não entra em snapshot).
+    debug: debug::DebugOutput,
     // Prazo (ciclos) da espera que acabou de bloquear; só a sessão o consome.
     pending_block_deadline: Option<u64>,
     // A espera bloqueada que a sessão vai repetir (prazo e thread); persiste (WAIT).
@@ -614,10 +628,13 @@ impl Dispatcher {
                 self.gpu_instance.allocation_base(),
             ),
             ORDINAL_AV_GET_SAVED_DATA_ADDRESS => Ok(Atendimento {
-                eax: VideoState::SAVED_DATA_ADDRESS,
+                eax: self.video.saved_data_address(),
             }),
+            ORDINAL_AV_SET_SAVED_DATA_ADDRESS => self.video.set_saved_data_address(bus, &call),
+            ORDINAL_DBG_PRINT => self.dbg_print(bus, &call),
             ORDINAL_AV_SEND_TV_ENCODER_OPTION => self.video.encoder(bus, &call, &self.eeprom),
             ORDINAL_IO_CREATE_SYMBOLIC_LINK => self.links.create(bus, &call, self.irql),
+            ORDINAL_IO_DELETE_SYMBOLIC_LINK => self.links.delete(bus, &call, self.irql),
             ORDINAL_NT_OPEN_SYMBOLIC_LINK_OBJECT => {
                 self.links.open(bus, &call, self.irql, &mut self.mutants)
             }
@@ -688,6 +705,7 @@ impl Dispatcher {
             | ORDINAL_NT_PULSE_EVENT
             | ORDINAL_HAL_GET_INTERRUPT_VECTOR
             | ORDINAL_HAL_REGISTER_SHUTDOWN_NOTIFICATION
+            | ORDINAL_HAL_RETURN_TO_FIRMWARE
             | ORDINAL_KE_INITIALIZE_INTERRUPT
             | ORDINAL_KE_CONNECT_INTERRUPT
             | ORDINAL_KE_DISCONNECT_INTERRUPT
@@ -968,11 +986,9 @@ impl Snapshot for Dispatcher {
             // aplicação pela sessão, que ocorre antes de qualquer ponto de salvamento.
             // Um snapshot nunca o contém, e carregar um não pode ressuscitar um avanço
             // de relógio que já foi aplicado (ou descartado) na sessão de origem.
-            pending_time: None,
-            pending_block: false,
-            pending_block_deadline: None,
             waits,
-            control_request: thread_control::ControlRequest::default(),
+            // Tudo o mais é transiente (pedidos à sessão, transcrito de depuração): o padrão.
+            ..Self::default()
         };
         candidate.validate_objects()?;
         *self = candidate;

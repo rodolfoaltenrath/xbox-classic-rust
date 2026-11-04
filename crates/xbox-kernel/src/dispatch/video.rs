@@ -39,10 +39,24 @@ pub struct VideoState {
     // Sem valor herdado de firmware no cold boot; só pedidos guest observados.
     flicker_filter: Option<u8>,
     soften_filter: Option<bool>,
+    // Ponteiro bruto guardado por `AvSetSavedDataAddress`; zero é o cold boot sem dados.
+    saved_data: u32,
 }
 impl VideoState {
-    /// Cold boot sem framebuffer herdado. `AvSetSavedDataAddress` ainda recusa.
+    /// Cold boot sem framebuffer herdado: o valor de `AvGetSavedDataAddress` até alguém chamar
+    /// `AvSetSavedDataAddress`.
     pub const SAVED_DATA_ADDRESS: u32 = 0;
+    /// Endereço guardado por `AvSetSavedDataAddress` (zero se nunca definido).
+    pub const fn saved_data_address(&self) -> u32 {
+        self.saved_data
+    }
+    /// `VOID AvSetSavedDataAddress(PVOID Address)`: guarda o ponteiro cru. Nenhum acesso à
+    /// memória apontada: é o `AvGetSavedDataAddress` que o devolve, e quem o interpreta é o
+    /// guest (ADR-0100).
+    pub(super) fn set_saved_data_address(&mut self, bus: &Bus, call: &Call) -> Resultado {
+        self.saved_data = call.argument(bus, 0)?;
+        Ok(Atendimento { eax: 0 })
+    }
     pub const fn enabled(&self) -> bool {
         self.enabled
     }
@@ -131,7 +145,7 @@ impl VideoState {
 }
 impl Snapshot for VideoState {
     fn save(&self, out: &mut SnapshotWriter) {
-        out.section("AVST", 3);
+        out.section("AVST", 4);
         out.u32(1); // StandardCableColdBootV1.
         out.bool(self.enabled);
         out.bool(self.mode.is_some());
@@ -144,14 +158,15 @@ impl Snapshot for VideoState {
         // 0xFF representa pedido ausente, sem inventar defaults do hardware.
         out.u8(self.flicker_filter.unwrap_or(0xFF));
         out.u8(self.soften_filter.map_or(0xFF, u8::from));
+        out.u32(self.saved_data);
     }
     fn load(&mut self, inp: &mut SnapshotReader<'_>) -> Result<(), SnapshotError> {
         let bad = |what| SnapshotError::BadValue {
             section: "AVST",
             what,
         };
-        let version = inp.section("AVST", 3)?;
-        if !matches!(version, 1..=3) || inp.u32()? != 1 {
+        let version = inp.section("AVST", 4)?;
+        if !matches!(version, 1..=4) || inp.u32()? != 1 {
             return Err(bad("versão/perfil de encoder desconhecido"));
         }
         let enabled = match inp.u8()? {
@@ -200,6 +215,8 @@ impl Snapshot for VideoState {
             mode,
             flicker_filter,
             soften_filter,
+            // v1–v3 não guardavam o endereço: migram para o cold boot (zero).
+            saved_data: if version >= 4 { inp.u32()? } else { 0 },
         };
         Ok(())
     }

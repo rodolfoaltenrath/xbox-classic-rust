@@ -338,6 +338,7 @@ fn executar_continuo(
         }).map_err(|e| e.to_string())?;
         match result {
             Some(Desfecho::Retornou) => return Ok(Desfecho::Retornou),
+            Some(Desfecho::RetornoAoFirmware(r)) => return Ok(Desfecho::RetornoAoFirmware(r)),
             Some(Desfecho::ParadoPeloHost) => {}, // evento pendente, tratado antes de avançar
             None => eprintln!("Trecho concluído: instruções={}, ciclos={}, EIP=0x{:08X}", session.state.retired, session.state.clock.cycles(), session.state.eip),
         }
@@ -370,6 +371,10 @@ fn executar(
         // sozinho, não uma falha. Parada controlada, estado intacto.
         Desfecho::ParadoPeloHost => {
             eprintln!("Janela fechada pelo usuário; execução interrompida pelo host.");
+        }
+        // `HalReturnToFirmware`: as notificações de desligamento já rodaram; a execução termina.
+        Desfecho::RetornoAoFirmware(rotina) => {
+            println!("Retorno ao firmware: rotina={rotina}, instruções={}", session.state.retired);
         }
     }
     Ok(desfecho)

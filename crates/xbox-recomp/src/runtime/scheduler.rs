@@ -314,6 +314,9 @@ impl Session {
                 &self.state.clock,
             )?
         };
+        if let Some(routine) = self.kernel.take_firmware_request() {
+            return Ok(Servico::RetornoAoFirmware(routine));
+        }
         if terminating {
             self.finish_scheduled_thread(answer.eax, true)?;
             return Ok(Servico::Concluido);

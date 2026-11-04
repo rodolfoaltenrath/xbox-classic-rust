@@ -55,6 +55,29 @@ impl Links {
         self.target = Some(String::from_utf8(target).expect("caminho ASCII validado"));
         Ok(Atendimento { eax: 0 })
     }
+    /// `NTSTATUS IoDeleteSymbolicLink(POBJECT_STRING SymbolicLinkName)`
+    ///
+    /// Remove o nome `\??\D:`. Handles já abertos continuam válidos até o `NtClose`, como
+    /// num objeto cujo nome foi apagado; o nome some do namespace e uma nova criação volta
+    /// a ser possível. Nome ausente devolve `STATUS_OBJECT_NAME_NOT_FOUND`; nomes fora de
+    /// `\??\D:` seguem fora do perfil e são recusados, como na criação (ADR-0100).
+    pub(super) fn delete(&mut self, bus: &Bus, call: &Call, irql: Irql) -> Resultado {
+        passive(bus, call, irql)?;
+        let name = string(bus, call, call.argument(bus, 0)?)?;
+        if !name.eq_ignore_ascii_case(b"\\??\\D:") {
+            return Err(variant(
+                bus,
+                call,
+                "perfil só apaga o link D: criado para CdRom0",
+            ));
+        }
+        if self.target.take().is_none() {
+            return Ok(Atendimento {
+                eax: STATUS_OBJECT_NAME_NOT_FOUND,
+            });
+        }
+        Ok(Atendimento { eax: 0 })
+    }
     pub(super) fn open(
         &mut self,
         bus: &mut Bus,

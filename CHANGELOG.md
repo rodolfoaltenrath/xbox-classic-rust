@@ -25,6 +25,15 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- IoDeleteSymbolicLink (69), AvSetSavedDataAddress (4), DbgPrint (8) e
+  HalReturnToFirmware (49), as quatro funções comuns a hello, triangle e aos dois
+  dashboards com contrato no nxdk fixado. O link D: pode ser apagado e recriado (handles
+  abertos sobrevivem ao nome); o endereço de dados salvos persiste (AVST v4); DbgPrint
+  formata as conversões de 32 bits num transcrito de 64 KiB do host e recusa o resto sem
+  imprimir; HalReturnToFirmware chama as notificações de desligamento da maior prioridade
+  para a menor e encerra com `Desfecho::RetornoAoFirmware`. Hello 57/69, triangle 61/75
+  (ADR-0100, PLANO 13.1, P28).
+
 - Esperas com timeout e por vários objetos: NtWaitForSingleObject (233),
   NtWaitForSingleObjectEx (234) e NtWaitForMultipleObjectsEx (235) passam por um
   motor só. WaitAny devolve o índice e consome só o satisfeito; WaitAll consome tudo
