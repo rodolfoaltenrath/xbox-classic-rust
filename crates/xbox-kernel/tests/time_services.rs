@@ -2,8 +2,9 @@
 use xbox_core::time::{CPU_HZ, Clock, PERF_COUNTER_HZ};
 use xbox_formats::fixtures::xbe_com_imports;
 use xbox_kernel::dispatch::{
-    Dispatcher, Erro, ORDINAL_KE_QUERY_PERFORMANCE_COUNTER, ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY,
-    ORDINAL_RTL_TIME_FIELDS_TO_TIME, ORDINAL_RTL_TIME_TO_TIME_FIELDS,
+    Dispatcher, Erro, ORDINAL_KE_QUERY_INTERRUPT_TIME, ORDINAL_KE_QUERY_PERFORMANCE_COUNTER,
+    ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY, ORDINAL_RTL_TIME_FIELDS_TO_TIME,
+    ORDINAL_RTL_TIME_TO_TIME_FIELDS,
 };
 use xbox_kernel::imports;
 use xbox_kernel::loader::{Image, STACK_BASE, STACK_SIZE};
@@ -16,6 +17,7 @@ fn setup() -> (Bus, Dispatcher, [u32; 8]) {
     let image = xbe_com_imports(
         &[0xC3],
         &[
+            ORDINAL_KE_QUERY_INTERRUPT_TIME,
             ORDINAL_KE_QUERY_PERFORMANCE_COUNTER,
             ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY,
             ORDINAL_RTL_TIME_FIELDS_TO_TIME,
@@ -240,4 +242,24 @@ fn ponteiros_fora_da_ram_e_tempo_negativo_sao_recusados_sem_escrever() {
         .is_err()
     );
     assert_eq!(le_campos(&bus), [7; 8], "a saída não foi tocada");
+}
+
+#[test]
+fn tempo_de_interrupcao_e_o_tempo_desde_o_boot_em_100_ns() {
+    let (mut bus, mut d, regs) = setup();
+    let mut clock = Clock::new();
+    for (ciclos, esperado) in [(0, 0), (CPU_HZ, 10_000_000), (3 * CPU_HZ, 30_000_000)] {
+        clock.set(ciclos);
+        let baixa = chamar(
+            &mut bus,
+            &mut d,
+            &regs,
+            ORDINAL_KE_QUERY_INTERRUPT_TIME,
+            &[],
+            clock,
+        )
+        .unwrap();
+        let valor = (u64::from(d.take_return_high().unwrap()) << 32) | u64::from(baixa);
+        assert_eq!(valor, esperado);
+    }
 }

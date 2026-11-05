@@ -139,6 +139,15 @@ impl super::Dispatcher {
         Ok(self.return_u64(clock.perf_counter()))
     }
 
+    /// `ULONGLONG KeQueryInterruptTime(void)`: tempo desde o boot em intervalos de 100 ns,
+    /// derivado do Clock da sessão e arredondado para baixo.
+    pub(super) fn ke_query_interrupt_time(&mut self, clock: Option<&Clock>) -> Resultado {
+        let clock = clock.ok_or(Erro::ContextoTemporal {
+            detalhe: "a chamada exige o Clock explícito da sessão",
+        })?;
+        Ok(self.return_u64(clock.nanos() / 100))
+    }
+
     /// Devolve um valor de 64 bits: a palavra baixa no `EAX`, a alta no `EDX` (que a sessão
     /// aplica junto com o retorno).
     fn return_u64(&mut self, value: u64) -> Atendimento {

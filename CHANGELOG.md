@@ -10,7 +10,7 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
-- Fase 13.2 (ADR-0101): KeQueryPerformanceCounter (126), KeQueryPerformanceFrequency (127),
+- Fase 13.2/13.3 (ADR-0101): KeQueryInterruptTime (125), KeQueryPerformanceCounter (126), KeQueryPerformanceFrequency (127),
   RtlTimeToTimeFields (305) e RtlTimeFieldsToTime (304). Retorno de 64 bits em EDX:EAX,
   contador derivado do Clock único a 3,375 MHz e calendário gregoriano desde 1601 (P29).
 

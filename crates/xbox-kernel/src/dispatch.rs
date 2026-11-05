@@ -142,6 +142,7 @@ pub const ORDINAL_HAL_READ_WRITE_PCI_SPACE: u32 = 46;
 pub const ORDINAL_INTERLOCKED_EXCHANGE: u32 = 54;
 pub const ORDINAL_KE_GET_CURRENT_IRQL: u32 = 103;
 pub const ORDINAL_KE_QUERY_SYSTEM_TIME: u32 = 128;
+pub const ORDINAL_KE_QUERY_INTERRUPT_TIME: u32 = 125;
 pub const ORDINAL_KE_QUERY_PERFORMANCE_COUNTER: u32 = 126;
 pub const ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY: u32 = 127;
 pub const ORDINAL_RTL_TIME_FIELDS_TO_TIME: u32 = 304;
@@ -205,6 +206,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_KE_GET_CURRENT_IRQL,
     ORDINAL_KE_GET_CURRENT_THREAD,
     ORDINAL_KE_QUERY_SYSTEM_TIME,
+    ORDINAL_KE_QUERY_INTERRUPT_TIME,
     ORDINAL_KE_QUERY_PERFORMANCE_COUNTER,
     ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY,
     ORDINAL_RTL_TIME_FIELDS_TO_TIME,
@@ -696,6 +698,7 @@ impl Dispatcher {
                 eax: u32::from(self.irql.level()),
             }),
             ORDINAL_KE_QUERY_SYSTEM_TIME => self.system_time.query(bus, &call, clock),
+            ORDINAL_KE_QUERY_INTERRUPT_TIME => self.ke_query_interrupt_time(clock),
             ORDINAL_KE_QUERY_PERFORMANCE_COUNTER => self.ke_query_performance_counter(clock),
             ORDINAL_KE_QUERY_PERFORMANCE_FREQUENCY => Ok(self.ke_query_performance_frequency()),
             ORDINAL_RTL_TIME_FIELDS_TO_TIME => Self::rtl_time_fields_to_time(bus, &call),

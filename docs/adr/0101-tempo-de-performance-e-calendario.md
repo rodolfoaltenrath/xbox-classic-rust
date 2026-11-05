@@ -53,3 +53,11 @@ NT para tempo fora do domínio.
 
 Os quatro ordinais saem de `IMPLEMENTADOS` e do `match`; `return_high` e a aplicação do `EDX`
 são aditivos e podem ficar.
+
+## Adendo (PLANO 13.3): KeQueryInterruptTime (125)
+
+`ULONGLONG f(void)` no `xboxkrnl.h` fixado. Devolve o tempo desde o boot em intervalos de
+100 ns, `clock.nanos() / 100` (arredondado para baixo), em EDX:EAX, a partir do mesmo Clock
+único. É a definição pública do NT de "interrupt time"; o valor exato no console não foi
+medido (P29). Sem o Clock da sessão é recusado. Teste: `tests/time_services.rs`
+(0, 1 s e 3 s guest).

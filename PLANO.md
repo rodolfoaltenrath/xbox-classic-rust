@@ -869,3 +869,11 @@ valor de hardware desconhecido. Itens que exigem evidência externa ficam em 12.
   Evidência: GATE OK: 703 testes, target/gate/20261104-164005-kmQpB7a5.log; quatro testes de
   unidade em time_services.rs, seis em tests/time_services.rs e o caso emitido
   `contador_frequencia_e_calendario_pela_abi_do_guest` (291 casos nativos). ADR-0101/P29.
+
+- [x] 13.3 KeQueryInterruptTime (125).
+
+  **Aceite:** GATE OK; valor em EDX:EAX derivado do Clock único (100 ns desde o boot);
+  recusa sem Clock; ADR-0101 (adendo) e CHANGELOG atualizados.
+
+  Evidência: GATE OK: 704 testes, target/gate/20261105-104312-8MyoO67g.log; teste
+  `tempo_de_interrupcao_e_o_tempo_desde_o_boot_em_100_ns` (0, 1 s, 3 s guest). ADR-0101/P29.
