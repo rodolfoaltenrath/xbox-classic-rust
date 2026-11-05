@@ -110,7 +110,10 @@ pub const ORDINAL_NT_YIELD_EXECUTION: u32 = 238;
 pub const ORDINAL_NT_CREATE_FILE: u32 = 190;
 pub const ORDINAL_NT_OPEN_FILE: u32 = 202;
 pub const ORDINAL_NT_QUERY_DIRECTORY_FILE: u32 = 207;
+pub const ORDINAL_NT_QUERY_FULL_ATTRIBUTES_FILE: u32 = 210;
 pub const ORDINAL_NT_QUERY_INFORMATION_FILE: u32 = 211;
+pub const ORDINAL_NT_SET_INFORMATION_FILE: u32 = 226;
+pub const ORDINAL_NT_WRITE_FILE: u32 = 236;
 pub const ORDINAL_NT_READ_FILE: u32 = 219;
 pub const ORDINAL_RTL_ENTER_CRITICAL_SECTION: u32 = 277;
 pub const ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION: u32 = 291;
@@ -199,6 +202,9 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_NT_OPEN_FILE,
     ORDINAL_NT_QUERY_DIRECTORY_FILE,
     ORDINAL_NT_QUERY_INFORMATION_FILE,
+    ORDINAL_NT_QUERY_FULL_ATTRIBUTES_FILE,
+    ORDINAL_NT_SET_INFORMATION_FILE,
+    ORDINAL_NT_WRITE_FILE,
     ORDINAL_NT_READ_FILE,
     ORDINAL_EX_QUERY_NON_VOLATILE_SETTING,
     ORDINAL_HAL_READ_WRITE_PCI_SPACE,
@@ -661,6 +667,9 @@ impl Dispatcher {
             ORDINAL_NT_QUERY_DIRECTORY_FILE => self.nt_query_directory_file(bus, &call),
             ORDINAL_NT_READ_FILE => self.nt_read_file(bus, &call),
             ORDINAL_NT_QUERY_INFORMATION_FILE => self.nt_query_information_file(bus, &call),
+            ORDINAL_NT_QUERY_FULL_ATTRIBUTES_FILE => self.nt_query_full_attributes_file(bus, &call),
+            ORDINAL_NT_SET_INFORMATION_FILE => self.nt_set_information_file(bus, &call),
+            ORDINAL_NT_WRITE_FILE => self.nt_write_file(bus, &call),
             ORDINAL_PS_CREATE_SYSTEM_THREAD_EX => self.threads.create(
                 bus,
                 &call,

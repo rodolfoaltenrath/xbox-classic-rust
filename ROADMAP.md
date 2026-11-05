@@ -1190,6 +1190,12 @@ Cxbx-Reloaded fixado, não de medida no console; o calendário é o gregoriano p
 sem fuso, e tempo negativo ou ano acima de 32767 é recusado. Condição de saída: medida em
 hardware ou comportamento documentado fora do domínio.
 
+P30 — **Arquivos: valores provisórios** (ADR-0102): carimbos de data de `default.xbe` são zero,
+escrita na mídia somente leitura devolve `STATUS_ACCESS_DENIED` e `IOSB.Information` é 0 em
+`NtSetInformationFile`. Nenhum foi medido no console. Condição de saída: fonte verificável
+(dump de volume real ou documentação do I/O Manager do Xbox). `NtQueryVolumeInformationFile`
+(218) continua não implementado.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

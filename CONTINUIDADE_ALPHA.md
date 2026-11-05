@@ -53,6 +53,10 @@ item aberto até fechar o plano ou documentar um bloqueio real. Nenhum push.
 
 ### Estado executável vigente
 
+**Fase 12.5a/ADR-0102 (2026-11-05):** NtSetInformationFile (226, só posição), NtWriteFile
+(236, ACCESS_DENIED na mídia) e NtQueryFullAttributesFile (210, carimbos zero). Valores
+provisórios autorizados pelo mantenedor, registrados em P30; 218 segue bloqueado.
+
 **Fase 13.2/ADR-0101 (2026-11-04):** KeQueryPerformanceCounter (126) e Frequency (127)
 devolvem 64 bits em EDX:EAX (3,375 MHz, Clock único); RtlTimeToTimeFields (305) e
 RtlTimeFieldsToTime (304) fazem o calendário gregoriano desde 1601 (P29).

@@ -877,3 +877,12 @@ valor de hardware desconhecido. Itens que exigem evidência externa ficam em 12.
 
   Evidência: GATE OK: 704 testes, target/gate/20261105-104312-8MyoO67g.log; teste
   `tempo_de_interrupcao_e_o_tempo_desde_o_boot_em_100_ns` (0, 1 s, 3 s guest). ADR-0101/P29.
+
+- Retomada de 12.5 (2026-11-05): o mantenedor autorizou valores provisórios declarados.
+  12.5a (210, 226, 236) implementada com P30 (carimbos zero, ACCESS_DENIED, Information 0).
+  BLOQUEADO: 218 (NtQueryVolumeInformationFile) — o ADR-0091 recusa partições fictícias e não
+  há fonte para tamanho de setor, serial ou rótulo. 12.5 segue `[ ]` até 218 ter contrato.
+
+  Evidência (12.5a): GATE OK: 708 testes, target/gate/20261105-110542-41I6FvFp.log; quatro
+  testes file_provisionals.rs e o caso emitido
+  `posicao_atributos_e_escrita_negada_pela_abi_do_guest` (292 casos nativos). ADR-0102/P30.

@@ -495,3 +495,133 @@ impl Dispatcher {
         Ok(Atendimento { eax: 0 })
     }
 }
+
+// Valores provisórios (P30, ADR-0102): sem fonte verificável no projeto, declarados.
+const ACCESS_DENIED: u32 = 0xC0000022;
+const INVALID_PARAMETER: u32 = 0xC000000D;
+const FILE_POSITION_INFORMATION: u32 = 14;
+
+impl Dispatcher {
+    /// `NtSetInformationFile`: só `FilePositionInformation` (posição de leitura, contrato de
+    /// `SetFilePointer` no nxdk). As demais classes continuam variantes recusadas.
+    pub(super) fn nt_set_information_file(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        passive(self, bus, call)?;
+        let args: Vec<u32> = (0..5)
+            .map(|i| call.argument(bus, i))
+            .collect::<Result<_, _>>()?;
+        let (handle, io, info, length, class) = (args[0], args[1], args[2], args[3], args[4]);
+        if self.files.directories.contains(handle) {
+            return Err(variant(bus, call, "alterar diretório fora do perfil"));
+        }
+        if class != FILE_POSITION_INFORMATION {
+            return Err(variant(
+                bus,
+                call,
+                "somente FilePositionInformation (14) na mídia somente leitura",
+            ));
+        }
+        if !self.files.handles.contains_key(&handle) {
+            return Ok(Atendimento {
+                eax: STATUS_INVALID_HANDLE,
+            });
+        }
+        if !ram_range(bus, io, 8, Acesso::Escrita) || !ram_range(bus, info, 8, Acesso::Leitura) {
+            return Ok(Atendimento {
+                eax: STATUS_ACCESS_VIOLATION,
+            });
+        }
+        if length != 8 {
+            iosb(bus, io, TOO_SMALL, 0)?;
+            return Ok(Atendimento { eax: TOO_SMALL });
+        }
+        let position = bus.ler_u64(GuestVirt(info))?.cast_signed();
+        if position < 0 {
+            iosb(bus, io, INVALID_PARAMETER, 0)?;
+            return Ok(Atendimento {
+                eax: INVALID_PARAMETER,
+            });
+        }
+        self.files
+            .handles
+            .get_mut(&handle)
+            .expect("handle validado")
+            .position = position.cast_unsigned();
+        iosb(bus, io, 0, 0)?;
+        Ok(Atendimento { eax: 0 })
+    }
+
+    /// `NtWriteFile`: a mídia é somente leitura, então toda escrita em handle válido é
+    /// `STATUS_ACCESS_DENIED` (provisório, P30) e nada muda.
+    pub(super) fn nt_write_file(&mut self, bus: &mut Bus, call: &Call) -> Resultado {
+        passive(self, bus, call)?;
+        let args: Vec<u32> = (0..8)
+            .map(|i| call.argument(bus, i))
+            .collect::<Result<_, _>>()?;
+        let (handle, io, buffer, length) = (args[0], args[4], args[5], args[6]);
+        if self.files.directories.contains(handle) {
+            return Err(variant(bus, call, "escrita em diretório fora do perfil"));
+        }
+        if args[1..4] != [0, 0, 0] {
+            return Err(variant(bus, call, "escrita síncrona, sem evento/APC"));
+        }
+        if !self.files.handles.contains_key(&handle) {
+            return Ok(Atendimento {
+                eax: STATUS_INVALID_HANDLE,
+            });
+        }
+        if !ram_range(bus, io, 8, Acesso::Escrita)
+            || length != 0 && !ram_range(bus, buffer, length, Acesso::Leitura)
+        {
+            return Ok(Atendimento {
+                eax: STATUS_ACCESS_VIOLATION,
+            });
+        }
+        iosb(bus, io, ACCESS_DENIED, 0)?;
+        Ok(Atendimento { eax: ACCESS_DENIED })
+    }
+
+    /// `NtQueryFullAttributesFile`: `FILE_NETWORK_OPEN_INFORMATION` de `default.xbe`, com os
+    /// mesmos valores da classe 34 de `NtQueryInformationFile` (carimbos de data zerados:
+    /// provisório, P30; somente leitura).
+    pub(super) fn nt_query_full_attributes_file(
+        &mut self,
+        bus: &mut Bus,
+        call: &Call,
+    ) -> Resultado {
+        passive(self, bus, call)?;
+        let attributes = call.argument(bus, 0)?;
+        let output = call.argument(bus, 1)?;
+        if !ram_range(bus, attributes, 12, Acesso::Leitura)
+            || !ram_range(bus, output, 56, Acesso::Escrita)
+        {
+            return Ok(Atendimento {
+                eax: STATUS_ACCESS_VIOLATION,
+            });
+        }
+        let Some(image) = self.files.image.as_deref() else {
+            return Err(variant(bus, call, "sessão sem mídia de executável"));
+        };
+        let len = image.len() as u64;
+        let path = match self.file_name(bus, call, attributes)? {
+            Ok(path) => path,
+            Err(status) => return Ok(Atendimento { eax: status }),
+        };
+        let flags = bus.ler_u32(GuestVirt(attributes + 8))?;
+        let found = if flags == 0x40 {
+            path.eq_ignore_ascii_case(PATH)
+        } else {
+            path == PATH
+        };
+        if !found {
+            return Ok(Atendimento {
+                eax: STATUS_OBJECT_NAME_NOT_FOUND,
+            });
+        }
+        let mut data = [0u8; 56];
+        data[32..40].copy_from_slice(&len.to_le_bytes());
+        data[40..48].copy_from_slice(&len.to_le_bytes());
+        data[48..52].copy_from_slice(&1u32.to_le_bytes());
+        bus.escrever_bytes(GuestVirt(output), &data)?;
+        Ok(Atendimento { eax: 0 })
+    }
+}

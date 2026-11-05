@@ -19,6 +19,7 @@ mod dma;
 mod double_shifts;
 mod encoder_filters;
 mod exchange;
+mod file_provisionals;
 mod files;
 mod firmware;
 mod free_contiguous;
@@ -110,6 +111,7 @@ pub(super) fn extend_project(output: &Path, root: &Path, main: &mut String) {
     main.push_str(&waits::sources(output));
     main.push_str(&firmware::sources(output));
     main.push_str(&time_services::sources(output));
+    main.push_str(&file_provisionals::sources(output));
     main.push_str(&contiguous::sources(output));
     main.push_str(&free_contiguous::sources(output));
     main.push_str(&simple_contiguous::sources(output));
