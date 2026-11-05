@@ -10,6 +10,9 @@ o ADR correspondente em [docs/adr/](docs/adr/).
 
 ### Adicionado
 
+- Fase 12.6 (parcial, ADR-0103): RtlNtStatusToDosError (301) com tabela provisória dos
+  status do kernel; os demais devolvem 317 (P31).
+
 - Fase 12.5a (ADR-0102): NtSetInformationFile (226, só posição), NtWriteFile (236, negado
   na mídia somente leitura) e NtQueryFullAttributesFile (210); carimbos zero e
   ACCESS_DENIED são valores provisórios declarados (P30).

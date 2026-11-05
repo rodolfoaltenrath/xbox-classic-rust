@@ -41,6 +41,7 @@ mod pci;
 mod semaphores;
 mod sha;
 mod smbus;
+mod status_map;
 mod system_time;
 mod thread_control;
 mod threads;
@@ -67,6 +68,7 @@ pub use nvram::{EepromSource, EepromState, REG_BINARY, STATUS_BUFFER_TOO_SMALL, 
 pub use pci::{PciConfig, PciProfile};
 pub use sha::CONTEXT_SIZE as SHA_CONTEXT_SIZE;
 pub use smbus::Smbus;
+pub use status_map::nt_status_to_dos_error;
 pub use system_time::SystemTimeReference;
 pub use thread_control::{
     STATUS_NO_YIELD_PERFORMED, STATUS_SUSPEND_COUNT_EXCEEDED, STATUS_THREAD_IS_TERMINATING,
@@ -89,6 +91,7 @@ use crate::loader::Result as LoaderResult;
 
 /// Ordinal de `RtlInitAnsiString`.
 pub const ORDINAL_RTL_INIT_ANSI_STRING: u32 = 289;
+pub const ORDINAL_RTL_NT_STATUS_TO_DOS_ERROR: u32 = 301;
 pub const ORDINAL_AV_SEND_TV_ENCODER_OPTION: u32 = 2;
 pub const ORDINAL_DBG_PRINT: u32 = 8;
 pub const ORDINAL_AV_GET_SAVED_DATA_ADDRESS: u32 = 1;
@@ -245,6 +248,7 @@ pub const IMPLEMENTADOS: &[u32] = &[
     ORDINAL_KE_DELAY_EXECUTION_THREAD,
     ORDINAL_RTL_ENTER_CRITICAL_SECTION,
     ORDINAL_RTL_INIT_ANSI_STRING,
+    ORDINAL_RTL_NT_STATUS_TO_DOS_ERROR,
     ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION,
     ORDINAL_RTL_LEAVE_CRITICAL_SECTION,
     ORDINAL_RTL_TRY_ENTER_CRITICAL_SECTION,
@@ -756,6 +760,9 @@ impl Dispatcher {
                 self.ke_delay_execution_thread(bus, &call, scheduled)
             }
             ORDINAL_RTL_INIT_ANSI_STRING => rtl_init_ansi_string(bus, &call),
+            ORDINAL_RTL_NT_STATUS_TO_DOS_ERROR => Ok(Atendimento {
+                eax: status_map::nt_status_to_dos_error(call.argument(bus, 0)?),
+            }),
             ORDINAL_RTL_INITIALIZE_CRITICAL_SECTION => critical::initialize(bus, &call),
             ORDINAL_RTL_ENTER_CRITICAL_SECTION => {
                 critical::enter(bus, &call, false, self.current_thread())

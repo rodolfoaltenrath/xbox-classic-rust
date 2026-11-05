@@ -1196,6 +1196,9 @@ escrita na mídia somente leitura devolve `STATUS_ACCESS_DENIED` e `IOSB.Informa
 (dump de volume real ou documentação do I/O Manager do Xbox). `NtQueryVolumeInformationFile`
 (218) continua não implementado.
 
+P31 — **RtlNtStatusToDosError** (ADR-0103): tabela de 18 status do kernel com códigos Win32 da
+documentação pública do NT; o resto devolve 317. Condição de saída: tabela completa do console.
+
 ## 17. Log de progresso
 
 Uma linha por marco concluído. Append-only.

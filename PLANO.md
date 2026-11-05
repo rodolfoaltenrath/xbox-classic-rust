@@ -886,3 +886,11 @@ valor de hardware desconhecido. Itens que exigem evidência externa ficam em 12.
   Evidência (12.5a): GATE OK: 708 testes, target/gate/20261105-110542-41I6FvFp.log; quatro
   testes file_provisionals.rs e o caso emitido
   `posicao_atributos_e_escrita_negada_pela_abi_do_guest` (292 casos nativos). ADR-0102/P30.
+
+- Retomada de 12.6 (2026-11-05): RtlNtStatusToDosError (301) com tabela provisória (ADR-0103,
+  P31). Pendentes: RtlRaiseException (302, despacho SEH sem contrato) e
+  MmPersistContiguousMemory (178, persistência no reinício). 12.6 segue `[ ]`.
+
+  Evidência (12.6, 301): GATE OK: 711 testes, target/gate/20261105-111738-2Bh4FIg3.log; dois
+  testes de unidade e `status_map.rs` no kernel; testes do ordinal-report passaram a usar 302
+  como serviço ausente. ADR-0103/P31.
